@@ -1,0 +1,17 @@
+Thumbs.db
+.DS_Store
+.gradle
+build/
+target/
+out/
+.idea
+.vscode
+*.iml
+*.ipr
+*.iws
+.project
+.settings
+.classpath
+.attach*
+src/test/resources/application-test.yml
+src/test/java/io/kestra/plugin/git/PrivateTest.java
