@@ -85,7 +85,6 @@ import javax.validation.constraints.NotNull;
                 "          - pandas"
             }
         )
-    }
 )
 public class Clone extends Task implements RunnableTask<Clone.Output> {
     @Schema(
