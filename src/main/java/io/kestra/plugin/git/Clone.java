@@ -59,6 +59,32 @@ import javax.validation.constraints.NotNull;
                 "passphrase: <passphrase>"
             }
         ),
+        @Example(
+            full = true,
+            title = "Clone a GitHub repository and run a Python ETL script. Note that the `Worker` task is required so that the Python script shares the same local file system with files cloned from GitHub in the previous task.",
+            code = {
+                "id: gitPython",
+                "namespace: prod",
+                "",
+                "tasks:",
+                "  - id: fileSystem",
+                "    type: io.kestra.core.tasks.flows.Worker",
+                "    tasks:",
+                "      - id: cloneRepository",
+                "        type: io.kestra.plugin.git.Clone",
+                "        url: https://github.com/anna-geller/kestra-flows",
+                "        branch: main",
+
+                "      - id: pythonETL",
+                "        type: io.kestra.core.tasks.scripts.Python",
+                "        url: https://github.com/anna-geller/kestra-flows",
+                "        commands:",
+                "          - ./bin/python flows/etl_script.py",
+                "        requirements:",
+                "          - requests",
+                "          - pandas"
+            }
+        )
     }
 )
 public class Clone extends Task implements RunnableTask<Clone.Output> {
