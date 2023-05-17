@@ -47,7 +47,7 @@ import javax.validation.constraints.NotNull;
                 "url: https://github.com/anna-geller/kestra-flows",
                 "branch: main",
                 "username: anna-geller",
-                "password: "{{ envs.personal_access_token }}""
+                "password: your_personal_access_token"
             }
         ),
         @Example(
