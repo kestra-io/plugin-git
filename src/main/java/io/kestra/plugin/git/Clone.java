@@ -50,7 +50,7 @@ import javax.validation.constraints.NotNull;
             }
         ),
         @Example(
-            title = "Clone a repository from an SSH server",
+            title = "Clone a repository from an SSH server. If you want to clone the repository into a specific directory, you can configure the `directory` property as shown below.",
             code = {
                 "url: git@github.com:kestra-io/kestra.git",
                 "directory: kestra",
