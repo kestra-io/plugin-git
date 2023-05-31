@@ -38,11 +38,10 @@ import javax.validation.constraints.NotNull;
             code = {
                 "url: https://github.com/dbt-labs/jaffle_shop",
                 "branch: main",
-                "username: dbt-labs"
             }
         ),
         @Example(
-            title = "Clone a private repository from an HTTP server such as a private GitHub repository using a [Personal Access Token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token)",
+            title = "Clone a private repository from an HTTP server such as a private GitHub repository using a [personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token)",
             code = {
                 "url: https://github.com/anna-geller/kestra-flows",
                 "branch: main",
@@ -103,7 +102,7 @@ public class Clone extends Task implements RunnableTask<Clone.Output> {
     private String directory;
 
     @Schema(
-        title = "The initial Git branch"
+        title = "The initial Git branch."
     )
     @PluginProperty(dynamic = true)
     private String branch;
@@ -129,7 +128,7 @@ public class Clone extends Task implements RunnableTask<Clone.Output> {
     private String username;
 
     @Schema(
-        title = "The password or Personal Access Token."
+        title = "The password or personal access token."
     )
     @PluginProperty(dynamic = true)
     private String password;
