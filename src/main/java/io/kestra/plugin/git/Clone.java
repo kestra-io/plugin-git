@@ -34,16 +34,23 @@ import javax.validation.constraints.NotNull;
 @Plugin(
     examples = {
         @Example(
-            title = "Clone a repository from http server",
+            title = "Clone a public GitHub repository",
             code = {
-                "url: https://github.com/kestra-io/plugin-template",
-                "branch: develop",
-                "username: <username>",
-                "password: <password>"
+                "url: https://github.com/dbt-labs/jaffle_shop",
+                "branch: main",
             }
         ),
         @Example(
-            title = "Clone a repository from ssh server",
+            title = "Clone a private repository from an HTTP server such as a private GitHub repository using a [personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token)",
+            code = {
+                "url: https://github.com/anna-geller/kestra-flows",
+                "branch: main",
+                "username: anna-geller",
+                "password: your_personal_access_token"
+            }
+        ),
+        @Example(
+            title = "Clone a repository from an SSH server. If you want to clone the repository into a specific directory, you can configure the `directory` property as shown below.",
             code = {
                 "url: git@github.com:kestra-io/kestra.git",
                 "directory: kestra",
@@ -52,14 +59,31 @@ import javax.validation.constraints.NotNull;
             }
         ),
         @Example(
-            title = "Clone a repository from http server with a [personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token)",
+            full = true,
+            title = "Clone a GitHub repository and run a Python ETL script. Note that the `Worker` task is required so that the Python script shares the same local file system with files cloned from GitHub in the previous task.",
             code = {
-                "url: https://github.com/kestra-io/plugin-template",
-                "branch: develop",
-                "username: <username>",
-                "password: <personnalAccessToken>"
+                "id: gitPython",
+                "namespace: prod",
+                "",
+                "tasks:",
+                "  - id: fileSystem",
+                "    type: io.kestra.core.tasks.flows.Worker",
+                "    tasks:",
+                "      - id: cloneRepository",
+                "        type: io.kestra.plugin.git.Clone",
+                "        url: https://github.com/anna-geller/kestra-flows",
+                "        branch: main",
+
+                "      - id: pythonETL",
+                "        type: io.kestra.core.tasks.scripts.Python",
+                "        url: https://github.com/anna-geller/kestra-flows",
+                "        commands:",
+                "          - ./bin/python flows/etl_script.py",
+                "        requirements:",
+                "          - requests",
+                "          - pandas"
             }
-        ),
+        )
     }
 )
 public class Clone extends Task implements RunnableTask<Clone.Output> {
@@ -72,13 +96,13 @@ public class Clone extends Task implements RunnableTask<Clone.Output> {
 
     @Schema(
         title = "The optional directory associated with the clone operation.",
-        description = "If the directory isn't set, the current dir will be used."
+        description = "If the directory isn't set, the current directory will be used."
     )
     @PluginProperty(dynamic = true)
     private String directory;
 
     @Schema(
-        title = "The initial branch"
+        title = "The initial Git branch."
     )
     @PluginProperty(dynamic = true)
     private String branch;
@@ -98,25 +122,25 @@ public class Clone extends Task implements RunnableTask<Clone.Output> {
     private Boolean cloneSubmodules;
 
     @Schema(
-        title = "The username used to connect"
+        title = "The username or organization."
     )
     @PluginProperty(dynamic = true)
     private String username;
 
     @Schema(
-        title = "The password used to connect"
+        title = "The password or personal access token."
     )
     @PluginProperty(dynamic = true)
     private String password;
 
     @Schema(
-        title = "The private keyfile used to connect"
+        title = "The private keyfile used to connect."
     )
     @PluginProperty(dynamic = true)
     protected String privateKey;
 
     @Schema(
-        title = "The passphrase for the privateKey"
+        title = "The passphrase for the `privateKey`."
     )
     @PluginProperty(dynamic = true)
     protected String passphrase;
