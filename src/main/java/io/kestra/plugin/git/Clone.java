@@ -75,13 +75,11 @@ import javax.validation.constraints.NotNull;
                 "        branch: main",
 
                 "      - id: pythonETL",
-                "        type: io.kestra.core.tasks.scripts.Python",
-                "        url: https://github.com/anna-geller/kestra-flows",
+                "        type: io.kestra.plugin.scripts.python.Commands",
+                "        beforeCommands:",
+                "          - pip install requests pandas > /dev/null",
                 "        commands:",
                 "          - ./bin/python flows/etl_script.py",
-                "        requirements:",
-                "          - requests",
-                "          - pandas"
             }
         )
     }
