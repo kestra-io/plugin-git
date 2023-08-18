@@ -67,7 +67,7 @@ import javax.validation.constraints.NotNull;
                 "",
                 "tasks:",
                 "  - id: fileSystem",
-                "    type: io.kestra.core.tasks.flows.Worker",
+                "    type: io.kestra.core.tasks.flows.WorkingDirectory",
                 "    tasks:",
                 "      - id: cloneRepository",
                 "        type: io.kestra.plugin.git.Clone",
