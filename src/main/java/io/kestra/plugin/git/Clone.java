@@ -209,8 +209,7 @@ public class Clone extends Task implements RunnableTask<Clone.Output> {
     @Getter
     public static class Output implements io.kestra.core.models.tasks.Output {
         @Schema(
-            title = "Short description for this output",
-            description = "Full description of this output"
+            title = "The path where the repository is cloned"
         )
         private final String directory;
     }
