@@ -45,7 +45,9 @@ jobs:
 
       # Gradle check
       - name: Build with Gradle
-        run: ./gradlew check
+        run: |
+          echo "kestra.git.pat: ${{ secrets.GH_PERSONAL_TOKEN }}" > src/test/resources/application-test.yml
+          ./gradlew check
 
       # Publish
       - name: Publish package to Sonatype
