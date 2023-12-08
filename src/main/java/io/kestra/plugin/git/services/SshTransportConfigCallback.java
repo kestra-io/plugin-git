@@ -16,7 +16,7 @@ import java.nio.charset.StandardCharsets;
 
 @AllArgsConstructor
 public class SshTransportConfigCallback implements TransportConfigCallback {
-    private File privateKey;
+    private byte[] privateKey;
     private String passphrase;
 
     @Override
@@ -35,11 +35,13 @@ public class SshTransportConfigCallback implements TransportConfigCallback {
 
                 if (passphrase != null) {
                     jsch.addIdentity(
-                        privateKey.getAbsolutePath(),
+                        "privateKey",
+                        privateKey,
+                        null,
                         passphrase.getBytes(StandardCharsets.UTF_8)
                     );
                 } else {
-                    jsch.addIdentity(privateKey.getAbsolutePath());
+                    jsch.addIdentity("privateKey", privateKey, null, null);
                 }
 
                 return jsch;

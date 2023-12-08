@@ -69,15 +69,8 @@ public abstract class AbstractGitTask extends Task {
         }
 
         if (this.privateKey != null) {
-            Path privateKey = runContext.tempFile(
-                runContext.render(this.privateKey).getBytes(StandardCharsets.UTF_8),
-                null
-            );
-
-            Files.setPosixFilePermissions(privateKey, Set.of(PosixFilePermission.OWNER_READ));
-
             command.setTransportConfigCallback(new SshTransportConfigCallback(
-                privateKey.toFile(),
+                runContext.render(this.privateKey).getBytes(StandardCharsets.UTF_8),
                 runContext.render(this.passphrase)
             ));
         }
