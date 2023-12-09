@@ -55,8 +55,8 @@ dependencies {
     implementation group: "io.kestra.plugin", name: "plugin-script", version: kestraVersion
 
     // git
-    api 'org.eclipse.jgit:org.eclipse.jgit:6.6.0.202305301015-r'
-    api 'org.eclipse.jgit:org.eclipse.jgit.ssh.jsch:6.6.0.202305301015-r'
+    api 'org.eclipse.jgit:org.eclipse.jgit:6.8.0.202311291450-r'
+    api 'org.eclipse.jgit:org.eclipse.jgit.ssh.jsch:6.8.0.202311291450-r'
 }
 
 
