@@ -123,7 +123,7 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
 
     private boolean branchExists(RunContext runContext, String branch) throws Exception {
         if (this.url == null) {
-            try (Git git = Git.open(runContext.tempDir().resolve(runContext.render(this.directory)).toFile())) {
+            try (Git git = Git.open(runContext.resolve(Path.of(runContext.render(this.directory))).toFile())) {
                 return git.branchList().setListMode(ListBranchCommand.ListMode.REMOTE).call().stream()
                     .anyMatch(ref -> ref.getName().equals(R_HEADS + branch));
             }
@@ -140,7 +140,7 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
 
         Path basePath = runContext.tempDir();
         if (this.directory != null) {
-            basePath = basePath.resolve(this.directory);
+            basePath = runContext.resolve(Path.of(runContext.render(this.directory)));
         }
 
         String branch = runContext.render(this.branch);

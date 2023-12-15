@@ -109,12 +109,7 @@ public class Clone extends AbstractGitTask implements RunnableTask<Clone.Output>
         Path path = runContext.tempDir();
         if (this.directory != null) {
             String directory = runContext.render(this.directory);
-
-            if (directory.startsWith("./") || directory.startsWith("..") || directory.startsWith("/")) {
-                throw new IllegalArgumentException("Invalid directory (only relative path is supported) for path '" + directory + "'");
-            }
-
-            path = path.resolve(directory);
+            path = runContext.resolve(Path.of(directory));
         }
 
         CloneCommand cloneCommand = Git.cloneRepository()
