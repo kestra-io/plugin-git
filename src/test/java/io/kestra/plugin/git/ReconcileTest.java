@@ -41,6 +41,7 @@ class ReconcileTest {
     public static final String BRANCH = "reconcile";
     public static final String NAMESPACE = "my.namespace";
     public static final String TENANT_ID = "my-tenant";
+    public static final Pattern NAMESPACE_FINDER_PATTERN = Pattern.compile("(?m)^namespace: (.*)$");
 
     @Inject
     private RunContextFactory runContextFactory;
@@ -396,7 +397,7 @@ class ReconcileTest {
     }
 
     private void assertFlows(String tenantId, File clonedDir, String selfFlowSource) throws IOException {
-        Pattern namespaceFinderPattern = Pattern.compile("(?m)^namespace: (.*)$");
+        Pattern namespaceFinderPattern = NAMESPACE_FINDER_PATTERN;
         Map<String, String> namespaceForExpectedFlowSources = Stream.concat(
                 FileUtils.listFiles(clonedDir, null, true).stream()
                     .map(throwFunction(file -> FileUtils.readFileToString(file, "UTF-8")))

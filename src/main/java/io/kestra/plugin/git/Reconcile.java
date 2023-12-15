@@ -77,6 +77,8 @@ import static io.kestra.core.utils.Rethrow.*;
 )
 public class Reconcile extends AbstractGitTask implements RunnableTask<VoidOutput> {
     public static final String FLOWS_DIRECTORY = "_flows";
+    public static final Pattern NAMESPACE_FINDER_PATTERN = Pattern.compile("(?m)^namespace: (.*)$");
+    public static final Pattern FLOW_ID_FINDER_PATTERN = Pattern.compile("(?m)^id: (.*)$");
 
     @Schema(
         title = "Git directory to synchronize Namespace Files from. If not specified, all files from the Git repository will be synchronized."
@@ -134,13 +136,12 @@ public class Reconcile extends AbstractGitTask implements RunnableTask<VoidOutpu
             FlowRepositoryInterface flowRepository = runContext.getApplicationContext().getBean(FlowRepositoryInterface.class);
             FlowService flowService = runContext.getApplicationContext().getBean(FlowService.class);
 
-            Pattern namespaceFinderPattern = Pattern.compile("(?m)^namespace: (.*)$");
             Set<String> flowIdsImported = Arrays.stream(flowsDirectory.listFiles())
                 .map(File::toPath)
                 .map(throwFunction(Files::readAllBytes))
                 .map(String::new)
                 .map(flowSource -> {
-                    Matcher matcher = namespaceFinderPattern.matcher(flowSource);
+                    Matcher matcher = NAMESPACE_FINDER_PATTERN.matcher(flowSource);
                     matcher.find();
                     String previousNamespace = matcher.group(1);
                     if (previousNamespace.startsWith(namespace + ".")) {
@@ -154,7 +155,7 @@ public class Reconcile extends AbstractGitTask implements RunnableTask<VoidOutpu
                     FlowWithSource flowWithSource;
                     String flowSource = flowSourceByNamespace.getValue();
                     if (dryRun) {
-                        Matcher matcher = Pattern.compile("(?m)^id: (.*)$").matcher(flowSource);
+                        Matcher matcher = FLOW_ID_FINDER_PATTERN.matcher(flowSource);
                         matcher.find();
                         String flowId = matcher.group(1).trim();
                         isAddition = flowRepository.findById(tenantId, flowSourceByNamespace.getKey(), flowId).isEmpty();
