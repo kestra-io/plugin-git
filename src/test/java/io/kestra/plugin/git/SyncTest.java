@@ -9,6 +9,7 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.YamlFlowParser;
 import io.kestra.core.storages.StorageInterface;
+import io.kestra.core.utils.KestraIgnore;
 import io.kestra.core.utils.TestsUtils;
 import io.micronaut.context.annotation.Value;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
@@ -164,13 +165,14 @@ class SyncTest {
 
         // region WHEN
         String clonedGitDirectory = "to_clone";
+        String destinationDirectory = "sync_directory";
         Sync task = Sync.builder()
             .url("https://github.com/kestra-io/unit-tests")
             .username(pat)
             .password(pat)
             .branch(BRANCH)
             .gitDirectory(clonedGitDirectory)
-            .namespaceFilesDirectory("sync_directory")
+            .namespaceFilesDirectory(destinationDirectory)
             .build();
         task.run(runContextFactory.of(Map.of("flow", Map.of(
             "namespace", NAMESPACE,
@@ -196,7 +198,11 @@ class SyncTest {
         // endregion
 
         // region namespace files
-        assertThat(storageInterface.exists(TENANT_ID, URI.create(storageInterface.namespaceFilePrefix(NAMESPACE) + "/_flows")), is(false));
+        assertThat(storageInterface.exists(TENANT_ID, URI.create(storageInterface.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/" + KestraIgnore.KESTRA_IGNORE_FILE_NAME)), is(false));
+        assertThat(storageInterface.exists(TENANT_ID, URI.create(storageInterface.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/file_to_ignore.txt")), is(false));
+        assertThat(storageInterface.exists(TENANT_ID, URI.create(storageInterface.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/dir_to_ignore/file.txt")), is(false));
+        assertThat(storageInterface.exists(TENANT_ID, URI.create(storageInterface.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/dir_to_ignore")), is(false));
+        assertThat(storageInterface.exists(TENANT_ID, URI.create(storageInterface.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/_flows")), is(false));
         assertNamespaceFileContent(TENANT_ID, "/README.md", readmeContent);
         assertThat(storageInterface.exists(TENANT_ID, URI.create(storageInterface.namespaceFilePrefix(NAMESPACE) + deletedFilePath)), is(false));
         assertThat(storageInterface.exists(TENANT_ID, URI.create(storageInterface.namespaceFilePrefix(NAMESPACE) + deletedDirPath)), is(false));
@@ -396,10 +402,11 @@ class SyncTest {
         assertThat(logEntries, hasSize(1));
     }
 
-    private void assertFlows(String tenantId, File clonedDir, String selfFlowSource) throws IOException {
+    private void assertFlows(String tenantId, File flowsDir, String selfFlowSource) throws IOException {
         Pattern namespaceFinderPattern = NAMESPACE_FINDER_PATTERN;
         Map<String, String> namespaceForExpectedFlowSources = Stream.concat(
-                FileUtils.listFiles(clonedDir, null, true).stream()
+                FileUtils.listFiles(flowsDir, null, true).stream()
+                    .filter(file -> !file.getName().equals("kestra-ignored-flow.yml"))
                     .map(throwFunction(file -> FileUtils.readFileToString(file, "UTF-8")))
                     .map(source -> {
                         Matcher matcher = namespaceFinderPattern.matcher(source);
