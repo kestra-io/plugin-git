@@ -10,6 +10,7 @@ import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.services.FlowService;
 import io.kestra.core.storages.StorageInterface;
+import io.kestra.core.utils.KestraIgnore;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -129,6 +130,7 @@ public class Sync extends AbstractGitTask implements RunnableTask<VoidOutput> {
         // we should synchronize git flows with current namespace flows
         Path absoluteGitDirPath = runContext.resolve(Optional.ofNullable(runContext.render(this.gitDirectory)).map(Path::of).orElse(null));
         Path flowsDirectoryBasePath = absoluteGitDirPath.resolve(FLOWS_DIRECTORY);
+        KestraIgnore kestraIgnore = new KestraIgnore(absoluteGitDirPath);
 
         // synchronize flows directory to namespace flows
         File flowsDirectory = flowsDirectoryBasePath.toFile();
@@ -138,6 +140,7 @@ public class Sync extends AbstractGitTask implements RunnableTask<VoidOutput> {
 
             Set<String> flowIdsImported = Arrays.stream(flowsDirectory.listFiles())
                 .map(File::toPath)
+                .filter(filePath -> !kestraIgnore.isIgnoredFile(absoluteGitDirPath.relativize(filePath).toString(), true))
                 .map(throwFunction(Files::readAllBytes))
                 .map(String::new)
                 .map(flowSource -> {
@@ -196,7 +199,8 @@ public class Sync extends AbstractGitTask implements RunnableTask<VoidOutput> {
                     String pathStr = path.toString();
                     return !pathStr.equals(absoluteGitDirPath.toString()) &&
                         !pathStr.contains("/.git/") && !pathStr.endsWith("/.git") &&
-                        !pathStr.contains("/" + FLOWS_DIRECTORY + "/") && !pathStr.endsWith("/" + FLOWS_DIRECTORY);
+                        !pathStr.contains("/" + FLOWS_DIRECTORY + "/") && !pathStr.endsWith("/" + FLOWS_DIRECTORY) &&
+                        !kestraIgnore.isIgnoredFile(pathStr, true);
                 })
                 .toList();
             gitContentByFilePath = list.stream()
