@@ -25,7 +25,7 @@ import org.eclipse.jgit.api.RmCommand;
 import org.eclipse.jgit.lib.ObjectId;
 import org.slf4j.Logger;
 
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotNull;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
