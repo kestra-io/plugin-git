@@ -41,7 +41,7 @@ import static io.kestra.core.utils.Rethrow.*;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Reconcile the code for namespace files and flows based on the current state in Git.",
+    title = "Synchronizes the code for namespace files and flows based on the current state in Git.",
     description = "Files located in `gitDirectory` will be added/modified in namespace files under `namespaceFilesDirectory` folder. " +
         "Any file not present in the `gitDirectory` but present in `namespaceFilesDirectory` will be deleted from namespace files to ensure that Git remains a single source of truth for your workflow and application code. " +
         "If there is a `_flows` folder under the `gitDirectory` folder, any file within it will be parsed and imported as a flow under the namespace declared in the task (namespace defined in the flow code might get overwritten if it's not equal to the namespace or child namespace defined in this task)."
@@ -49,7 +49,7 @@ import static io.kestra.core.utils.Rethrow.*;
 @Plugin(
     examples = {
         @Example(
-            title = "Reconcile namespace files & flows based on the current state in a Git repository. This flow can be triggered either on a schedule or anytime you push a change to a given Git branch.",
+            title = "Synchronizes namespace files & flows based on the current state in a Git repository. This flow can be triggered either on a schedule or anytime you push a change to a given Git branch.",
             full = true,
             code = {
                 "id: sync_from_git",
@@ -57,7 +57,7 @@ import static io.kestra.core.utils.Rethrow.*;
                 "",
                 "tasks:",
                 "  - id: git",
-                "    type: io.kestra.plugin.git.Reconcile",
+                "    type: io.kestra.plugin.git.Sync",
                 "    url: https://github.com/kestra-io/scripts",
                 "    branch: main",
                 "    username: anna-geller",
@@ -75,7 +75,7 @@ import static io.kestra.core.utils.Rethrow.*;
         )
     }
 )
-public class Reconcile extends AbstractGitTask implements RunnableTask<VoidOutput> {
+public class Sync extends AbstractGitTask implements RunnableTask<VoidOutput> {
     public static final String FLOWS_DIRECTORY = "_flows";
     public static final Pattern NAMESPACE_FINDER_PATTERN = Pattern.compile("(?m)^namespace: (.*)$");
     public static final Pattern FLOW_ID_FINDER_PATTERN = Pattern.compile("(?m)^id: (.*)$");

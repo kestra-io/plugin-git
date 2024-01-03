@@ -37,7 +37,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 
 @MicronautTest
-class ReconcileTest {
+class SyncTest {
     public static final String BRANCH = "reconcile";
     public static final String NAMESPACE = "my.namespace";
     public static final String TENANT_ID = "my-tenant";
@@ -164,7 +164,7 @@ class ReconcileTest {
 
         // region WHEN
         String clonedGitDirectory = "to_clone";
-        Reconcile task = Reconcile.builder()
+        Sync task = Sync.builder()
             .url("https://github.com/kestra-io/unit-tests")
             .username(pat)
             .password(pat)
@@ -263,7 +263,7 @@ class ReconcileTest {
         );
 
         // region WHEN
-        Reconcile task = Reconcile.builder()
+        Sync task = Sync.builder()
             .url("https://github.com/kestra-io/unit-tests")
             .username(pat)
             .password(pat)
@@ -305,7 +305,7 @@ class ReconcileTest {
     void reconcile_DryRun_ShouldDoNothing() throws Exception {
         List<LogEntry> logs = new ArrayList<>();
         logQueue.receive(l -> logs.add(l.getLeft()));
-        String namespace = ReconcileTest.class.getName().toLowerCase();
+        String namespace = SyncTest.class.getName().toLowerCase();
 
         String flowSource = """
             id: some-flow
@@ -329,7 +329,7 @@ class ReconcileTest {
             flow
         );
 
-        flow = flow.toBuilder().id("sub-namespace-flow").namespace(ReconcileTest.class.getName().toLowerCase() + ".sub").build();
+        flow = flow.toBuilder().id("sub-namespace-flow").namespace(SyncTest.class.getName().toLowerCase() + ".sub").build();
         flowRepositoryInterface.create(
             flow,
             flowSource.replace("some-flow", "sub-namespace-flow"),
@@ -355,9 +355,9 @@ class ReconcileTest {
             new ByteArrayInputStream(someFileContent.getBytes())
         );
 
-        Reconcile task = Reconcile.builder()
+        Sync task = Sync.builder()
             .id("reconcile")
-            .type(Reconcile.class.getName())
+            .type(Sync.class.getName())
             .url("https://github.com/kestra-io/unit-tests")
             .username(pat)
             .password(pat)
