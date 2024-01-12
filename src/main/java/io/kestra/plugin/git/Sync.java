@@ -43,8 +43,9 @@ import static io.kestra.core.utils.Rethrow.*;
 @NoArgsConstructor
 @Schema(
     title = "Synchronizes the code for namespace files and flows based on the current state in Git.",
-    description = "Files located in `gitDirectory` will be added/modified in namespace files under `namespaceFilesDirectory` folder. " +
+    description = "Files located in `gitDirectory` will be synced with namespace files under `namespaceFilesDirectory` folder. " +
         "Any file not present in the `gitDirectory` but present in `namespaceFilesDirectory` will be deleted from namespace files to ensure that Git remains a single source of truth for your workflow and application code. " +
+        "If you don't want some files from Git to be synced, you can add them to a `.kestraignore` file at the root of your `gitDirectory` folder — that file works the same way as `.gitignore`." +
         "If there is a `_flows` folder under the `gitDirectory` folder, any file within it will be parsed and imported as a flow under the namespace declared in the task (namespace defined in the flow code might get overwritten if it's not equal to the namespace or child namespace defined in this task)."
 )
 @Plugin(
