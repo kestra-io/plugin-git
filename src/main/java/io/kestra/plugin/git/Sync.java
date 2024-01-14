@@ -45,7 +45,7 @@ import static io.kestra.core.utils.Rethrow.*;
     title = "Synchronizes the code for namespace files and flows based on the current state in Git.",
     description = "Files located in `gitDirectory` will be synced with namespace files under `namespaceFilesDirectory` folder. " +
         "Any file not present in the `gitDirectory` but present in `namespaceFilesDirectory` will be deleted from namespace files to ensure that Git remains a single source of truth for your workflow and application code. " +
-        "If you don't want some files from Git to be synced, you can add them to a `.kestraignore` file at the root of your `gitDirectory` folder — that file works the same way as `.gitignore`." +
+        "If you don't want some files from Git to be synced, you can add them to a `.kestraignore` file at the root of your `gitDirectory` folder — that file works the same way as `.gitignore`. " +
         "If there is a `_flows` folder under the `gitDirectory` folder, any file within it will be parsed and imported as a flow under the namespace declared in the task (namespace defined in the flow code might get overwritten if it's not equal to the namespace or child namespace defined in this task)."
 )
 @Plugin(
@@ -62,7 +62,7 @@ import static io.kestra.core.utils.Rethrow.*;
                 "    type: io.kestra.plugin.git.Sync",
                 "    url: https://github.com/kestra-io/scripts",
                 "    branch: main",
-                "    username: anna-geller",
+                "    username: git_username",
                 "    password: \"{{ secret('GITHUB_PAT') }}\"",
                 "    gitDirectory: your_git_dir # optional, otherwise all files",
                 "    namespaceFilesDirectory: your_namespace_files_location # optional, otherwise the namespace root directory",
@@ -83,7 +83,7 @@ public class Sync extends AbstractGitTask implements RunnableTask<VoidOutput> {
     public static final Pattern FLOW_ID_FINDER_PATTERN = Pattern.compile("(?m)^id: (.*)$");
 
     @Schema(
-        title = "Git directory to synchronize Namespace Files from. If not specified, all files from the Git repository will be synchronized."
+        title = "Git directory to synchronize Namespace files from. If not specified, all files from the Git repository will be synchronized."
     )
     @PluginProperty(dynamic = true)
     private String gitDirectory;
