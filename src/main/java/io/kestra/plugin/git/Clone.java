@@ -22,23 +22,23 @@ import java.nio.file.Path;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Clone a repository"
+    title = "Clone a repository."
 )
 @Plugin(
     examples = {
         @Example(
-            title = "Clone a public GitHub repository",
+            title = "Clone a public GitHub repository.",
             code = {
                 "url: https://github.com/dbt-labs/jaffle_shop",
                 "branch: main",
             }
         ),
         @Example(
-            title = "Clone a private repository from an HTTP server such as a private GitHub repository using a [personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token)",
+            title = "Clone a private repository from an HTTP server such as a private GitHub repository using a [personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token).",
             code = {
                 "url: https://github.com/kestra-io/examples",
                 "branch: main",
-                "username: anna-geller",
+                "username: git_username",
                 "password: your_personal_access_token"
             }
         ),
@@ -72,7 +72,7 @@ import java.nio.file.Path;
                 "        beforeCommands:",
                 "          - pip install requests pandas > /dev/null",
                 "        commands:",
-                "          - ./bin/python scripts/etl_script.py",
+                "          - python examples/scripts/etl_script.py",
             }
         )
     }
@@ -149,7 +149,7 @@ public class Clone extends AbstractGitTask implements RunnableTask<Clone.Output>
     @Getter
     public static class Output implements io.kestra.core.models.tasks.Output {
         @Schema(
-            title = "The path where the repository is cloned"
+            title = "The path where the repository is cloned."
         )
         private final String directory;
     }

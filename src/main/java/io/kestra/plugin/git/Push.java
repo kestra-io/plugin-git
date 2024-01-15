@@ -30,20 +30,20 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Pushes a commit to a repository",
+    title = "Pushes a commit to a repository.",
     description = "This task can be used in two ways: You can use it as a standalone task to both clone then commit directly with some added input or namespace files to a repository, " +
         "or you can use it in a `WorkingDirectory` task after a `Clone` task to do some in-between processing before pushing to a repository (execute some script for example)."
 )
 @Plugin(
     examples = {
         @Example(
-            title = "Clone and push a commit to a repository in a single task",
+            title = "Clone and push a commit to a repository in a single task.",
             code = {
                 "namespaceFiles:",
                 "  enabled: true",
                 "branch: feature_branch # mandatory, we'll create the branch if not exists",
                 "url: https://github.com/kestra-io/scripts",
-                "username: anna-geller",
+                "username: git_username",
                 "password: mypat",
                 "commitMessage: \"{{ inputs.commit_message }}\" # required"
             }
@@ -78,7 +78,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
                 "          - python generate_data/generate_orders.py",
                 "      - id: push",
                 "        type: io.kestra.plugin.git.Push",
-                "        username: anna-geller",
+                "        username: git_username",
                 "        password: myPAT",
                 "        branch: feature_branch",
                 "        inputFiles:",
@@ -103,7 +103,7 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
     private String branch;
 
     @Schema(
-        title = "Commit message to push"
+        title = "Commit message to push."
     )
     @PluginProperty(dynamic = true)
     @NotNull
@@ -115,7 +115,7 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
 
     @Schema(
         title = "Patterns of files to add to the commit. Default is `.` which means all files.",
-        description = "A directory name (e.g. dir to add dir/file1 and dir/file2) can also be given to add all files in the directory, recursively. Fileglobs (e.g. *.c) are not yet supported."
+        description = "A directory name (e.g. `dir` to add `dir/file1` and `dir/file2`) can also be given to add all files in the directory, recursively. File globs (e.g. *.c) are not yet supported."
     )
     @PluginProperty(dynamic = true)
     @Builder.Default
@@ -222,7 +222,7 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
     @Getter
     public static class Output implements io.kestra.core.models.tasks.Output {
         @Schema(
-            title = "Id of the commit pushed"
+            title = "ID of the commit pushed."
         )
         private final String commitId;
     }

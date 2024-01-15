@@ -22,7 +22,7 @@ import java.util.Set;
 @Getter
 public abstract class AbstractGitTask extends Task {
     @Schema(
-        title = "The URI to clone from"
+        title = "The URI to clone from."
     )
     @PluginProperty(dynamic = true)
     protected String url;
@@ -40,7 +40,7 @@ public abstract class AbstractGitTask extends Task {
     protected String password;
 
     @Schema(
-        title = "PEM-format private key content that is paired with a public key registered on Git",
+        title = "PEM-format private key content that is paired with a public key registered on Git.",
         description = "To generate an ECDSA PEM format key from OpenSSH, use the following command: `ssh-keygen -t ecdsa -b 256 -m PEM`. " +
             "You can then set this property with your private key content and put your public key on Git."
     )
