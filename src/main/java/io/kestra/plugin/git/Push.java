@@ -3,28 +3,39 @@ package io.kestra.plugin.git;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
-import io.kestra.core.models.tasks.*;
+import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.tasks.InputFilesInterface;
+import io.kestra.core.models.tasks.NamespaceFiles;
+import io.kestra.core.models.tasks.NamespaceFilesInterface;
+import io.kestra.core.models.tasks.RunnableTask;
+import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.FilesService;
 import io.kestra.core.runners.NamespaceFilesService;
 import io.kestra.core.runners.RunContext;
+import io.micronaut.core.annotation.Introspected;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import lombok.extern.jackson.Jacksonized;
+import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.AddCommand;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ListBranchCommand;
+import org.eclipse.jgit.api.RmCommand;
 import org.eclipse.jgit.lib.ObjectId;
 import org.slf4j.Logger;
 
 import javax.validation.constraints.NotNull;
+import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Stream;
 
+import static io.kestra.core.utils.Rethrow.throwConsumer;
 import static org.eclipse.jgit.lib.Constants.R_HEADS;
 
-@SuperBuilder
+@SuperBuilder(toBuilder = true)
 @ToString
 @EqualsAndHashCode
 @Getter
@@ -111,6 +122,13 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
 
     private NamespaceFiles namespaceFiles;
 
+    @Schema(
+        title = "Configure flows push as files to Git."
+    )
+    @PluginProperty
+    @Builder.Default
+    private FlowFiles flows = FlowFiles.builder().build();
+
     private Object inputFiles;
 
     @Schema(
@@ -169,13 +187,34 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
             }
         }
 
+        Git git = Git.open(basePath.toFile());
+
+        if (Optional.ofNullable(git.getRepository().getBranch()).map(b -> !b.equals(branch)).orElse(true)) {
+            git.checkout()
+                .setName(branch)
+                .setCreateBranch(true)
+                .call();
+        }
+
+        if (this.url != null) {
+            RmCommand rm = git.rm();
+            Stream<String> previouslyTrackedRelativeFilePaths = Arrays.stream(basePath.toFile().listFiles())
+                .filter(file -> !file.isDirectory() || !file.getName().equals(".git"))
+                .map(File::toPath)
+                .map(basePath::relativize)
+                .map(Path::toString);
+            previouslyTrackedRelativeFilePaths.forEach(rm::addFilepattern);
+            rm.call();
+        }
+
         if (this.inputFiles != null) {
             FilesService.inputFiles(runContext, this.inputFiles);
         }
 
+        Map<String, String> flowProps = Optional.ofNullable((Map<String, String>) runContext.getVariables().get("flow")).orElse(Collections.emptyMap());
+        String tenantId = flowProps.get("tenantId");
+        String namespace = flowProps.get("namespace");
         if (this.namespaceFiles != null) {
-            String tenantId = ((Map<String, String>) runContext.getVariables().get("flow")).get("tenantId");
-            String namespace = ((Map<String, String>) runContext.getVariables().get("flow")).get("namespace");
 
             NamespaceFilesService namespaceFilesService = runContext.getApplicationContext().getBean(NamespaceFilesService.class);
             namespaceFilesService.inject(
@@ -187,14 +226,28 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
             );
         }
 
+        if (Boolean.TRUE.equals(this.flows.enabled)) {
+            FlowRepositoryInterface flowRepository = runContext.getApplicationContext().getBean(FlowRepositoryInterface.class);
 
-        Git git = Git.open(basePath.toFile());
+            List<FlowWithSource> flows;
+            if (Boolean.TRUE.equals(this.flows.childNamespaces)) {
+                flows = flowRepository.findWithSource(null, tenantId, namespace, null);
+            } else {
+                flows = flowRepository.findByNamespaceWithSource(tenantId, namespace);
+            }
 
-        if (Optional.ofNullable(git.getRepository().getBranch()).map(b -> !b.equals(branch)).orElse(true)) {
-            git.checkout()
-                .setName(branch)
-                .setCreateBranch(true)
-                .call();
+            Path flowsDirectory = this.flows.gitDirectory == null
+                ? basePath
+                : basePath.resolve(runContext.render(this.flows.gitDirectory));
+
+            // Create flow directory if it doesn't exist
+            flowsDirectory.toFile().mkdirs();
+
+            flows.forEach(throwConsumer(flowWithSource -> FileUtils.writeStringToFile(
+                flowsDirectory.resolve(flowWithSource.getNamespace() + "." + flowWithSource.getId() + ".yml").toFile(),
+                flowWithSource.getSource(),
+                StandardCharsets.UTF_8
+            )));
         }
 
         logger.info(
@@ -225,5 +278,35 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
             title = "ID of the commit pushed."
         )
         private final String commitId;
+    }
+
+    @Builder
+    @Getter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @Jacksonized
+    @Introspected
+    public static class FlowFiles {
+        @Schema(
+            title = "Whether to push flows as files to Git."
+        )
+        @PluginProperty
+        @Builder.Default
+        private Boolean enabled = true;
+
+        @Schema(
+            title = "Whether flows from child namespaces should also be pushed."
+        )
+        @PluginProperty
+        @Builder.Default
+        private Boolean childNamespaces = true;
+
+        @Schema(
+            title = "To which directory relative to `directory` we should push flows.",
+            description = "The default is `_flows`, the same as shown in the Namespace Files Editor."
+        )
+        @PluginProperty(dynamic = true)
+        @Builder.Default
+        private String gitDirectory = "_flows";
     }
 }

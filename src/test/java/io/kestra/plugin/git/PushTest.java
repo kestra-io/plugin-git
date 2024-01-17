@@ -1,8 +1,12 @@
 package io.kestra.plugin.git;
 
+import io.kestra.core.models.flows.Flow;
+import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.tasks.NamespaceFiles;
+import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.serializers.YamlFlowParser;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.IdUtils;
 import io.micronaut.context.annotation.Value;
@@ -44,6 +48,12 @@ class PushTest {
     @Inject
     private StorageInterface storageInterface;
 
+    @Inject
+    private YamlFlowParser yamlFlowParser;
+
+    @Inject
+    private FlowRepositoryInterface flowRepositoryInterface;
+
     @Test
     void cloneThenPush_OnlyNeedsCredentialsForPush() throws Exception {
         Clone clone = Clone.builder()
@@ -58,10 +68,21 @@ class PushTest {
         RunContext cloneRunContext = runContextFactory.of();
         clone.run(cloneRunContext);
 
+        File extraFile = cloneRunContext.resolve(Path.of("some_file.txt")).toFile();
+        String extraFileContent = "some content";
+        FileUtils.writeStringToFile(
+            extraFile,
+            extraFileContent,
+            "UTF-8"
+        );
+
         String expectedInputFileContent = IdUtils.create();
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
+            .flows(Push.FlowFiles.builder()
+                .enabled(false)
+                .build())
             .commitMessage("Push from CI - Clone then push")
             .inputFiles(Map.of(
                 INPUT_FILE_NAME, expectedInputFileContent
@@ -77,6 +98,9 @@ class PushTest {
 
         String fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(INPUT_FILE_NAME).toFile(), "UTF-8");
         assertThat(fileContent, is(expectedInputFileContent));
+
+        fileContent = FileUtils.readFileToString(extraFile, "UTF-8");
+        assertThat(fileContent, is(extraFileContent));
 
         assertThat(pushOutput.getCommitId(), is(getLastCommitId(cloneRunContext)));
     }
@@ -110,6 +134,9 @@ class PushTest {
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
+            .flows(Push.FlowFiles.builder()
+                .enabled(false)
+                .build())
             .commitMessage("Push from CI - Clone then push")
             .username(pat)
             .password(pat)
@@ -153,12 +180,17 @@ class PushTest {
             );
         }
 
+        this.createFlow(tenantId, namespace);
+
         String shouldNotBeCommitted = "do_not_commit";
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
             .url("https://github.com/kestra-io/unit-tests")
             .commitMessage("Push from CI - {{description}}")
+            .flows(Push.FlowFiles.builder()
+                .enabled(false)
+                .build())
             .username(pat)
             .password(pat)
             .inputFiles(Map.of(
@@ -192,6 +224,7 @@ class PushTest {
         String fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(INPUT_FILE_NAME).toFile(), "UTF-8");
         assertThat(fileContent, is(expectedInputFileContent));
         assertThat(new File(cloneOutput.getDirectory(), shouldNotBeCommitted).exists(), is(false));
+        assertThat(new File(Path.of(cloneOutput.getDirectory(), Sync.FLOWS_DIRECTORY).toString()).exists(), is(false));
 
         fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(namespaceFileName).toFile(), "UTF-8");
         assertThat(fileContent, is(expectedNamespaceFileContent));
@@ -211,10 +244,17 @@ class PushTest {
 
         Assertions.assertThrows(TransportException.class, () -> clone.run(runContextFactory.of()));
 
+        String toDeleteFileName = "to_delete.txt";
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
             .url("https://github.com/kestra-io/unit-tests")
+            .inputFiles(Map.of(
+                toDeleteFileName, "some content"
+            ))
+            .flows(Push.FlowFiles.builder()
+                .enabled(false)
+                .build())
             .commitMessage("Branch creation")
             .username(pat)
             .password(pat)
@@ -223,8 +263,18 @@ class PushTest {
         push.run(runContextFactory.of());
 
         RunContext runContext = runContextFactory.of();
+        clone.run(runContext);
+        assertThat(runContext.resolve(Path.of(toDeleteFileName)).toFile().exists(), is(true));
+
+        push = push.toBuilder()
+            .inputFiles(null)
+            .build();
+        push.run(runContextFactory.of());
+
+        runContext = runContextFactory.of();
         try {
-            Clone.Output run = clone.run(runContext);
+            clone.run(runContext);
+            assertThat(runContext.resolve(Path.of(toDeleteFileName)).toFile().exists(), is(false));
         } finally {
             deleteRemoteBranch(runContext.tempDir().toString(), branchName);
         }
@@ -244,6 +294,9 @@ class PushTest {
             .type(Push.class.getName())
             .url("https://github.com/kestra-io/unit-tests")
             .commitMessage("Push from CI - One-task push with specified directory")
+            .flows(Push.FlowFiles.builder()
+                .enabled(false)
+                .build())
             .username(pat)
             .password(pat)
             .directory(directory)
@@ -276,6 +329,172 @@ class PushTest {
         assertThat(fileContent, is(expectedNestedInputFileContent));
     }
 
+    @Test
+    void oneTaskPush_WithFlows() throws Exception {
+        String namespace = IdUtils.create().toLowerCase();
+        String tenantId = "my-tenant";
+        String branchName = IdUtils.create();
+        RunContext runContext = runContextFactory.of(Map.of(
+            "flow", Map.of(
+                "tenantId", tenantId,
+                "namespace", namespace
+            ),
+            "description", "One-task push"
+        ));
+
+        FlowWithSource createdFlow = this.createFlow(tenantId, namespace);
+        FlowWithSource createdSubNsFlow = this.createFlow(tenantId, namespace + ".sub-namespace");
+
+        Push push = Push.builder()
+            .id("push")
+            .type(Push.class.getName())
+            .url("https://github.com/kestra-io/unit-tests")
+            .commitMessage("Push from CI - {{description}}")
+            .username(pat)
+            .password(pat)
+            .branch(branchName)
+            .build();
+
+        try {
+            push.run(runContext);
+
+            Clone clone = Clone.builder()
+                .id("clone")
+                .type(Clone.class.getName())
+                .url("https://github.com/kestra-io/unit-tests")
+                .username(pat)
+                .password(pat)
+                .branch(branchName)
+                .build();
+
+            Clone.Output cloneOutput = clone.run(runContextFactory.of());
+
+            File flowFile = new File(Path.of(cloneOutput.getDirectory(), Sync.FLOWS_DIRECTORY).toString(), createdFlow.getNamespace() + "." + createdFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(true));
+            String fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
+            assertThat(fileContent, is(createdFlow.getSource()));
+
+            flowFile = new File(Path.of(cloneOutput.getDirectory(), Sync.FLOWS_DIRECTORY).toString(), createdSubNsFlow.getNamespace() + "." + createdSubNsFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(true));
+            fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
+            assertThat(fileContent, is(createdSubNsFlow.getSource()));
+        } finally {
+            this.deleteRemoteBranch(runContext.tempDir().toString(), branchName);
+        }
+    }
+
+    @Test
+    void oneTaskPush_WithFlowsNoChildNs() throws Exception {
+        String namespace = IdUtils.create().toLowerCase();
+        String tenantId = "my-tenant";
+        String branchName = IdUtils.create();
+        RunContext runContext = runContextFactory.of(Map.of(
+            "flow", Map.of(
+                "tenantId", tenantId,
+                "namespace", namespace
+            ),
+            "description", "One-task push"
+        ));
+
+        FlowWithSource createdFlow = this.createFlow(tenantId, namespace);
+        FlowWithSource createdSubNsFlow = this.createFlow(tenantId, namespace + ".sub-namespace");
+
+        Push push = Push.builder()
+            .id("push")
+            .type(Push.class.getName())
+            .url("https://github.com/kestra-io/unit-tests")
+            .commitMessage("Push from CI - {{description}}")
+            .flows(Push.FlowFiles.builder()
+                .childNamespaces(false)
+                .build())
+            .username(pat)
+            .password(pat)
+            .branch(branchName)
+            .build();
+
+        try {
+            push.run(runContext);
+
+            Clone clone = Clone.builder()
+                .id("clone")
+                .type(Clone.class.getName())
+                .url("https://github.com/kestra-io/unit-tests")
+                .username(pat)
+                .password(pat)
+                .branch(branchName)
+                .build();
+
+            Clone.Output cloneOutput = clone.run(runContextFactory.of());
+
+            File flowFile = new File(Path.of(cloneOutput.getDirectory(), Sync.FLOWS_DIRECTORY).toString(), createdFlow.getNamespace() + "." + createdFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(true));
+            String fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
+            assertThat(fileContent, is(createdFlow.getSource()));
+
+            flowFile = new File(Path.of(cloneOutput.getDirectory(), Sync.FLOWS_DIRECTORY).toString(), createdSubNsFlow.getNamespace() + "." + createdSubNsFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(false));
+        } finally {
+            this.deleteRemoteBranch(runContext.tempDir().toString(), branchName);
+        }
+    }
+
+    @Test
+    void oneTaskPush_WithFlowsAndDirectory() throws Exception {
+        String namespace = IdUtils.create().toLowerCase();
+        String tenantId = "my-tenant";
+        String branchName = IdUtils.create();
+        RunContext runContext = runContextFactory.of(Map.of(
+            "flow", Map.of(
+                "tenantId", tenantId,
+                "namespace", namespace
+            ),
+            "description", "One-task push"
+        ));
+
+        FlowWithSource createdFlow = this.createFlow(tenantId, namespace);
+        FlowWithSource createdSubNsFlow = this.createFlow(tenantId, namespace + ".sub-namespace");
+
+        Push push = Push.builder()
+            .id("push")
+            .type(Push.class.getName())
+            .url("https://github.com/kestra-io/unit-tests")
+            .commitMessage("Push from CI - {{description}}")
+            .username(pat)
+            .password(pat)
+            .branch(branchName)
+            .flows(Push.FlowFiles.builder()
+                .gitDirectory("my-flows")
+                .build())
+            .build();
+
+        try {
+            push.run(runContext);
+
+            Clone clone = Clone.builder()
+                .id("clone")
+                .type(Clone.class.getName())
+                .url("https://github.com/kestra-io/unit-tests")
+                .username(pat)
+                .password(pat)
+                .branch(branchName)
+                .build();
+
+            Clone.Output cloneOutput = clone.run(runContextFactory.of());
+
+            File flowFile = new File(Path.of(cloneOutput.getDirectory(), "my-flows").toString(), createdFlow.getNamespace() + "." + createdFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(true));
+            String fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
+            assertThat(fileContent, is(createdFlow.getSource()));
+
+            flowFile = new File(Path.of(cloneOutput.getDirectory(), "my-flows").toString(), createdSubNsFlow.getNamespace() + "." + createdSubNsFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(true));
+            fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
+            assertThat(fileContent, is(createdSubNsFlow.getSource()));
+        } finally {
+            this.deleteRemoteBranch(runContext.tempDir().toString(), branchName);
+        }
+    }
+
     private void deleteRemoteBranch(String gitDirectory, String branchName) throws GitAPIException, IOException {
         try(Git git = Git.open(new File(gitDirectory))) {
             git.checkout().setName("tmp").setCreateBranch(true).call();
@@ -285,5 +504,24 @@ class PushTest {
                 .setDestination(R_HEADS + branchName);
             git.push().setCredentialsProvider(new UsernamePasswordCredentialsProvider(pat, pat)).setRefSpecs(refSpec).setRemote("origin").call();
         }
+    }
+
+    private FlowWithSource createFlow(String tenantId, String namespace) {
+        String flowSource = """
+            id: some-flow
+            namespace:\s""" + namespace + """
+                        
+            tasks:
+              - id: my-task
+                type: io.kestra.core.tasks.log.Log
+                message: Hello from my-task""";
+        Flow flow = yamlFlowParser.parse(flowSource, Flow.class).toBuilder()
+            .tenantId(tenantId)
+            .build();
+        return flowRepositoryInterface.create(
+            flow,
+            flowSource,
+            flow
+        );
     }
 }
