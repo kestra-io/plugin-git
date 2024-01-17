@@ -68,6 +68,14 @@ class PushTest {
         RunContext cloneRunContext = runContextFactory.of();
         clone.run(cloneRunContext);
 
+        File extraFile = cloneRunContext.resolve(Path.of("some_file.txt")).toFile();
+        String extraFileContent = "some content";
+        FileUtils.writeStringToFile(
+            extraFile,
+            extraFileContent,
+            "UTF-8"
+        );
+
         String expectedInputFileContent = IdUtils.create();
         Push push = Push.builder()
             .id("push")
@@ -90,6 +98,9 @@ class PushTest {
 
         String fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(INPUT_FILE_NAME).toFile(), "UTF-8");
         assertThat(fileContent, is(expectedInputFileContent));
+
+        fileContent = FileUtils.readFileToString(extraFile, "UTF-8");
+        assertThat(fileContent, is(extraFileContent));
 
         assertThat(pushOutput.getCommitId(), is(getLastCommitId(cloneRunContext)));
     }
@@ -233,10 +244,14 @@ class PushTest {
 
         Assertions.assertThrows(TransportException.class, () -> clone.run(runContextFactory.of()));
 
+        String toDeleteFileName = "to_delete.txt";
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
             .url("https://github.com/kestra-io/unit-tests")
+            .inputFiles(Map.of(
+                toDeleteFileName, "some content"
+            ))
             .flows(Push.FlowFiles.builder()
                 .enabled(false)
                 .build())
@@ -248,8 +263,18 @@ class PushTest {
         push.run(runContextFactory.of());
 
         RunContext runContext = runContextFactory.of();
+        clone.run(runContext);
+        assertThat(runContext.resolve(Path.of(toDeleteFileName)).toFile().exists(), is(true));
+
+        push = push.toBuilder()
+            .inputFiles(null)
+            .build();
+        push.run(runContextFactory.of());
+
+        runContext = runContextFactory.of();
         try {
-            Clone.Output run = clone.run(runContext);
+            clone.run(runContext);
+            assertThat(runContext.resolve(Path.of(toDeleteFileName)).toFile().exists(), is(false));
         } finally {
             deleteRemoteBranch(runContext.tempDir().toString(), branchName);
         }

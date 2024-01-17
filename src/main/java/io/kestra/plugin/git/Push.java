@@ -21,21 +21,21 @@ import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.AddCommand;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ListBranchCommand;
+import org.eclipse.jgit.api.RmCommand;
 import org.eclipse.jgit.lib.ObjectId;
 import org.slf4j.Logger;
 
 import javax.validation.constraints.NotNull;
+import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.stream.Stream;
 
 import static io.kestra.core.utils.Rethrow.throwConsumer;
 import static org.eclipse.jgit.lib.Constants.R_HEADS;
 
-@SuperBuilder
+@SuperBuilder(toBuilder = true)
 @ToString
 @EqualsAndHashCode
 @Getter
@@ -187,6 +187,26 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
             }
         }
 
+        Git git = Git.open(basePath.toFile());
+
+        if (Optional.ofNullable(git.getRepository().getBranch()).map(b -> !b.equals(branch)).orElse(true)) {
+            git.checkout()
+                .setName(branch)
+                .setCreateBranch(true)
+                .call();
+        }
+
+        if (this.url != null) {
+            RmCommand rm = git.rm();
+            Stream<String> previouslyTrackedRelativeFilePaths = Arrays.stream(basePath.toFile().listFiles())
+                .filter(file -> !file.isDirectory() || !file.getName().equals(".git"))
+                .map(File::toPath)
+                .map(basePath::relativize)
+                .map(Path::toString);
+            previouslyTrackedRelativeFilePaths.forEach(rm::addFilepattern);
+            rm.call();
+        }
+
         if (this.inputFiles != null) {
             FilesService.inputFiles(runContext, this.inputFiles);
         }
@@ -228,16 +248,6 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
                 flowWithSource.getSource(),
                 StandardCharsets.UTF_8
             )));
-        }
-
-
-        Git git = Git.open(basePath.toFile());
-
-        if (Optional.ofNullable(git.getRepository().getBranch()).map(b -> !b.equals(branch)).orElse(true)) {
-            git.checkout()
-                .setName(branch)
-                .setCreateBranch(true)
-                .call();
         }
 
         logger.info(
