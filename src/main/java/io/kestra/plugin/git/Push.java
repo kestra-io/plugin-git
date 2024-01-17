@@ -41,37 +41,51 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Pushes a commit to a repository.",
-    description = "This task can be used in two ways: You can use it as a standalone task to both clone then commit directly with some added input or namespace files to a repository, " +
-        "or you can use it in a `WorkingDirectory` task after a `Clone` task to do some in-between processing before pushing to a repository (execute some script for example)."
+    title = "Commit and push files to a Git repository.",
+    description = "You can use this task to push your flows and namespace files to Git. To do that, you can set the `enabled` child property of `flows` and/or `namespaceFiles` to `true`. You can also add additional `inputFiles` to be committed and pushed. Furthermore, you can use this task in combination with the `Clone` task so that you can first clone the repository, then add or modify files and push to Git afterwards. " +
+    "Check the examples below as well as the [Version Control with Git](https://kestra.io/docs/developer-guide/git) documentation for more information."
 )
 @Plugin(
     examples = {
         @Example(
-            title = "Clone and push a commit to a repository in a single task.",
+            title = "Push flows and namespace files to a Git repository every 15 minutes.",
+            full = true,
             code = {
-                "namespaceFiles:",
-                "  enabled: true",
-                "branch: feature_branch # mandatory, we'll create the branch if not exists",
-                "url: https://github.com/kestra-io/scripts",
-                "username: git_username",
-                "password: mypat",
-                "commitMessage: \"{{ inputs.commit_message }}\" # required"
+                "id: push_to_git",
+                "namespace: prod",
+                "",
+                "tasks:",
+                "  - id: commit_and_push",
+                "    type: io.kestra.plugin.git.Push",
+                "    namespaceFiles:",
+                "      enabled: true",
+                "    flows:",
+                "      enabled: true",
+                "    url: https://github.com/kestra-io/scripts",
+                "    branch: kestra",
+                "    username: git_username",
+                "    password: \"{{ secret('GITHUB_ACCESS_TOKEN') }}\"",
+                "    commitMessage: \"add flows and scripts {{ now() }}\"",
+                "",
+                "triggers:",
+                "  - id: schedule_push",
+                "    type: io.kestra.core.models.triggers.types.Schedule",
+                "    cron: \"*/15 * * * *\""
             }
         ),
         @Example(
-            title = "Clone main branch, execute a script then push a commit which creates a branch on the repository with a file containing a script output. " +
-                "Note that although URL is not required for push (since we're in a working directory with a .git directory), " +
-                "credentials are still mandatory for push.",
+            title = "Clone the main branch, generate a file in a script, and then push that new file to Git. " +
+                "Since we're in a working directory with a `.git` directory, you don't need to specify the URL in the Push task. " +
+                "However, the Git credentials always need to be explicitly provided on both Clone and Push tasks (unless using [task defaults](https://kestra.io/docs/concepts/task-defaults)).",
             full = true,
             code = {
-                "id: flow",
+                "id: push_new_file_to_git",
                 "namespace: dev",
                 "",
                 "inputs:",
                 "  - name: commit_message",
                 "    type: STRING",
-                "    defaults: my commit message",
+                "    defaults: add a new file to Git",
                 "",
                 "tasks:",
                 "  - id: wdir",
@@ -81,7 +95,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
                 "        type: io.kestra.plugin.git.Clone",
                 "        branch: main",
                 "        url: https://github.com/kestra-io/scripts",
-                "      - id: gen_data",
+                "      - id: generate_data",
                 "        type: io.kestra.plugin.scripts.python.Commands",
                 "        docker:",
                 "          image: ghcr.io/kestra-io/pydata:latest",
@@ -93,10 +107,9 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
                 "        password: myPAT",
                 "        branch: feature_branch",
                 "        inputFiles:",
-                "          to_commit/avg_order.txt: \"{{ outputs.gen_data.vars.average_order }}\"",
+                "          to_commit/avg_order.txt: \"{{ outputs.generate_data.vars.average_order }}\"",
                 "        addFilesPattern:",
                 "          - to_commit",
-                "        description: Adds all namespace files, commits and pushes them",
                 "        commitMessage: \"{{ inputs.commit_message }}\""
             }
         )
@@ -110,11 +123,15 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
     @PluginProperty(dynamic = true)
     private String directory;
 
+    @Schema(
+        title = "The branch to which files should be committed and pushed.",
+        description = "If the branch doesn't exist yet, it will be created."
+    )
     @NotNull
     private String branch;
 
     @Schema(
-        title = "Commit message to push."
+        title = "Commit message."
     )
     @PluginProperty(dynamic = true)
     @NotNull
@@ -123,7 +140,7 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
     private NamespaceFiles namespaceFiles;
 
     @Schema(
-        title = "Configure flows push as files to Git."
+        title = "Whether to push flows from the current namespace to Git."
     )
     @PluginProperty
     @Builder.Default
@@ -133,7 +150,7 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
 
     @Schema(
         title = "Patterns of files to add to the commit. Default is `.` which means all files.",
-        description = "A directory name (e.g. `dir` to add `dir/file1` and `dir/file2`) can also be given to add all files in the directory, recursively. File globs (e.g. *.c) are not yet supported."
+        description = "A directory name (e.g. `dir` to add `dir/file1` and `dir/file2`) can also be given to add all files in the directory, recursively. File globs (e.g. `*.py`) are not yet supported."
     )
     @PluginProperty(dynamic = true)
     @Builder.Default
@@ -288,22 +305,22 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
     @Introspected
     public static class FlowFiles {
         @Schema(
-            title = "Whether to push flows as files to Git."
+            title = "Whether to push flows as YAML files to Git."
         )
         @PluginProperty
         @Builder.Default
         private Boolean enabled = true;
 
         @Schema(
-            title = "Whether flows from child namespaces should also be pushed."
+            title = "Whether flows from child namespaces should be included."
         )
         @PluginProperty
         @Builder.Default
         private Boolean childNamespaces = true;
 
         @Schema(
-            title = "To which directory relative to `directory` we should push flows.",
-            description = "The default is `_flows`, the same as shown in the Namespace Files Editor."
+            title = "To which directory flows should be pushed (relative to `directory`).",
+            description = "The default is `_flows`. This is the same directory name that you can see in the VS Code Editor."
         )
         @PluginProperty(dynamic = true)
         @Builder.Default
