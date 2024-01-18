@@ -51,7 +51,7 @@ import static io.kestra.core.utils.Rethrow.*;
 @Plugin(
     examples = {
         @Example(
-            title = "Synchronizes namespace files & flows based on the current state in a Git repository. This flow can be triggered either on a schedule or anytime you push a change to a given Git branch.",
+            title = "Synchronizes namespace files and flows based on the current state in a Git repository. This flow can run either on a schedule (using the Schedule trigger) or anytime you push a change to a given Git branch (using the Webhook trigger).",
             full = true,
             code = {
                 "id: sync_from_git",
@@ -63,16 +63,15 @@ import static io.kestra.core.utils.Rethrow.*;
                 "    url: https://github.com/kestra-io/scripts",
                 "    branch: main",
                 "    username: git_username",
-                "    password: \"{{ secret('GITHUB_PAT') }}\"",
+                "    password: \"{{ secret('GITHUB_ACCESS_TOKEN') }}\"",
                 "    gitDirectory: your_git_dir # optional, otherwise all files",
                 "    namespaceFilesDirectory: your_namespace_files_location # optional, otherwise the namespace root directory",
-                "    dryRun: true  # if true, print the output of what files will be added/modified or deleted",
-                "    # based on the Git version without overwriting the files yet",
+                "    dryRun: true  # if true, print the output of what files will be added/modified or deleted without overwriting the files yet",
                 "",
                 "triggers:",
-                "  - id: schedule",
+                "  - id: every_minute",
                 "    type: io.kestra.core.models.triggers.types.Schedule",
-                "    cron: \"* * * * *\""
+                "    cron: \"*/1 * * * *\""
             }
         )
     }
@@ -83,13 +82,13 @@ public class Sync extends AbstractGitTask implements RunnableTask<VoidOutput> {
     public static final Pattern FLOW_ID_FINDER_PATTERN = Pattern.compile("(?m)^id: (.*)$");
 
     @Schema(
-        title = "Git directory to synchronize Namespace files from. If not specified, all files from the Git repository will be synchronized."
+        title = "Git directory to sync code from. If not specified, all files from a Git repository will be synchronized."
     )
     @PluginProperty(dynamic = true)
     private String gitDirectory;
 
     @Schema(
-        title = "Namespace files directory to synchronize Git to. Will default to root of namespace files."
+        title = "Namespace files directory to which files from Git should be synced. It defaults to the root directory of the namespace."
     )
     @PluginProperty(dynamic = true)
     private String namespaceFilesDirectory;
