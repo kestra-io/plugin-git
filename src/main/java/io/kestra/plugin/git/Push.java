@@ -83,7 +83,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
                 "namespace: dev",
                 "",
                 "inputs:",
-                "  - name: commit_message",
+                "  - id: commit_message",
                 "    type: STRING",
                 "    defaults: add a new file to Git",
                 "",
