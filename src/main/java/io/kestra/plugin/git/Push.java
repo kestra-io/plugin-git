@@ -76,7 +76,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
         @Example(
             title = "Clone the main branch, generate a file in a script, and then push that new file to Git. " +
                 "Since we're in a working directory with a `.git` directory, you don't need to specify the URL in the Push task. " +
-                "However, the Git credentials always need to be explicitly provided on both Clone and Push tasks (unless using [task defaults](https://kestra.io/docs/concepts/task-defaults)).",
+                "However, the Git credentials always need to be explicitly provided on both Clone and Push tasks (unless using task defaults).",
             full = true,
             code = {
                 "id: push_new_file_to_git",
