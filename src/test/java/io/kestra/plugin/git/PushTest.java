@@ -7,6 +7,7 @@ import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.YamlFlowParser;
+import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.IdUtils;
 import io.micronaut.context.annotation.Value;
@@ -175,7 +176,7 @@ class PushTest {
         try(ByteArrayInputStream is = new ByteArrayInputStream(expectedNamespaceFileContent.getBytes())) {
             storageInterface.put(
                 tenantId,
-                URI.create(Path.of(storageInterface.namespaceFilePrefix(namespace), namespaceFileName).toString()),
+                URI.create(Path.of(StorageContext.namespaceFilePrefix(namespace), namespaceFileName).toString()),
                 is
             );
         }

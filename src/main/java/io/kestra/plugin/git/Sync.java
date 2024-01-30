@@ -9,6 +9,7 @@ import io.kestra.core.models.tasks.VoidOutput;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.services.FlowService;
+import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.KestraIgnore;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -215,7 +216,7 @@ public class Sync extends AbstractGitTask implements RunnableTask<VoidOutput> {
         }
 
         StorageInterface storage = runContext.getApplicationContext().getBean(StorageInterface.class);
-        URI namespaceFilePrefix = URI.create("kestra://" + storage.namespaceFilePrefix(namespace) + "/");
+        URI namespaceFilePrefix = URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/");
         if (this.namespaceFilesDirectory != null) {
             String renderedNamespaceFilesDirectory = runContext.render(this.namespaceFilesDirectory);
             renderedNamespaceFilesDirectory = renderedNamespaceFilesDirectory.startsWith("/") ? renderedNamespaceFilesDirectory.substring(1) : renderedNamespaceFilesDirectory;
