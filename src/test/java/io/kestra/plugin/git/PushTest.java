@@ -282,6 +282,58 @@ class PushTest {
     }
 
     @Test
+    void oneTaskPush_NoChangeShouldNotCommit() throws Exception {
+        String branchName = IdUtils.create();
+        Clone clone = Clone.builder()
+            .id("clone")
+            .type(Clone.class.getName())
+            .url("https://github.com/kestra-io/unit-tests")
+            .username(pat)
+            .password(pat)
+            .branch(branchName)
+            .build();
+
+        String toDeleteFileName = "to_delete.txt";
+        Push push = Push.builder()
+            .id("push")
+            .type(Push.class.getName())
+            .url("https://github.com/kestra-io/unit-tests")
+            .inputFiles(Map.of(
+                toDeleteFileName, "some content"
+            ))
+            .flows(Push.FlowFiles.builder()
+                .enabled(false)
+                .build())
+            .commitMessage("Branch creation")
+            .username(pat)
+            .password(pat)
+            .branch(branchName)
+            .build();
+        RunContext runContext = runContextFactory.of();
+        Push.Output firstPush = push.run(runContext);
+
+        try {
+            Push.Output run = push.run(runContextFactory.of());
+            assertThat(run.getCommitId(), nullValue());
+
+            runContext = runContextFactory.of();
+            clone.run(runContext);
+            try (Git git = Git.open(runContext.tempDir().toFile())) {
+                String lastCommitId = StreamSupport.stream(
+                    git
+                        .log()
+                        .setMaxCount(1)
+                        .call().spliterator(),
+                    false
+                ).findFirst().get().getId().getName();
+                assertThat(lastCommitId, is(firstPush.getCommitId()));
+            }
+        } finally {
+            deleteRemoteBranch(runContext.tempDir().toString(), branchName);
+        }
+    }
+
+    @Test
     void oneTaskPush_WithSpecifiedDirectory() throws Exception {
         RunContext runContext = runContextFactory.of();
 

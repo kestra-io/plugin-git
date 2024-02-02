@@ -14,6 +14,8 @@ import io.kestra.core.runners.NamespaceFilesService;
 import io.kestra.core.runners.RunContext;
 import io.micronaut.core.annotation.Introspected;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.annotation.Nullable;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import lombok.extern.jackson.Jacksonized;
@@ -22,10 +24,10 @@ import org.eclipse.jgit.api.AddCommand;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ListBranchCommand;
 import org.eclipse.jgit.api.RmCommand;
+import org.eclipse.jgit.api.errors.EmptyCommitException;
 import org.eclipse.jgit.lib.ObjectId;
 import org.slf4j.Logger;
 
-import jakarta.validation.constraints.NotNull;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
@@ -43,7 +45,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
 @Schema(
     title = "Commit and push files to a Git repository.",
     description = "You can use this task to push your flows and namespace files to Git. To do that, you can set the `enabled` child property of `flows` and/or `namespaceFiles` to `true`. You can also add additional `inputFiles` to be committed and pushed. Furthermore, you can use this task in combination with the `Clone` task so that you can first clone the repository, then add or modify files and push to Git afterwards. " +
-    "Check the examples below as well as the [Version Control with Git](https://kestra.io/docs/developer-guide/git) documentation for more information."
+        "Check the examples below as well as the [Version Control with Git](https://kestra.io/docs/developer-guide/git) documentation for more information."
 )
 @Plugin(
     examples = {
@@ -277,15 +279,22 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
         runContext.render(this.addFilesPattern).forEach(add::addFilepattern);
         add.call();
 
-        ObjectId commitId = git.commit().setMessage(runContext.render(this.commitMessage)).call().getId();
-
-        authentified(git.push(), runContext).call();
+        ObjectId commitId = null;
+        try {
+            commitId = git.commit().setAllowEmpty(false).setMessage(runContext.render(this.commitMessage)).call().getId();
+            authentified(git.push(), runContext).call();
+        } catch (EmptyCommitException e) {
+            logger.info("No changes to commit. Skipping push.");
+        }
 
         git.close();
 
         return Output.builder()
-            .commitId(commitId.getName())
-            .build();
+            .commitId(
+                Optional.ofNullable(commitId)
+                    .map(ObjectId::getName)
+                    .orElse(null)
+            ).build();
     }
 
     @Builder
@@ -294,6 +303,7 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
         @Schema(
             title = "ID of the commit pushed."
         )
+        @Nullable
         private final String commitId;
     }
 
