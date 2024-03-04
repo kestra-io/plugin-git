@@ -462,6 +462,10 @@ class PushTest {
                 .build())
             .username(pat)
             .password(pat)
+            .author(Push.Author.builder()
+                .name("loicmathieu")
+                .email("lmathieu@kestra.io")
+                .build())
             .branch(branchName)
             .build();
 
@@ -514,6 +518,9 @@ class PushTest {
             .commitMessage("Push from CI - {{description}}")
             .username(pat)
             .password(pat)
+            .author(Push.Author.builder()
+                .email("lmathieu@kestra.io")
+                .build())
             .branch(branchName)
             .flows(Push.FlowFiles.builder()
                 .gitDirectory("my-flows")
