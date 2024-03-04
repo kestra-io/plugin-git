@@ -1,5 +1,6 @@
 package io.kestra.plugin.git;
 
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
@@ -26,6 +27,7 @@ import org.eclipse.jgit.api.ListBranchCommand;
 import org.eclipse.jgit.api.RmCommand;
 import org.eclipse.jgit.api.errors.EmptyCommitException;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.PersonIdent;
 import org.slf4j.Logger;
 
 import java.io.File;
@@ -158,6 +160,10 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
     @Builder.Default
     private List<String> addFilesPattern = List.of(".");
 
+    @Schema(title = "Commit author.")
+    @PluginProperty
+    private Author author;
+
     private boolean branchExists(RunContext runContext, String branch) throws Exception {
         if (this.url == null) {
             try (Git git = Git.open(runContext.resolve(Path.of(runContext.render(this.directory))).toFile())) {
@@ -281,7 +287,12 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
 
         ObjectId commitId = null;
         try {
-            commitId = git.commit().setAllowEmpty(false).setMessage(runContext.render(this.commitMessage)).call().getId();
+            commitId = git.commit()
+                .setAllowEmpty(false)
+                .setMessage(runContext.render(this.commitMessage))
+                .setAuthor(author(runContext))
+                .call()
+                .getId();
             authentified(git.push(), runContext).call();
         } catch (EmptyCommitException e) {
             logger.info("No changes to commit. Skipping push.");
@@ -295,6 +306,20 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
                     .map(ObjectId::getName)
                     .orElse(null)
             ).build();
+    }
+
+    private PersonIdent author(RunContext runContext) throws IllegalVariableEvaluationException {
+        if (this.author == null) {
+            return null;
+        }
+        if (this.author.email != null && this.author.name != null) {
+            return new PersonIdent(runContext.render(this.author.name), runContext.render(this.author.email));
+        }
+        if (this.author.email != null && this.username != null) {
+            return new PersonIdent(runContext.render(this.username), runContext.render(this.author.email));
+        }
+
+        return null;
     }
 
     @Builder
@@ -335,5 +360,17 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
         @PluginProperty(dynamic = true)
         @Builder.Default
         private String gitDirectory = "_flows";
+    }
+
+    @Builder
+    @Getter
+    public static class Author {
+        @Schema(title = "The commit author name, if null the username will be used instead")
+        @PluginProperty(dynamic = true)
+        private String name;
+
+        @Schema(title = "The commit author email, if null no author will be set on this commit")
+        @PluginProperty(dynamic = true)
+        private String email;
     }
 }
