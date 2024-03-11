@@ -52,7 +52,7 @@ dependencies {
 
     // git
     api 'org.eclipse.jgit:org.eclipse.jgit:6.8.0.202311291450-r'
-    api 'org.eclipse.jgit:org.eclipse.jgit.ssh.jsch:6.8.0.202311291450-r'
+    api 'org.eclipse.jgit:org.eclipse.jgit.ssh.jsch:6.9.0.202403050737-r'
 }
 
 
