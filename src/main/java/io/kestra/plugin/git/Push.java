@@ -13,7 +13,6 @@ import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.FilesService;
 import io.kestra.core.runners.NamespaceFilesService;
 import io.kestra.core.runners.RunContext;
-import io.micronaut.core.annotation.Introspected;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.annotation.Nullable;
 import jakarta.validation.constraints.NotNull;
@@ -337,7 +336,6 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
     @NoArgsConstructor
     @AllArgsConstructor
     @Jacksonized
-    @Introspected
     public static class FlowFiles {
         @Schema(
             title = "Whether to push flows as YAML files to Git."
