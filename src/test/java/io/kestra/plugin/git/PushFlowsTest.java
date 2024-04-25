@@ -35,6 +35,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @MicronautTest
 public class PushFlowsTest {
@@ -50,6 +51,19 @@ public class PushFlowsTest {
 
     @Inject
     private FlowRepositoryInterface flowRepositoryInterface;
+
+    @Test
+    void hardcodedPassword() {
+        PushFlows pushFlows = PushFlows.builder()
+            .id("pushFlows")
+            .type(PushFlows.class.getName())
+            .url("https://github.com/kestra-io/unit-tests")
+            .password("my-password")
+            .build();
+
+        IllegalArgumentException illegalArgumentException = assertThrows(IllegalArgumentException.class, () -> pushFlows.run(runContextFactory.of()));
+        assertThat(illegalArgumentException.getMessage(), is("It looks like you're trying to push a flow with a hard-coded Git credential. Make sure to pass the credential securely using a Pebble expression (e.g. using secrets or environment variables)."));
+    }
 
     @Test
     void defaultCase_NoRegex() throws Exception {

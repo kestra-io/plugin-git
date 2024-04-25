@@ -120,6 +120,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
 )
 public class PushFlows extends AbstractGitTask implements RunnableTask<PushFlows.Output> {
     private static final Pattern SSH_URL_PATTERN = Pattern.compile("git@(?:ssh\\.)?([^:]+):(?:v\\d*/)?(.*)");
+    private static final Pattern PEBBLE_TEMPLATE_PATTERN = Pattern.compile("^\\s*\\{\\{");
 
     @Schema(
         title = "The branch to which files should be committed and pushed.",
@@ -220,6 +221,10 @@ public class PushFlows extends AbstractGitTask implements RunnableTask<PushFlows
 
     @Override
     public Output run(RunContext runContext) throws Exception {
+        if (this.password != null && !PEBBLE_TEMPLATE_PATTERN.matcher(this.password).find()) {
+            throw new IllegalArgumentException("It looks like you're trying to push a flow with a hard-coded Git credential. Make sure to pass the credential securely using a Pebble expression (e.g. using secrets or environment variables).");
+        }
+
         Logger logger = runContext.logger();
 
         Path basePath = runContext.tempDir();
