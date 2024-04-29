@@ -170,7 +170,7 @@ public class PushFlows extends AbstractGitTask implements RunnableTask<PushFlows
     @Schema(
         title = "Whether you want to push flows from child namespaces as well.",
         description = """
-            By default, it’s false, so the task will push only flows from the explicitly declared namespace without pushing flows from child namespaces. If set to true, flows from child namespaces will be pushed to child directories in Git. See the example below for a practical explanation:
+            By default, it’s `false`, so the task will push only flows from the explicitly declared namespace without pushing flows from child namespaces. If set to `true`, flows from child namespaces will be pushed to child directories in Git. See the example below for a practical explanation:
             
             | Source namespace in the flow code |       Git directory path       |  Synced to target namespace   |
             | --------------------------------- | ------------------------------ | ----------------------------- |
@@ -186,7 +186,7 @@ public class PushFlows extends AbstractGitTask implements RunnableTask<PushFlows
     private boolean includeChildNamespaces = false;
 
     @Schema(
-        title = "If true, the task will only output modifications without pushing any flows to Git yet. If false (default), all listed flows will be pushed to Git immediately."
+        title = "If `true`, the task will only output modifications without pushing any flows to Git yet. If `false` (default), all listed flows will be pushed to Git immediately."
     )
     @PluginProperty
     @Builder.Default
