@@ -108,7 +108,8 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
                             type: io.kestra.plugin.git.PushFlows
                             sourceNamespace: prod # optional; if you prefer templating, you can use "{{ flow.namespace }}"
                             targetNamespace: prod # optional; by default, set to the same namespace as defined in sourceNamespace
-                            flows: myflow # if you prefer templating, you can use "{{ flow.id }}"
+                            flows:
+                              - myflow # if you prefer templating, you can use "{{ flow.id }}"
                             url: https://github.com/kestra-io/scripts
                             username: git_username
                             password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
