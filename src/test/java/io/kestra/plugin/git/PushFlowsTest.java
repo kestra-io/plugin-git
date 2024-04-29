@@ -66,6 +66,80 @@ public class PushFlowsTest {
     }
 
     @Test
+    void defaultCase_SingleRegex() throws Exception {
+        String tenantId = "my-tenant";
+        String sourceNamespace = IdUtils.create().toLowerCase();
+        String targetNamespace = IdUtils.create().toLowerCase();
+        String branch = IdUtils.create();
+        String gitDirectory = "my-flows";
+        String authorEmail = "bmulier@kestra.io";
+        String authorName = "brianmulier";
+        String url = "https://github.com/kestra-io/unit-tests";
+        RunContext runContext = runContext(tenantId, url, authorEmail, authorName, branch, sourceNamespace, targetNamespace, gitDirectory);
+
+        FlowWithSource createdFlow = this.createFlow(tenantId, "first-flow", sourceNamespace);
+        String subNamespace = "sub-namespace";
+        FlowWithSource createdSubNsFlow = this.createFlow(tenantId, "second-flow", sourceNamespace + "." + subNamespace);
+
+        PushFlows pushFlows = PushFlows.builder()
+            .id("pushFlows")
+            .type(PushFlows.class.getName())
+            .branch("{{branch}}")
+            .url("{{url}}")
+            .commitMessage("Push from CI - {{description}}")
+            .username("{{pat}}")
+            .password("{{pat}}")
+            .authorEmail("{{email}}")
+            .authorName("{{name}}")
+            .sourceNamespace("{{sourceNamespace}}")
+            .targetNamespace("{{targetNamespace}}")
+            .flows("second.*")
+            .includeChildNamespaces(true)
+            .gitDirectory("{{gitDirectory}}")
+            .build();
+
+        try {
+            PushFlows.Output pushOutput = pushFlows.run(runContext);
+
+            Clone clone = Clone.builder()
+                .id("clone")
+                .type(Clone.class.getName())
+                .url(url)
+                .username(pat)
+                .password(pat)
+                .branch(branch)
+                .build();
+
+            RunContext cloneRunContext = runContextFactory.of();
+            Clone.Output cloneOutput = clone.run(cloneRunContext);
+
+            File flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), createdFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(false));
+
+            flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, subNamespace).toString(), createdSubNsFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(true));
+            String fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
+            assertThat(fileContent, is(createdSubNsFlow.getSource().replace(sourceNamespace, targetNamespace)));
+
+            assertThat(pushOutput.getCommitURL(), is(url + "/commit/" + pushOutput.getCommitId()));
+
+            assertDiffs(
+                runContext,
+                pushOutput.getFlows(),
+                List.of(
+                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", "my-flows/sub-namespace/second-flow.yml")
+                )
+            );
+
+            RevCommit revCommit = assertIsLastCommit(cloneRunContext, pushOutput);
+            assertThat(revCommit.getFullMessage(), is("Push from CI - " + DESCRIPTION));
+            assertAuthor(revCommit, authorEmail, authorName);
+        } finally {
+            this.deleteRemoteBranch(runContext.tempDir(), branch);
+        }
+    }
+
+    @Test
     void defaultCase_NoRegex() throws Exception {
         String tenantId = "my-tenant";
         String sourceNamespace = IdUtils.create().toLowerCase();
@@ -130,6 +204,87 @@ public class PushFlowsTest {
                 List.of(
                     Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", "my-flows/some-flow.yml"),
                     Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", "my-flows/sub-namespace/some-flow.yml")
+                )
+            );
+
+            RevCommit revCommit = assertIsLastCommit(cloneRunContext, pushOutput);
+            assertThat(revCommit.getFullMessage(), is("Push from CI - " + DESCRIPTION));
+            assertAuthor(revCommit, authorEmail, authorName);
+        } finally {
+            this.deleteRemoteBranch(runContext.tempDir(), branch);
+        }
+    }
+
+    @Test
+    void defaultCase_MultipleRegex() throws Exception {
+        String tenantId = "my-tenant";
+        String sourceNamespace = IdUtils.create().toLowerCase();
+        String targetNamespace = IdUtils.create().toLowerCase();
+        String branch = IdUtils.create();
+        String gitDirectory = "my-flows";
+        String authorEmail = "bmulier@kestra.io";
+        String authorName = "brianmulier";
+        String url = "https://github.com/kestra-io/unit-tests";
+        RunContext runContext = runContext(tenantId, url, authorEmail, authorName, branch, sourceNamespace, targetNamespace, gitDirectory);
+
+        FlowWithSource createdFlow = this.createFlow(tenantId, "first-flow", sourceNamespace);
+        String subNamespace = "sub-namespace";
+        FlowWithSource createdSubNsFlow = this.createFlow(tenantId, "second-flow", sourceNamespace + "." + subNamespace);
+        FlowWithSource thirdFlow = this.createFlow(tenantId, "third-flow", sourceNamespace);
+
+        PushFlows pushFlows = PushFlows.builder()
+            .id("pushFlows")
+            .type(PushFlows.class.getName())
+            .branch("{{branch}}")
+            .url("{{url}}")
+            .commitMessage("Push from CI - {{description}}")
+            .username("{{pat}}")
+            .password("{{pat}}")
+            .authorEmail("{{email}}")
+            .authorName("{{name}}")
+            .sourceNamespace("{{sourceNamespace}}")
+            .targetNamespace("{{targetNamespace}}")
+            .flows(List.of("first.*", "second.*"))
+            .includeChildNamespaces(true)
+            .gitDirectory("{{gitDirectory}}")
+            .build();
+
+        try {
+            PushFlows.Output pushOutput = pushFlows.run(runContext);
+
+            Clone clone = Clone.builder()
+                .id("clone")
+                .type(Clone.class.getName())
+                .url(url)
+                .username(pat)
+                .password(pat)
+                .branch(branch)
+                .build();
+
+            RunContext cloneRunContext = runContextFactory.of();
+            Clone.Output cloneOutput = clone.run(cloneRunContext);
+
+            File flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), createdFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(true));
+            String fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
+            assertThat(fileContent, is(createdFlow.getSource().replace(sourceNamespace, targetNamespace)));
+
+            flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, subNamespace).toString(), createdSubNsFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(true));
+            fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
+            assertThat(fileContent, is(createdSubNsFlow.getSource().replace(sourceNamespace, targetNamespace)));
+
+            flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, subNamespace).toString(), thirdFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(false));
+
+            assertThat(pushOutput.getCommitURL(), is(url + "/commit/" + pushOutput.getCommitId()));
+
+            assertDiffs(
+                runContext,
+                pushOutput.getFlows(),
+                List.of(
+                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", "my-flows/first-flow.yml"),
+                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", "my-flows/sub-namespace/second-flow.yml")
                 )
             );
 
@@ -314,8 +469,13 @@ public class PushFlowsTest {
     }
 
     private FlowWithSource createFlow(String tenantId, String namespace) {
+        return this.createFlow(tenantId, "some-flow", namespace);
+    }
+
+    private FlowWithSource createFlow(String tenantId, String flowId, String namespace) {
         String flowSource = """
-            id: some-flow
+            id:\s""" + flowId + """
+            
             namespace:\s""" + namespace + """
                         
             tasks:

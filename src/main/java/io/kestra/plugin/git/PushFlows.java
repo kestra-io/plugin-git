@@ -69,8 +69,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
                         type: io.kestra.plugin.git.PushFlows
                         sourceNamespace: dev # the namespace from which flows are pushed
                         targetNamespace: prod # the target production namespace; if different than sourceNamespace, the sourceNamespace in the source code will be overwritten by the targetNamespace
-                        flows:
-                          - "*"  # optional list of Regex strings; by default, all flows are pushed
+                        flows: "*"  # optional list of Regex strings; by default, all flows are pushed
                         includeChildNamespaces: true # optional boolean, false by default
                         gitDirectory: _flows
                         url: https://github.com/kestra-io/scripts # required string
@@ -108,8 +107,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
                             type: io.kestra.plugin.git.PushFlows
                             sourceNamespace: prod # optional; if you prefer templating, you can use "{{ flow.namespace }}"
                             targetNamespace: prod # optional; by default, set to the same namespace as defined in sourceNamespace
-                            flows:
-                              - myflow # if you prefer templating, you can use "{{ flow.id }}"
+                            flows: myflow # if you prefer templating, you can use "{{ flow.id }}"
                             url: https://github.com/kestra-io/scripts
                             username: git_username
                             password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
@@ -162,10 +160,12 @@ public class PushFlows extends AbstractGitTask implements RunnableTask<PushFlows
         description = """
             By default, all flows from the specified sourceNamespace will be pushed (and optionally adjusted to match the targetNamespace before pushing to Git).
             If you want to push only the current flow, you can use the "{{flow.id}}" expression or specify the flow ID explicitly, e.g. myflow.
-            Given that this is a list of Regex strings, you can include as many flows as you wish, provided that the user is authorized to access that namespace."""
+            Given that this is a list of Regex strings, you can include as many flows as you wish, provided that the user is authorized to access that namespace.""",
+        oneOf = {String.class, String[].class},
+        defaultValue = ".*"
     )
     @PluginProperty(dynamic = true)
-    private List<String> flows;
+    private Object flows;
 
     @Schema(
         title = "Whether you want to push flows from child namespaces as well.",
@@ -280,6 +280,7 @@ public class PushFlows extends AbstractGitTask implements RunnableTask<PushFlows
 
         Stream<FlowWithSource> filteredFlowsToPush = flowsToPush.stream();
         List<String> renderedFlowsRegexes = Optional.ofNullable(this.flows)
+            .map(flows -> flows instanceof List<?> ? (List<String>) flows : Collections.singletonList((String) flows))
             .map(throwFunction(runContext::render))
             .orElse(null);
         if (renderedFlowsRegexes != null) {
