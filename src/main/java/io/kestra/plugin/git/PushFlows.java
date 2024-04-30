@@ -5,42 +5,22 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.FlowWithSource;
-import io.kestra.core.models.tasks.*;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.serializers.JacksonMapper;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.annotation.Nullable;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.apache.commons.io.FileUtils;
-import org.eclipse.jgit.api.AddCommand;
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.RmCommand;
-import org.eclipse.jgit.api.errors.EmptyCommitException;
-import org.eclipse.jgit.diff.DiffEntry;
-import org.eclipse.jgit.diff.DiffFormatter;
-import org.eclipse.jgit.diff.Edit;
-import org.eclipse.jgit.diff.EditList;
-import org.eclipse.jgit.lib.ObjectId;
-import org.eclipse.jgit.lib.PersonIdent;
-import org.slf4j.Logger;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static io.kestra.core.utils.Rethrow.*;
-import static org.eclipse.jgit.lib.Constants.R_HEADS;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -117,10 +97,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
         )
     }
 )
-public class PushFlows extends AbstractGitTask implements RunnableTask<PushFlows.Output> {
-    private static final Pattern SSH_URL_PATTERN = Pattern.compile("git@(?:ssh\\.)?([^:]+):(?:v\\d*/)?(.*)");
-    private static final Pattern PEBBLE_TEMPLATE_PATTERN = Pattern.compile("^\\s*\\{\\{");
-
+public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     @Schema(
         title = "The branch to which files should be committed and pushed.",
         description = "If the branch doesn't exist yet, it will be created."
@@ -160,7 +137,8 @@ public class PushFlows extends AbstractGitTask implements RunnableTask<PushFlows
         description = """
             By default, all flows from the specified sourceNamespace will be pushed (and optionally adjusted to match the targetNamespace before pushing to Git).
             If you want to push only the current flow, you can use the "{{flow.id}}" expression or specify the flow ID explicitly, e.g. myflow.
-            Given that this is a list of Regex strings, you can include as many flows as you wish, provided that the user is authorized to access that namespace.""",
+            Given that this is a list of Regex strings, you can include as many flows as you wish, provided that the user is authorized to access that namespace.
+            Note that each regex try to match the file name OR the relative path starting from `gitDirectory`""",
         oneOf = {String.class, String[].class},
         defaultValue = ".*"
     )
@@ -186,86 +164,25 @@ public class PushFlows extends AbstractGitTask implements RunnableTask<PushFlows
     private boolean includeChildNamespaces = false;
 
     @Schema(
-        title = "If `true`, the task will only output modifications without pushing any flows to Git yet. If `false` (default), all listed flows will be pushed to Git immediately."
-    )
-    @PluginProperty
-    @Builder.Default
-    private boolean dryRun = false;
-
-    @Schema(
         title = "Git commit message.",
         defaultValue = "Add flows from `sourceNamespace` namespace"
     )
-    @PluginProperty(dynamic = true)
-    private String commitMessage;
-
-    @Schema(
-        title = "The commit author email.",
-        description = "If null, no author will be set on this commit."
-    )
-    @PluginProperty(dynamic = true)
-    private String authorEmail;
-
-    @Schema(
-        title = "The commit author name.",
-        description = "If null, the username will be used instead.",
-        defaultValue = "`username`"
-    )
-    @PluginProperty(dynamic = true)
-    private String authorName;
-
-    private boolean branchExists(RunContext runContext, String branch) throws Exception {
-        return authentified(Git.lsRemoteRepository().setRemote(runContext.render(url)), runContext)
-            .callAsMap()
-            .containsKey(R_HEADS + branch);
+    @Override
+    public String getCommitMessage() {
+        return Optional.ofNullable(this.commitMessage).orElse("Add flows from " + this.sourceNamespace + " namespace");
     }
 
     @Override
-    public Output run(RunContext runContext) throws Exception {
-        if (this.password != null && !PEBBLE_TEMPLATE_PATTERN.matcher(this.password).find()) {
-            throw new IllegalArgumentException("It looks like you're trying to push a flow with a hard-coded Git credential. Make sure to pass the credential securely using a Pebble expression (e.g. using secrets or environment variables).");
-        }
+    public Object regexes() {
+        return this.flows;
+    }
 
-        Logger logger = runContext.logger();
+    @Override
+    public String fetchedNamespace() {
+        return this.sourceNamespace;
+    }
 
-        Path basePath = runContext.tempDir();
-
-        String renderedBranch = runContext.render(this.branch);
-        boolean branchExists = branchExists(runContext, renderedBranch);
-
-        Clone cloneHead = Clone.builder()
-            .depth(1)
-            .url(this.url)
-            .username(this.username)
-            .password(this.password)
-            .privateKey(this.privateKey)
-            .passphrase(this.passphrase)
-            .build();
-
-        if (branchExists) {
-            cloneHead.toBuilder()
-                .branch(renderedBranch)
-                .build()
-                .run(runContext);
-        } else {
-            logger.info("Branch {} does not exist, creating it", renderedBranch);
-
-            cloneHead.run(runContext);
-        }
-
-
-        Git git = Git.open(basePath.toFile());
-        if (!branchExists) {
-            git.checkout()
-                .setName(renderedBranch)
-                .setCreateBranch(true)
-                .call();
-        }
-
-        String renderedGitDirectory = runContext.render(this.gitDirectory);
-        Path flowDirectory = runContext.resolve(Path.of(renderedGitDirectory));
-        flowDirectory.toFile().mkdirs();
-
+    protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path flowDirectory, List<String> regexes) throws IllegalVariableEvaluationException {
         FlowRepositoryInterface flowRepository = runContext.getApplicationContext().getBean(FlowRepositoryInterface.class);
 
         Map<String, String> flowProps = Optional.ofNullable((Map<String, String>) runContext.getVariables().get("flow")).orElse(Collections.emptyMap());
@@ -279,202 +196,50 @@ public class PushFlows extends AbstractGitTask implements RunnableTask<PushFlows
         }
 
         Stream<FlowWithSource> filteredFlowsToPush = flowsToPush.stream();
-        List<String> renderedFlowsRegexes = Optional.ofNullable(this.flows)
-            .map(flows -> flows instanceof List<?> ? (List<String>) flows : Collections.singletonList((String) flows))
-            .map(throwFunction(runContext::render))
-            .orElse(null);
-        if (renderedFlowsRegexes != null) {
+        if (regexes != null) {
             filteredFlowsToPush = filteredFlowsToPush.filter(flowWithSource -> {
                 String flowId = flowWithSource.getId();
-                return renderedFlowsRegexes.stream().anyMatch(flowId::matches);
+                return regexes.stream().anyMatch(flowId::matches);
             });
         }
 
-        Map<Path, String> flowSourceByPath = filteredFlowsToPush.collect(Collectors.toMap(flowWithSource -> {
+        Map<Path, Supplier<InputStream>> flowSourceByPath = filteredFlowsToPush.collect(Collectors.toMap(flowWithSource -> {
             Path path = flowDirectory;
             if (flowWithSource.getNamespace().length() > renderedSourceNamespace.length()) {
                 path = path.resolve(flowWithSource.getNamespace().substring(renderedSourceNamespace.length() + 1).replace(".", "/"));
             }
 
             return path.resolve(flowWithSource.getId() + ".yml");
-        }, FlowWithSource::getSource));
+        }, throwFunction(flowWithSource -> (throwSupplier(() -> {
+            String modifiedSource = flowWithSource.getSource().replaceAll("(?m)^(\\s*namespace:\\s*)" + runContext.render(sourceNamespace), "$1" + runContext.render(targetNamespace));
+            return new ByteArrayInputStream(modifiedSource.getBytes());
+        })))));
+        return flowSourceByPath;
+    }
 
-        // We remove any flow file from remote that is no longer present in the Flow repository
-        RmCommand rm = git.rm();
-        try(Stream<Path> paths = Files.walk(flowDirectory)) {
-            Stream<Path> filteredPaths = paths.filter(path -> !flowSourceByPath.containsKey(path) && !path.getFileName().toString().equals(".git"));
-
-            filteredPaths
-                .map(path -> basePath.relativize(path).toString())
-                .forEach(rm::addFilepattern);
-        }
-        rm.call();
-
-        String renderedTargetNamespace = runContext.render(this.targetNamespace);
-        flowSourceByPath.forEach(throwBiConsumer((path, source) -> {
-            String overwrittenSource = source;
-            if (renderedTargetNamespace != null) {
-                overwrittenSource = source.replaceAll("(?m)^(\\s*namespace:\\s*)" + renderedSourceNamespace, "$1" + renderedTargetNamespace);
-            }
-            FileUtils.writeStringToFile(
-                path.toFile(),
-                overwrittenSource,
-                StandardCharsets.UTF_8
-            );
-        }));
-
-        AddCommand add = git.add();
-        add.addFilepattern(renderedGitDirectory);
-        add.call();
-
-        DiffFormatter diffFormatter = new DiffFormatter(null);
-        diffFormatter.setRepository(git.getRepository());
-        File diffFile = runContext.tempFile(".ion").toFile();
-        try(BufferedWriter diffWriter = new BufferedWriter(new FileWriter(diffFile))) {
-            git.diff().setCached(true).call().stream()
-                .map(throwFunction(diffEntry -> {
-                    EditList editList = diffFormatter.toFileHeader(diffEntry).toEditList();
-                    int additions = 0;
-                    int deletions = 0;
-                    int changes = 0;
-                    for (Edit edit : editList) {
-                        int modifications = edit.getLengthB() - edit.getLengthA();
-                        if (modifications > 0) {
-                            additions += modifications;
-                        } else if (modifications < 0) {
-                            deletions += -modifications;
-                        } else {
-                            changes += edit.getLengthB();
-                        }
-                    }
-
-                    String file = diffEntry.getNewPath();
-                    if (diffEntry.getChangeType() == DiffEntry.ChangeType.DELETE) {
-                        file = diffEntry.getOldPath();
-                    }
-                    return Map.of(
-                        "file", file,
-                        "additions", "+" + additions,
-                        "deletions", "-" + deletions,
-                        "changes", Integer.toString(changes)
-                    );
-                }))
-                .map(throwFunction(map -> JacksonMapper.ofIon().writeValueAsString(map)))
-                .forEach(throwConsumer(ionDiff -> {
-                    diffWriter.write(ionDiff);
-                    diffWriter.write("\n");
-                }));
-
-            diffWriter.flush();
-        }
-
-        URI diffFileStorageUri = runContext.storage().putFile(diffFile);
-
-        String commitURL = null;
-        String commitId = null;
-        ObjectId commit;
-        try {
-            String httpUrl = getHttpUrl(runContext);
-            if (this.dryRun) {
-                logger.info(
-                    "Dry run — no changes will be pushed to {} for now until you set the `dryRun` parameter to false",
-                    httpUrl
-                );
-            } else {
-                logger.info(
-                    "Pushing to {} on branch {}",
-                    httpUrl,
-                    renderedBranch
-                );
-
-                String message = Optional.ofNullable(this.commitMessage)
-                    .map(throwFunction(runContext::render))
-                    .orElse("Add flows from " + renderedSourceNamespace + " namespace");
-                commit = git.commit()
-                    .setAllowEmpty(false)
-                    .setMessage(message)
-                    .setAuthor(author(runContext))
-                    .call()
-                    .getId();
-                authentified(git.push(), runContext).call();
-
-                commitId = commit.getName();
-                commitURL = buildCommitUrl(httpUrl, renderedBranch, commitId);
-
-                logger.info("Pushed to " + commitURL);
-            }
-        } catch (EmptyCommitException e) {
-            logger.info("No changes to commit. Skipping push.");
-        }
-
-        git.close();
-
+    @Override
+    protected Output output(AbstractPushTask.Output pushOutput, URI diffFileStorageUri) {
         return Output.builder()
-            .commitId(commitId)
-            .commitURL(commitURL)
+            .commitId(pushOutput.getCommitId())
+            .commitURL(pushOutput.getCommitURL())
             .flows(diffFileStorageUri)
             .build();
     }
 
-    private PersonIdent author(RunContext runContext) throws IllegalVariableEvaluationException {
-        String name = Optional.ofNullable(this.authorName).orElse(this.username);
-        if (this.authorEmail == null || name == null) {
-            return null;
-        }
-
-        return new PersonIdent(runContext.render(name), runContext.render(this.authorEmail));
-    }
-
-    private String buildCommitUrl(String httpUrl, String branch, String commitId) throws IllegalVariableEvaluationException {
-        if (commitId == null) {
-            return null;
-        }
-
-        String commitSubroute = httpUrl.contains("bitbucket.org") ? "commits" : "commit";
-        String commitUrl = httpUrl + "/" + commitSubroute + "/" + commitId;
-        if (commitUrl.contains("azure.com")) {
-            commitUrl = commitUrl + "?refName=refs%2Fheads%2F" + branch;
-        }
-
-        return commitUrl;
-    }
-
-    private String getHttpUrl(RunContext runContext) throws IllegalVariableEvaluationException {
-        String httpUrl = runContext.render(this.url);
-        // SSH URL
-        Matcher sshUrlMatcher = SSH_URL_PATTERN.matcher(httpUrl);
-        if (sshUrlMatcher.matches()) {
-            httpUrl = sshUrlMatcher.group(1) + "/" + sshUrlMatcher.group(2);
-
-            if (httpUrl.contains("azure.com")) {
-                int orgFromProjectSeparatorIndex = httpUrl.lastIndexOf("/");
-                httpUrl = httpUrl.substring(0, orgFromProjectSeparatorIndex) + "/_git/" + httpUrl.substring(orgFromProjectSeparatorIndex + 1);
-            }
-
-            httpUrl = "https://" + httpUrl;
-        } else if (httpUrl.contains("@")) {
-            httpUrl = httpUrl.replaceFirst("//.*@", "//");
-        }
-
-        return httpUrl;
-    }
-
-    @Builder
+    @SuperBuilder
     @Getter
-    public static class Output implements io.kestra.core.models.tasks.Output {
+    public static class Output extends AbstractPushTask.Output {
         @Schema(
-            title = "ID of the commit pushed."
+            title = "A file containing all changes pushed (or not in case of dry run) to Git.",
+            description = """
+                The output format is a ION file with one row per files, each row containing the number of added, deleted and changed lines.
+                A row looks as follows: `{changes:"3",file:"_flows/first-flow.yml",deletions:"-5",additions:"+10"}`"""
         )
-        @Nullable
-        private final String commitId;
+        private URI flows;
 
-        @Schema(
-            title = "URL to see what’s included in the commit.",
-            description = "Example format for GitHub: https://github.com/username/your_repo/commit/{commitId}."
-        )
-        @Nullable
-        private final String commitURL;
-
-        private final URI flows;
+        @Override
+        public URI diffFileUri() {
+            return this.flows;
+        }
     }
 }

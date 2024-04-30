@@ -118,6 +118,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
         )
     }
 )
+@Deprecated
 public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, NamespaceFilesInterface, InputFilesInterface {
     @Schema(
         title = "The optional directory associated with the clone operation.",
