@@ -78,7 +78,7 @@ import static io.kestra.core.utils.Rethrow.*;
         )
     }
 )
-public class Sync extends AbstractGitTask implements RunnableTask<VoidOutput> {
+public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput> {
     public static final String FLOWS_DIRECTORY = "_flows";
     public static final Pattern NAMESPACE_FINDER_PATTERN = Pattern.compile("(?m)^namespace: (.*)$");
     public static final Pattern FLOW_ID_FINDER_PATTERN = Pattern.compile("(?m)^id: (.*)$");
@@ -96,12 +96,6 @@ public class Sync extends AbstractGitTask implements RunnableTask<VoidOutput> {
     private String namespaceFilesDirectory;
 
     private String branch;
-
-    @Schema(
-        title = "Whether to clone submodules."
-    )
-    @PluginProperty
-    private Boolean cloneSubmodules;
 
     @Schema(
         title = "If true, the task will only display modifications without syncing any files yet. If false (default), all namespace files and flows will be overwritten based on the state in Git."
@@ -125,6 +119,7 @@ public class Sync extends AbstractGitTask implements RunnableTask<VoidOutput> {
             .password(this.password)
             .privateKey(this.privateKey)
             .passphrase(this.passphrase)
+            .cloneSubmodules(this.cloneSubmodules)
             .build();
 
         clone.run(runContext);

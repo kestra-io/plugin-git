@@ -24,10 +24,10 @@ import org.slf4j.event.Level;
 import java.io.*;
 import java.net.URI;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -310,7 +310,7 @@ class SyncTest {
 
     @Test
     void reconcile_DryRun_ShouldDoNothing() throws Exception {
-        List<LogEntry> logs = new ArrayList<>();
+        List<LogEntry> logs = new CopyOnWriteArrayList<>();
         logQueue.receive(l -> logs.add(l.getLeft()));
         String namespace = SyncTest.class.getName().toLowerCase();
 

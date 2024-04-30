@@ -77,7 +77,7 @@ import java.nio.file.Path;
         )
     }
 )
-public class Clone extends AbstractGitTask implements RunnableTask<Clone.Output> {
+public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Output> {
     @Schema(
         title = "The optional directory associated with the clone operation.",
         description = "If the directory isn't set, the current directory will be used."
@@ -94,12 +94,6 @@ public class Clone extends AbstractGitTask implements RunnableTask<Clone.Output>
     @Builder.Default
     @Min(1)
     private Integer depth = 1;
-
-    @Schema(
-        title = "Whether to clone submodules."
-    )
-    @PluginProperty
-    private Boolean cloneSubmodules;
 
     @Override
     public Clone.Output run(RunContext runContext) throws Exception {

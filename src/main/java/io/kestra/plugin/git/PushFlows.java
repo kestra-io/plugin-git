@@ -1,5 +1,6 @@
 package io.kestra.plugin.git;
 
+import com.google.common.annotations.VisibleForTesting;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
@@ -238,6 +239,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         private URI flows;
 
         @Override
+        @VisibleForTesting
         public URI diffFileUri() {
             return this.flows;
         }
