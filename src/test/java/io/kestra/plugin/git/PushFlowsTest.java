@@ -33,8 +33,7 @@ import java.util.stream.StreamSupport;
 
 import static org.eclipse.jgit.lib.Constants.R_HEADS;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @MicronautTest
@@ -61,7 +60,12 @@ public class PushFlowsTest {
             .password("my-password")
             .build();
 
-        IllegalArgumentException illegalArgumentException = assertThrows(IllegalArgumentException.class, () -> pushFlows.run(runContextFactory.of()));
+        IllegalArgumentException illegalArgumentException = assertThrows(IllegalArgumentException.class, () -> pushFlows.run(runContextFactory.of(Map.of(
+            "flow", Map.of(
+                "tenantId", "tenantId",
+                "namespace", "system"
+            ))))
+        );
         assertThat(illegalArgumentException.getMessage(), is("It looks like you're trying to push a flow with a hard-coded Git credential. Make sure to pass the credential securely using a Pebble expression (e.g. using secrets or environment variables)."));
     }
 
@@ -125,15 +129,119 @@ public class PushFlowsTest {
 
             assertDiffs(
                 runContext,
-                pushOutput.getFlows(),
+                pushOutput.diffFileUri(),
                 List.of(
-                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", "my-flows/sub-namespace/second-flow.yml")
+                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", gitDirectory + "/sub-namespace/second-flow.yml")
                 )
             );
 
             RevCommit revCommit = assertIsLastCommit(cloneRunContext, pushOutput);
             assertThat(revCommit.getFullMessage(), is("Push from CI - " + DESCRIPTION));
             assertAuthor(revCommit, authorEmail, authorName);
+        } finally {
+            this.deleteRemoteBranch(runContext.tempDir(), branch);
+        }
+    }
+
+    @Test
+    void defaultCase_SingleRegex_DeleteScopedToRegex() throws Exception {
+        String tenantId = "my-tenant";
+        String sourceNamespace = IdUtils.create().toLowerCase();
+        String targetNamespace = IdUtils.create().toLowerCase();
+        String branch = IdUtils.create();
+        String gitDirectory = "my-flows";
+        String authorEmail = "bmulier@kestra.io";
+        String authorName = "brianmulier";
+        String url = "https://github.com/kestra-io/unit-tests";
+        RunContext runContext = runContext(tenantId, url, authorEmail, authorName, branch, sourceNamespace, targetNamespace, gitDirectory);
+
+        FlowWithSource nonMatchingRegexKeptFlow = this.createFlow(tenantId, "first-flow", sourceNamespace);
+        String subNamespace = "sub-namespace";
+        FlowWithSource matchingRegexKeptFlow = this.createFlow(tenantId, "second-flow", sourceNamespace + "." + subNamespace);
+        FlowWithSource deletedFlowOnSecondPush = this.createFlow(tenantId, "second-deleted-after-push", sourceNamespace);
+
+        PushFlows pushFlows = PushFlows.builder()
+            .id("pushFlows")
+            .type(PushFlows.class.getName())
+            .branch("{{branch}}")
+            .url("{{url}}")
+            .commitMessage("Push from CI - {{description}}")
+            .username("{{pat}}")
+            .password("{{pat}}")
+            .authorEmail("{{email}}")
+            .authorName("{{name}}")
+            .sourceNamespace("{{sourceNamespace}}")
+            .targetNamespace("{{targetNamespace}}")
+            .includeChildNamespaces(true)
+            .gitDirectory("{{gitDirectory}}")
+            .build();
+
+        try {
+            PushFlows.Output pushOutput = pushFlows.run(runContext);
+
+            Clone clone = Clone.builder()
+                .id("clone")
+                .type(Clone.class.getName())
+                .url(url)
+                .username(pat)
+                .password(pat)
+                .branch(branch)
+                .build();
+
+            Clone.Output cloneOutput = clone.run(runContextFactory.of());
+
+            File flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), nonMatchingRegexKeptFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(true));
+            String fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
+            assertThat(fileContent, is(nonMatchingRegexKeptFlow.getSource().replace(sourceNamespace, targetNamespace)));
+
+            flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, subNamespace).toString(), matchingRegexKeptFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(true));
+            fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
+            assertThat(fileContent, is(matchingRegexKeptFlow.getSource().replace(sourceNamespace, targetNamespace)));
+
+            flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), deletedFlowOnSecondPush.getId() + ".yml");
+            assertThat(flowFile.exists(), is(true));
+            fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
+            assertThat(fileContent, is(deletedFlowOnSecondPush.getSource().replace(sourceNamespace, targetNamespace)));
+
+            assertDiffs(
+                runContext,
+                pushOutput.diffFileUri(),
+                List.of(
+                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", gitDirectory + "/" + nonMatchingRegexKeptFlow.getId() + ".yml"),
+                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", gitDirectory + "/sub-namespace/" + matchingRegexKeptFlow.getId() + ".yml"),
+                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", gitDirectory + "/" + deletedFlowOnSecondPush.getId() + ".yml")
+                )
+            );
+
+            flowRepositoryInterface.delete(deletedFlowOnSecondPush);
+            pushOutput = pushFlows.toBuilder()
+                .flows("second.*")
+                .build().run(runContext(tenantId, url, authorEmail, authorName, branch, sourceNamespace, targetNamespace, gitDirectory));
+
+            cloneOutput = clone.run(runContextFactory.of());
+
+            flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), nonMatchingRegexKeptFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(true));
+            fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
+            assertThat(fileContent, is(nonMatchingRegexKeptFlow.getSource().replace(sourceNamespace, targetNamespace)));
+
+            flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, subNamespace).toString(), matchingRegexKeptFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(true));
+            fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
+            assertThat(fileContent, is(matchingRegexKeptFlow.getSource().replace(sourceNamespace, targetNamespace)));
+
+            flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), deletedFlowOnSecondPush.getId() + ".yml");
+            assertThat(flowFile.exists(), is(false));
+
+            assertDiffs(
+                runContext,
+                pushOutput.diffFileUri(),
+                List.of(
+                    Map.of("additions", "+0", "deletions", "-10", "changes", "0", "file", gitDirectory + "/" + deletedFlowOnSecondPush.getId() + ".yml")
+                )
+            );
         } finally {
             this.deleteRemoteBranch(runContext.tempDir(), branch);
         }
@@ -186,6 +294,9 @@ public class PushFlowsTest {
             RunContext cloneRunContext = runContextFactory.of();
             Clone.Output cloneOutput = clone.run(cloneRunContext);
 
+            File outOfScopeFile = new File(Path.of(cloneOutput.getDirectory(), "README.md").toString());
+            assertThat(outOfScopeFile.exists(), is(true));
+
             File flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), createdFlow.getId() + ".yml");
             assertThat(flowFile.exists(), is(true));
             String fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
@@ -202,8 +313,8 @@ public class PushFlowsTest {
                 runContext,
                 pushOutput.getFlows(),
                 List.of(
-                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", "my-flows/some-flow.yml"),
-                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", "my-flows/sub-namespace/some-flow.yml")
+                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", gitDirectory + "/some-flow.yml"),
+                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", gitDirectory + "/sub-namespace/some-flow.yml")
                 )
             );
 
@@ -283,8 +394,8 @@ public class PushFlowsTest {
                 runContext,
                 pushOutput.getFlows(),
                 List.of(
-                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", "my-flows/first-flow.yml"),
-                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", "my-flows/sub-namespace/second-flow.yml")
+                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", gitDirectory + "/first-flow.yml"),
+                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", gitDirectory + "/sub-namespace/second-flow.yml")
                 )
             );
 
@@ -352,7 +463,7 @@ public class PushFlowsTest {
                 runContext,
                 pushOutput.getFlows(),
                 List.of(
-                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", "my-flows/some-flow.yml")
+                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", gitDirectory + "/some-flow.yml")
                 )
             );
 
@@ -450,11 +561,10 @@ public class PushFlowsTest {
         List<Map<String, String>> diffMaps = diffSummary.lines()
             .map(Rethrow.throwFunction(diff -> JacksonMapper.ofIon().readValue(
                 diff,
-                new TypeReference<Map<String, String>>() {
-                }
+                new TypeReference<Map<String, String>>() {}
             )))
             .toList();
-        assertThat(diffMaps, is(expectedDiffs));
+        assertThat(diffMaps, containsInAnyOrder(expectedDiffs.toArray(Map[]::new)));
     }
 
     private void deleteRemoteBranch(Path gitDirectory, String branchName) throws GitAPIException, IOException {
@@ -477,7 +587,7 @@ public class PushFlowsTest {
             id:\s""" + flowId + """
             
             namespace:\s""" + namespace + """
-                        
+            
             tasks:
               - id: my-task
                 type: io.kestra.core.tasks.log.Log
