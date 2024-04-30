@@ -44,7 +44,7 @@ dependencies {
     // Kestra
     annotationProcessor group: "io.kestra", name: "processor", version: kestraVersion
     compileOnly group: "io.kestra", name: "core", version: kestraVersion
-    implementation group: "io.kestra.plugin", name: "plugin-script", version: kestraVersion
+    compileOnly group: "io.kestra", name: "script", version: kestraVersion
 
     // git
     api 'org.eclipse.jgit:org.eclipse.jgit:6.9.0.202403050737-r'
