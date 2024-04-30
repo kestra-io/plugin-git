@@ -48,7 +48,7 @@ dependencies {
 
     // kestra
     compileOnly group: "io.kestra", name: "core", version: kestraVersion
-    implementation group: "io.kestra.plugin", name: "plugin-script", version: kestraVersion
+    compileOnly group: "io.kestra", name: "script", version: kestraVersion
 
     // git
     api 'org.eclipse.jgit:org.eclipse.jgit:6.9.0.202403050737-r'
@@ -88,6 +88,7 @@ dependencies {
 
     // test deps needed only for to have a runner
     testImplementation group: "io.kestra", name: "core", version: kestraVersion
+    testImplementation group: "io.kestra", name: "script", version: kestraVersion
     testImplementation group: "io.kestra", name: "repository-memory", version: kestraVersion
     testImplementation group: "io.kestra", name: "runner-memory", version: kestraVersion
     testImplementation group: "io.kestra", name: "storage-local", version: kestraVersion
