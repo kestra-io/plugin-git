@@ -40,6 +40,7 @@ import static org.hamcrest.Matchers.*;
 class PushTest {
     public static final String BRANCH = "ci";
     public static final String INPUT_FILE_NAME = "input_file.txt";
+
     @Inject
     private RunContextFactory runContextFactory;
 

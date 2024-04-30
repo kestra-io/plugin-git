@@ -16,7 +16,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -90,8 +89,6 @@ import static io.kestra.core.utils.Rethrow.*;
     }
 )
 public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Output> {
-    private static final Pattern SSH_URL_PATTERN = Pattern.compile("git@(?:ssh\\.)?([^:]+):(?:v\\d*/)?(.*)");
-
     @Schema(
         title = "The branch to which Namespace Files should be committed and pushed.",
         description = "If the branch doesn’t exist yet, it will be created. If not set, the task will push the files to the `kestra` branch."

@@ -39,6 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 @MicronautTest
 public class PushFlowsTest {
     public static final String DESCRIPTION = "One-task push";
+
     @Value("${kestra.git.pat}")
     private String pat;
 

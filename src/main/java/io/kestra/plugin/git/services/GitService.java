@@ -1,6 +1,8 @@
 package io.kestra.plugin.git.services;
 
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.services.FlowService;
 import io.kestra.plugin.git.AbstractGitTask;
 import io.kestra.plugin.git.Clone;
 import lombok.AllArgsConstructor;
@@ -17,13 +19,14 @@ public class GitService {
 
     private AbstractGitTask gitTask;
 
-    public Git cloneBranch(RunContext runContext, String branch) throws Exception {
+    public Git cloneBranch(RunContext runContext, String branch, Boolean withSubmodules) throws Exception {
         Clone cloneHead = Clone.builder()
             .url(gitTask.getUrl())
             .username(gitTask.getUsername())
             .password(gitTask.getPassword())
             .privateKey(gitTask.getPrivateKey())
             .passphrase(gitTask.getPassphrase())
+            .cloneSubmodules(withSubmodules)
             .build();
 
         boolean branchExists = this.branchExists(runContext, branch);
@@ -74,5 +77,11 @@ public class GitService {
         }
 
         return httpUrl;
+    }
+
+    public void namespaceAccessGuard(RunContext runContext, String namespaceToAccess) throws IllegalVariableEvaluationException {
+        FlowService flowService = runContext.getApplicationContext().getBean(FlowService.class);
+        RunContext.FlowInfo flowInfo = runContext.flowInfo();
+        flowService.checkAllowedNamespace(runContext.tenantId(), runContext.render(namespaceToAccess), flowInfo.tenantId(), flowInfo.namespace());
     }
 }

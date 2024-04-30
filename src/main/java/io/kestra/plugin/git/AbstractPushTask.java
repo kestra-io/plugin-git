@@ -5,7 +5,6 @@ import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
-import io.kestra.core.services.FlowService;
 import io.kestra.plugin.git.services.GitService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.annotation.Nullable;
@@ -30,10 +29,7 @@ import java.io.*;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -43,7 +39,7 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 @SuperBuilder(toBuilder = true)
 @NoArgsConstructor
 @Getter
-public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extends AbstractGitTask implements RunnableTask<O> {
+public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extends AbstractCloningTask implements RunnableTask<O> {
     @PluginProperty(dynamic = true)
     protected String commitMessage;
 
@@ -134,6 +130,7 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
             diffFormatter.setRepository(git.getRepository());
 
             git.diff().setCached(true).call().stream()
+                .sorted(Comparator.comparing(AbstractPushTask::getPath))
                 .map(throwFunction(diffEntry -> {
                     EditList editList = diffFormatter.toFileHeader(diffEntry).toEditList();
                     int additions = 0;
@@ -150,27 +147,29 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
                         }
                     }
 
-                    String file = diffEntry.getNewPath();
-                    if (diffEntry.getChangeType() == DiffEntry.ChangeType.DELETE) {
-                        file = diffEntry.getOldPath();
-                    }
+
                     return Map.of(
-                        "file", file,
+                        "file", AbstractPushTask.getPath(diffEntry),
                         "additions", "+" + additions,
                         "deletions", "-" + deletions,
                         "changes", Integer.toString(changes)
                     );
                 }))
-                .map(throwFunction(map -> JacksonMapper.ofIon().writeValueAsString(map)))
+                .map(throwFunction(JacksonMapper.ofIon()::writeValueAsString))
                 .forEach(throwConsumer(ionDiff -> {
                     diffWriter.write(ionDiff);
                     diffWriter.write("\n");
+                    runContext.logger().debug(ionDiff);
                 }));
 
             diffWriter.flush();
         }
 
         return runContext.storage().putFile(diffFile);
+    }
+
+    private static String getPath(DiffEntry diffEntry) {
+        return diffEntry.getChangeType() == DiffEntry.ChangeType.DELETE ? diffEntry.getOldPath() : diffEntry.getNewPath();
     }
 
     private Output push(Git git, RunContext runContext, GitService gitService) throws Exception {
@@ -242,18 +241,13 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         return commitUrl;
     }
 
-    private void fetchedNamespaceAccessGuard(RunContext runContext) throws IllegalVariableEvaluationException {
-        FlowService flowService = runContext.getApplicationContext().getBean(FlowService.class);
-        RunContext.FlowInfo flowInfo = runContext.flowInfo();
-        flowService.checkAllowedNamespace(runContext.tenantId(), runContext.render(this.fetchedNamespace()), flowInfo.tenantId(), flowInfo.namespace());
-    }
-
     public O run(RunContext runContext) throws Exception {
-        this.fetchedNamespaceAccessGuard(runContext);
+        GitService gitService = new GitService(this);
+
+        gitService.namespaceAccessGuard(runContext, this.fetchedNamespace());
         this.detectPasswordLeaks();
 
-        GitService gitService = new GitService(this);
-        Git git = gitService.cloneBranch(runContext, runContext.render(this.getBranch()));
+        Git git = gitService.cloneBranch(runContext, runContext.render(this.getBranch()), this.cloneSubmodules);
 
         Path localGitDirectory = this.createGitDirectory(runContext);
 

@@ -119,7 +119,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
     }
 )
 @Deprecated
-public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, NamespaceFilesInterface, InputFilesInterface {
+public class Push extends AbstractCloningTask implements RunnableTask<Push.Output>, NamespaceFilesInterface, InputFilesInterface {
     @Schema(
         title = "The optional directory associated with the clone operation.",
         description = "If the directory isn't set, the current directory will be used."
@@ -198,6 +198,7 @@ public class Push extends AbstractGitTask implements RunnableTask<Push.Output>, 
                 .password(this.password)
                 .privateKey(this.privateKey)
                 .passphrase(this.passphrase)
+                .cloneSubmodules(this.cloneSubmodules)
                 .build();
 
             if (branchExists) {
