@@ -58,7 +58,7 @@ import static io.kestra.core.utils.Rethrow.*;
                         password: "{{ secret('GITHUB_ACCESS_TOKEN') }}" # optional, required for private repositories
                         branch: kestra # optional, uses "kestra" by default
                         commitMessage: "add flows {{ now() }}" # optional string
-                        dryRun: true  # if true, you'll see what files will be added, modified or deleted based on the Git version without overwriting the files yet
+                        dryRun: true  # if true, you'll see what files will be added, modified or deleted based on the state in Git without overwriting the files yet
                     \s
                     triggers:
                       - id: schedule_push
