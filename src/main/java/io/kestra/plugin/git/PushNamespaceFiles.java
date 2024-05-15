@@ -50,7 +50,7 @@ import static io.kestra.core.utils.Rethrow.*;
                         gitDirectory: _files # optional path in Git where Namespace Files should be pushed
                         url: https://github.com/kestra-io/scripts # required string
                         username: git_username # required string needed for Auth with Git
-                        password: "{{ secret('GITHUB_ACCESS_TOKEN') }}" # optional, required for private repositories
+                        password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
                         branch: dev # optional, uses "kestra" by default
                         commitMessage: "add namespace files" # optional string
                         dryRun: true  # if true, you'll see what files will be added, modified or deleted based on the state in Git without overwriting the files yet

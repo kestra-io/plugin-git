@@ -55,7 +55,7 @@ import static io.kestra.core.utils.Rethrow.*;
                         gitDirectory: _flows
                         url: https://github.com/kestra-io/scripts # required string
                         username: git_username # required string needed for Auth with Git
-                        password: "{{ secret('GITHUB_ACCESS_TOKEN') }}" # optional, required for private repositories
+                        password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
                         branch: kestra # optional, uses "kestra" by default
                         commitMessage: "add flows {{ now() }}" # optional string
                         dryRun: true  # if true, you'll see what files will be added, modified or deleted based on the state in Git without overwriting the files yet
