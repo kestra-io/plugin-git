@@ -7,6 +7,7 @@ import io.kestra.plugin.git.AbstractGitTask;
 import io.kestra.plugin.git.Clone;
 import lombok.AllArgsConstructor;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.lib.Constants;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -43,7 +44,7 @@ public class GitService {
 
 
         Git git = Git.open(runContext.tempDir().toFile());
-        if (!branchExists) {
+        if (!branchExists && git.getRepository().resolve(Constants.HEAD) != null) {
             git.checkout()
                 .setName(branch)
                 .setCreateBranch(true)

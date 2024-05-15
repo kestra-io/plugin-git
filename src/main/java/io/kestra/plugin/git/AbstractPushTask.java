@@ -21,8 +21,11 @@ import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.diff.Edit;
 import org.eclipse.jgit.diff.EditList;
+import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.slf4j.Logger;
 
 import java.io.*;
@@ -87,10 +90,10 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
     private void deleteOutdatedResources(Git git, Path basePath, Map<Path, Supplier<InputStream>> contentByPath, List<String> regexes) throws IOException, GitAPIException {
         try (Stream<Path> paths = Files.walk(basePath)) {
             Stream<Path> filteredPathsStream = paths.filter(path ->
-                    !contentByPath.containsKey(path) &&
-                        !path.getFileName().toString().equals(".git") &&
-                        !path.equals(basePath)
-                );
+                !contentByPath.containsKey(path) &&
+                    !path.getFileName().toString().equals(".git") &&
+                    !path.equals(basePath)
+            );
 
             if (regexes != null) {
                 filteredPathsStream = filteredPathsStream.filter(path -> regexes.stream().anyMatch(regex ->
@@ -125,12 +128,15 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
 
     private static URI createDiffFile(RunContext runContext, Git git) throws IOException, GitAPIException {
         File diffFile = runContext.tempFile(".ion").toFile();
-        try(DiffFormatter diffFormatter = new DiffFormatter(null);
-            BufferedWriter diffWriter = new BufferedWriter(new FileWriter(diffFile))) {
+        try (DiffFormatter diffFormatter = new DiffFormatter(null);
+             BufferedWriter diffWriter = new BufferedWriter(new FileWriter(diffFile))) {
             diffFormatter.setRepository(git.getRepository());
 
-            git.diff().setCached(true).call().stream()
-                .sorted(Comparator.comparing(AbstractPushTask::getPath))
+            git.diff()
+                .setOldTree(treeIterator(git, "HEAD~1"))
+                .setNewTree(treeIterator(git, "HEAD"))
+                .call()
+                .stream().sorted(Comparator.comparing(AbstractPushTask::getPath))
                 .map(throwFunction(diffEntry -> {
                     EditList editList = diffFormatter.toFileHeader(diffEntry).toEditList();
                     int additions = 0;
@@ -168,6 +174,16 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         return runContext.storage().putFile(diffFile);
     }
 
+    private static CanonicalTreeParser treeIterator(Git git, String ref) throws IOException {
+        ObjectReader reader = git.getRepository().newObjectReader();
+        CanonicalTreeParser treeIter = new CanonicalTreeParser();
+        ObjectId oldTree = git.getRepository().resolve(ref + "^{tree}");
+        if (oldTree != null) {
+            treeIter.reset(reader, oldTree);
+        }
+        return treeIter;
+    }
+
     private static String getPath(DiffEntry diffEntry) {
         return diffEntry.getChangeType() == DiffEntry.ChangeType.DELETE ? diffEntry.getOldPath() : diffEntry.getNewPath();
     }
@@ -194,12 +210,16 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
                 );
 
                 String message = runContext.render(this.getCommitMessage());
+                ObjectId head = git.getRepository().resolve(Constants.HEAD);
                 commit = git.commit()
                     .setAllowEmpty(false)
                     .setMessage(message)
                     .setAuthor(author(runContext))
                     .call()
                     .getId();
+                if (head == null) {
+                    git.branchRename().setNewName(renderedBranch).call();
+                }
                 authentified(git.push(), runContext).call();
 
                 commitId = commit.getName();
@@ -265,9 +285,9 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         add.addFilepattern(runContext.render(this.getGitDirectory()));
         add.call();
 
-        URI diffFileStorageUri = AbstractPushTask.createDiffFile(runContext, git);
-
         Output pushOutput = this.push(git, runContext, gitService);
+
+        URI diffFileStorageUri = AbstractPushTask.createDiffFile(runContext, git);
 
         git.close();
 
