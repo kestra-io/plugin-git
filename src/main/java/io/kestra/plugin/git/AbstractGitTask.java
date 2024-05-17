@@ -79,7 +79,7 @@ public abstract class AbstractGitTask extends Task {
 
     protected void detectPasswordLeaks() {
         if (this.password != null && !PEBBLE_TEMPLATE_PATTERN.matcher(this.password).find()) {
-            throw new IllegalArgumentException("It looks like you're trying to push a flow with a hard-coded Git credential. Make sure to pass the credential securely using a Pebble expression (e.g. using secrets or environment variables).");
+            throw new IllegalArgumentException("It looks like you have hard-coded Git credentials. Make sure to pass the credential securely using a Pebble expression (e.g. using secrets or environment variables).");
         }
     }
 }

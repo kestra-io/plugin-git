@@ -83,6 +83,11 @@ public class GitService {
     public void namespaceAccessGuard(RunContext runContext, String namespaceToAccess) throws IllegalVariableEvaluationException {
         FlowService flowService = runContext.getApplicationContext().getBean(FlowService.class);
         RunContext.FlowInfo flowInfo = runContext.flowInfo();
-        flowService.checkAllowedNamespace(runContext.tenantId(), runContext.render(namespaceToAccess), flowInfo.tenantId(), flowInfo.namespace());
+        flowService.checkAllowedNamespace(
+            runContext.tenantId(),
+            runContext.render(namespaceToAccess),
+            flowInfo.tenantId(),
+            flowInfo.namespace()
+        );
     }
 }

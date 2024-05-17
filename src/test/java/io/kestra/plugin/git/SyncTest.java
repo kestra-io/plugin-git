@@ -79,7 +79,7 @@ class SyncTest {
         String flowSource = """
             id: first-flow
             namespace:\s""" + NAMESPACE + """
-                        
+
             tasks:
               - id: old-task
                 type: io.kestra.core.tasks.log.Log
@@ -404,13 +404,12 @@ class SyncTest {
     }
 
     private void assertFlows(String tenantId, File flowsDir, String selfFlowSource) throws IOException {
-        Pattern namespaceFinderPattern = NAMESPACE_FINDER_PATTERN;
         Map<String, String> namespaceForExpectedFlowSources = Stream.concat(
                 FileUtils.listFiles(flowsDir, null, true).stream()
                     .filter(file -> !file.getName().equals("kestra-ignored-flow.yml"))
                     .map(throwFunction(file -> FileUtils.readFileToString(file, "UTF-8")))
                     .map(source -> {
-                        Matcher matcher = namespaceFinderPattern.matcher(source);
+                        Matcher matcher = NAMESPACE_FINDER_PATTERN.matcher(source);
                         matcher.find();
                         String previousNamespace = matcher.group(1);
                         if (previousNamespace.startsWith(NAMESPACE + ".")) {

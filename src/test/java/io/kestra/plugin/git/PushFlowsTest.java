@@ -67,7 +67,7 @@ public class PushFlowsTest {
                 "namespace", "system"
             ))))
         );
-        assertThat(illegalArgumentException.getMessage(), is("It looks like you're trying to push a flow with a hard-coded Git credential. Make sure to pass the credential securely using a Pebble expression (e.g. using secrets or environment variables)."));
+        assertThat(illegalArgumentException.getMessage(), is("It looks like you have hard-coded Git credentials. Make sure to pass the credential securely using a Pebble expression (e.g. using secrets or environment variables)."));
     }
 
     @Test

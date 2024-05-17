@@ -1,0 +1,256 @@
+package io.kestra.plugin.git;
+
+import io.kestra.core.models.annotations.Example;
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.flows.Flow;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.core.services.FlowService;
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotNull;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
+import org.apache.commons.io.IOUtils;
+import org.slf4j.Logger;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+@SuperBuilder(toBuilder = true)
+@ToString
+@EqualsAndHashCode
+@Getter
+@NoArgsConstructor
+@Schema(
+    title = "Sync Namespace Files from Git to Kestra.",
+    description = """
+        This task syncs Namespace Files from a given Git branch to a Kestra `namespace. If the delete property is set to true, any Namespace Files available in kestra but not present in the gitDirectory will be deleted, allowing to maintain Git as a single source of truth for your Namespace Files. Check the Version Control with Git documentation for more details.
+        Using this task, you can push one or more Namespace Files from a given kestra namespace to Git. Check the [Version Control with Git](https://kestra.io/docs/developer-guide/git) documentation for more details."""
+)
+@Plugin(
+    examples = {
+        @Example(
+            title = "Sync Namespace Files from a Git repository. This flow can run either on a schedule (using the Schedule trigger) or anytime you push a change to a given Git branch (using the Webhook trigger).",
+            full = true,
+            code = {
+                """
+                    id: sync_flows_from_git
+                    namespace: system
+                    \s
+                    tasks:
+                      - id: git
+                        type: io.kestra.plugin.git.SyncNamespaceFiles
+                        namespace: prod
+                        gitDirectory: _files # optional; set to _files by default
+                        delete: true # optional; by default, it's set to false to avoid destructive behavior
+                        url: https://github.com/kestra-io/flows
+                        branch: main
+                        username: git_username
+                        password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                        dryRun: true  # if true, the task will only log which flows from Git will be added/modified or deleted in kestra without making any changes in kestra backend yet
+                    \s
+                    triggers:
+                      - id: every_minute
+                        type: io.kestra.core.models.triggers.types.Schedule
+                        cron: "*/1 * * * *\""""
+            }
+        )
+    }
+)
+public class SyncFlows extends AbstractSyncTask<FlowService, Flow, SyncFlows.Output> {
+    public static final Pattern NAMESPACE_FINDER_PATTERN = Pattern.compile("(?m)^namespace: (.*)$");
+
+    @Schema(
+        title = "The branch from which Namespace Files will be synced to Kestra."
+    )
+    @PluginProperty(dynamic = true)
+    @Builder.Default
+    private String branch = "main";
+
+    @Schema(
+        title = "The target namespace to which flows from the `gitDirectory` should be synced.",
+        description = """
+            If the top-level namespace specified in the flow source code is different than the `targetNamespace`, it will be overwritten by this target namespace.
+            This facilitates moving between environments and projects.
+            If `includeChildNamespaces` property is set to true, the top-level namespace in the source code will also be overwritten by the `targetNamespace` in children namespaces.
+            For example, if `targetNamespace` is set to prod and `includeChildNamespaces` property is set to true, then `namespace: dev` in flow source code will be overwritten by `namespace: prod`, and `namespace: dev.marketing.crm` will be overwritten by `namespace: prod.marketing.crm`.
+            See the table below for a practical explanation:
+                
+            | Source namespace in the flow code |       Git directory path       |  Synced to target namespace   |
+            | --------------------------------- | ------------------------------ | ----------------------------- |
+            | namespace: dev                    | _flows/flow1.yml               | namespace: prod               |
+            | namespace: dev                    | _flows/flow2.yml               | namespace: prod               |
+            | namespace: dev.marketing          | _flows/marketing/flow3.yml     | namespace: prod.marketing     |
+            | namespace: dev.marketing          | _flows/marketing/flow4.yml     | namespace: prod.marketing     |
+            | namespace: dev.marketing.crm      | _flows/marketing/crm/flow5.yml | namespace: prod.marketing.crm |
+            | namespace: dev.marketing.crm      | _flows/marketing/crm/flow6.yml | namespace: prod.marketing.crm |
+            """
+    )
+    @PluginProperty(dynamic = true)
+    @NotNull
+    private String targetNamespace;
+
+    @Schema(
+        title = "Directory from which flows should be synced.",
+        description = """
+            If not set, this task assumes your branch has a Git directory named `_flows` (equivalent to the default `gitDirectory` of the PushFlows task).
+            If `includeChildNamespaces` property is set to `true`, this task will push all flows from nested subdirectories into their corresponding child namespaces, e.g. if `targetNamespace` is set to `prod`, then flows from the `_flows` directory will be synced to the `prod` namespace, flows from the `marketing` subdirectory in Git will be synced to the `prod.marketing` namespace, and flows from `marketing/crm` subdirectory will be synced to the `prod.marketing.crm` namespace."""
+    )
+    @PluginProperty(dynamic = true)
+    @Builder.Default
+    private String gitDirectory = "_flows";
+
+    @Schema(
+        title = "Whether you want to sync flows from child namespaces as well.",
+        description = "It’s `false` by default so that the task will sync only flows from the explicitly declared `gitDirectory` without traversing child directories. If set to `true`, flows from subdirectories in Git will be synced to child namespace in Kestra using dot-notation for each subdirectory hierarchy."
+    )
+    @PluginProperty(dynamic = true)
+    @Builder.Default
+    private boolean includeChildNamespaces = false;
+
+    @Schema(
+        title = "Whether you want to delete flows present in kestra but not present in Git.",
+        description = "It’s `false` by default to avoid destructive behavior. Use this property with caution because when set to `true` and `includeChildNamespaces` is also set to `true`, this task will delete all flows from the `targetNamespace` and all its child namespaces that are not present in Git."
+    )
+    @PluginProperty
+    @Builder.Default
+    private boolean delete = false;
+
+
+    @Override
+    public String fetchedNamespace() {
+        return this.targetNamespace;
+    }
+
+    @Override
+    protected void deleteResource(FlowService flowService, String tenantId, String renderedNamespace, Flow flow) {
+        flowService.delete(flow);
+    }
+
+    @Override
+    protected boolean mustKeep(RunContext runContext, Flow instanceResource) {
+        RunContext.FlowInfo flowInfo = runContext.flowInfo();
+        return flowInfo.id().equals(instanceResource.getId()) &&
+            flowInfo.namespace().equals(instanceResource.getNamespace()) &&
+            Objects.equals(flowInfo.tenantId(), instanceResource.getTenantId());
+    }
+
+    @Override
+    protected boolean traverseDirectories() {
+        return this.includeChildNamespaces;
+    }
+
+    @Override
+    protected void writeResource(Logger logger, FlowService flowService, String tenantId, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+        if (inputStream == null) {
+            return;
+        }
+
+        String flowSource = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
+        String uriStr = uri.toString();
+        String newNamespace = renderedNamespace + uriStr.substring(0, uriStr.lastIndexOf("/")).replace("/", ".");
+        Matcher matcher = NAMESPACE_FINDER_PATTERN.matcher(flowSource);
+        flowSource = matcher.replaceFirst("namespace: " + newNamespace);
+
+        flowService.importFlow(tenantId, flowSource);
+    }
+
+    @Override
+    protected SyncResult wrapper(String renderedGitDirectory, String renderedNamespace, URI resourceUri, Supplier<InputStream> gitContent, Flow flow) throws IOException {
+        if (resourceUri != null && resourceUri.toString().endsWith("/")) {
+            return null;
+        }
+
+        SyncState syncState;
+        Integer revision = null;
+        Flow flowAfterUpdate = flow;
+        if (gitContent == null) {
+            syncState = SyncState.DELETED;
+        } else if (flow == null) {
+            syncState = SyncState.ADDED;
+            flowAfterUpdate = JacksonMapper.ofYaml().readValue(gitContent.get(), Flow.class).toBuilder()
+                .namespace(this.computeNamespaceFromUri(renderedNamespace, Objects.requireNonNull(resourceUri)))
+                .build();
+            revision = 1;
+        } else {
+            syncState = SyncState.OVERWRITTEN;
+            revision = flow.getRevision() + 1;
+        }
+        SyncResult.SyncResultBuilder<?, ?> builder = SyncResult.builder()
+            .syncState(syncState)
+            .namespace(flowAfterUpdate.getNamespace())
+            .flowId(flowAfterUpdate.getId())
+            .revision(revision);
+
+        if (syncState != SyncState.DELETED) {
+            builder.gitPath(renderedGitDirectory + resourceUri);
+        }
+
+        return builder.build();
+    }
+
+    private String computeNamespaceFromUri(String renderedNamespace, URI resourceUri) {
+        String withoutLeadingSlash = resourceUri.toString().substring(1);
+        int namespaceToFlowIdSeparatorIdx = withoutLeadingSlash.lastIndexOf("/");
+        String subNamespace = namespaceToFlowIdSeparatorIdx == -1 ? "" : "." + withoutLeadingSlash.substring(0, namespaceToFlowIdSeparatorIdx).replace("/", ".");
+        return renderedNamespace + subNamespace;
+    }
+
+    @Override
+    protected List<Flow> instanceFilledResources(FlowService flowService, String tenantId, String renderedNamespace) {
+        if (this.includeChildNamespaces) {
+            return flowService.findByNamespacePrefix(tenantId, renderedNamespace);
+        }
+
+        return flowService.findByNamespace(tenantId, renderedNamespace);
+    }
+
+    @Override
+    protected URI toUri(Set<URI> gitUris, String renderedNamespace, Flow resource) {
+        String gitSimulatedNamespaceUri = resource.getNamespace().equals(renderedNamespace) ? "" : "/" + resource.getNamespace().substring(renderedNamespace.length() + 1);
+        String uriWithoutExtension = gitSimulatedNamespaceUri.replace(".", "/") + "/" + resource.getId();
+        return URI.create(uriWithoutExtension + (gitUris.contains(URI.create(uriWithoutExtension + ".yaml")) ? ".yaml" : ".yml"));
+    }
+
+    @Override
+    protected Output output(URI diffFileStorageUri) {
+        return Output.builder()
+            .files(diffFileStorageUri)
+            .build();
+    }
+
+    @SuperBuilder
+    @Getter
+    public static class Output extends AbstractSyncTask.Output {
+        @Schema(
+            title = "A file containing all changes applied (or not in case of dry run) from Git.",
+            description = """
+                The output format is a ION file with one row per files, each row containing the number of added, deleted and changed lines.
+                A row looks as follows: `{changes:"3",file:"path/to/my/script.py",deletions:"-5",additions:"+10"}`"""
+        )
+        private URI files;
+
+        @Override
+        public URI diffFileUri() {
+            return this.files;
+        }
+    }
+
+
+    @SuperBuilder
+    @Getter
+    public static class SyncResult extends AbstractSyncTask.SyncResult {
+        private String flowId;
+        private String namespace;
+        private Integer revision;
+    }
+}
