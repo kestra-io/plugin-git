@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @MicronautTest
 public class SyncNamespaceFilesTest {
-    public static final String BRANCH = "reconcile";
+    public static final String BRANCH = "sync";
     public static final String GIT_DIRECTORY = "to_clone";
     public static final String TENANT_ID = "my-tenant";
     public static final String NAMESPACE = "my.namespace";
@@ -70,7 +70,7 @@ public class SyncNamespaceFilesTest {
                         "namespace", "system"
                 ))))
         );
-        assertThat(illegalArgumentException.getMessage(), is("It looks like you're trying to push a flow with a hard-coded Git credential. Make sure to pass the credential securely using a Pebble expression (e.g. using secrets or environment variables)."));
+        assertThat(illegalArgumentException.getMessage(), is("It looks like you have hard-coded Git credentials. Make sure to pass the credential securely using a Pebble expression (e.g. using secrets or environment variables)."));
     }
 
     @Test
@@ -350,11 +350,14 @@ public class SyncNamespaceFilesTest {
     private static List<Map<String, String>> defaultCaseDiffs(boolean withDeleted) {
         ArrayList<Map<String, String>> diffs = new ArrayList<>(List.of(
                 Map.of("gitPath", "to_clone/_flows/", "syncState", "ADDED", "kestraPath", "/_flows/"),
-                Map.of("gitPath", "to_clone/_flows/fakesub-namespace-flow.yml", "syncState", "ADDED", "kestraPath", "/_flows/fakesub-namespace-flow.yml"),
+                Map.of("gitPath", "to_clone/_flows/nested/", "syncState", "ADDED", "kestraPath", "/_flows/nested/"),
+                Map.of("gitPath", "to_clone/_flows/nested/namespace/", "syncState", "ADDED", "kestraPath", "/_flows/nested/namespace/"),
+                Map.of("gitPath", "to_clone/_flows/nested/namespace/nested_flow.yaml", "syncState", "ADDED", "kestraPath", "/_flows/nested/namespace/nested_flow.yaml"),
                 Map.of("gitPath", "to_clone/_flows/first-flow.yml", "syncState", "ADDED", "kestraPath", "/_flows/first-flow.yml"),
+                Map.of("gitPath", "to_clone/_flows/unchanged-flow.yaml", "syncState", "ADDED", "kestraPath", "/_flows/unchanged-flow.yaml"),
+                Map.of("gitPath", "to_clone/_flows/.kestraignore", "syncState", "ADDED", "kestraPath", "/_flows/.kestraignore"),
                 Map.of("gitPath", "to_clone/_flows/kestra-ignored-flow.yml", "syncState", "ADDED", "kestraPath", "/_flows/kestra-ignored-flow.yml"),
                 Map.of("gitPath", "to_clone/_flows/second-flow.yml", "syncState", "ADDED", "kestraPath", "/_flows/second-flow.yml"),
-                Map.of("gitPath", "to_clone/_flows/sub-namespace-flow.yml", "syncState", "ADDED", "kestraPath", "/_flows/sub-namespace-flow.yml"),
                 Map.of("gitPath", "to_clone/cloned.json", "syncState", "OVERWRITTEN", "kestraPath", "/cloned.json"),
                 Map.of("gitPath", "to_clone/dir_to_file", "syncState", "ADDED", "kestraPath", "/dir_to_file"),
                 Map.of("gitPath", "to_clone/file_to_dir/", "syncState", "ADDED", "kestraPath", "/file_to_dir/"),
