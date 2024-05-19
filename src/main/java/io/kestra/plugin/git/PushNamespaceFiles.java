@@ -57,7 +57,7 @@ import static io.kestra.core.utils.Rethrow.*;
                     \s
                     triggers:
                       - id: schedule_push_to_git
-                        type: io.kestra.core.models.triggers.types.Schedule
+                        type: io.kestra.plugin.core.trigger.Schedule
                         cron: "*/15 * * * *\""""
             }
         ),

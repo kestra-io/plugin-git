@@ -52,7 +52,7 @@ import java.util.function.Supplier;
                     \s
                     triggers:
                       - id: every_minute
-                        type: io.kestra.core.models.triggers.types.Schedule
+                        type: io.kestra.plugin.core.trigger.Schedule
                         cron: "*/1 * * * *\""""
             }
         )

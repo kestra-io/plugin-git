@@ -72,7 +72,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
                 "",
                 "triggers:",
                 "  - id: schedule_push",
-                "    type: io.kestra.core.models.triggers.types.Schedule",
+                "    type: io.kestra.plugin.core.trigger.Schedule",
                 "    cron: \"*/15 * * * *\""
             }
         ),

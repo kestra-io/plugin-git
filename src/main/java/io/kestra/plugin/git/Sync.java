@@ -72,7 +72,7 @@ import static io.kestra.core.utils.Rethrow.*;
                 "",
                 "triggers:",
                 "  - id: every_minute",
-                "    type: io.kestra.core.models.triggers.types.Schedule",
+                "    type: io.kestra.plugin.core.trigger.Schedule",
                 "    cron: \"*/1 * * * *\""
             }
         )
