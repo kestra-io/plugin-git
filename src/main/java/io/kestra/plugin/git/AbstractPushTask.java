@@ -13,6 +13,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.eclipse.jgit.api.AddCommand;
+import org.eclipse.jgit.api.DiffCommand;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.RmCommand;
 import org.eclipse.jgit.api.errors.EmptyCommitException;
@@ -126,16 +127,21 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         Files.copy(inputStream, path, REPLACE_EXISTING);
     }
 
-    private static URI createDiffFile(RunContext runContext, Git git) throws IOException, GitAPIException {
+    private URI createDiffFile(RunContext runContext, Git git) throws IOException, GitAPIException {
         File diffFile = runContext.tempFile(".ion").toFile();
         try (DiffFormatter diffFormatter = new DiffFormatter(null);
              BufferedWriter diffWriter = new BufferedWriter(new FileWriter(diffFile))) {
             diffFormatter.setRepository(git.getRepository());
 
-            git.diff()
-                .setOldTree(treeIterator(git, "HEAD~1"))
-                .setNewTree(treeIterator(git, "HEAD"))
-                .call()
+            DiffCommand diff = git.diff();
+            if (this.dryRun) {
+                diff = diff.setCached(true);
+            } else {
+                diff = diff.setOldTree(treeIterator(git, "HEAD~1"))
+                    .setNewTree(treeIterator(git, "HEAD"));
+            }
+
+            diff.call()
                 .stream().sorted(Comparator.comparing(AbstractPushTask::getPath))
                 .map(throwFunction(diffEntry -> {
                     EditList editList = diffFormatter.toFileHeader(diffEntry).toEditList();
@@ -287,7 +293,7 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
 
         Output pushOutput = this.push(git, runContext, gitService);
 
-        URI diffFileStorageUri = AbstractPushTask.createDiffFile(runContext, git);
+        URI diffFileStorageUri = this.createDiffFile(runContext, git);
 
         git.close();
 

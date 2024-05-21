@@ -10,6 +10,7 @@ import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.serializers.YamlFlowParser;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.Rethrow;
+import io.kestra.plugin.git.services.GitService;
 import io.micronaut.context.annotation.Value;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import jakarta.inject.Inject;
@@ -105,6 +106,8 @@ public class PushFlowsTest {
 
         try {
             PushFlows.Output pushOutput = pushFlows.run(runContext);
+            GitService gitService = new GitService(pushFlows);
+            assertThat(gitService.branchExists(runContext, branch), is(true));
 
             Clone clone = Clone.builder()
                 .id("clone")
@@ -142,6 +145,56 @@ public class PushFlowsTest {
         } finally {
             this.deleteRemoteBranch(runContext.tempDir(), branch);
         }
+    }
+
+    @Test
+    void defaultCase_SingleRegexDryRun() throws Exception {
+        String tenantId = "my-tenant";
+        String sourceNamespace = IdUtils.create().toLowerCase();
+        String targetNamespace = IdUtils.create().toLowerCase();
+        String branch = IdUtils.create();
+        String gitDirectory = "my-flows";
+        String authorEmail = "bmulier@kestra.io";
+        String authorName = "brianmulier";
+        String url = "https://github.com/kestra-io/unit-tests";
+        RunContext runContext = runContext(tenantId, url, authorEmail, authorName, branch, sourceNamespace, targetNamespace, gitDirectory);
+
+        FlowWithSource createdFlow = this.createFlow(tenantId, "first-flow", sourceNamespace);
+        String subNamespace = "sub-namespace";
+        FlowWithSource createdSubNsFlow = this.createFlow(tenantId, "second-flow", sourceNamespace + "." + subNamespace);
+
+        PushFlows pushFlows = PushFlows.builder()
+            .id("pushFlows")
+            .type(PushFlows.class.getName())
+            .branch("{{branch}}")
+            .url("{{url}}")
+            .commitMessage("Push from CI - {{description}}")
+            .username("{{pat}}")
+            .password("{{pat}}")
+            .authorEmail("{{email}}")
+            .authorName("{{name}}")
+            .sourceNamespace("{{sourceNamespace}}")
+            .targetNamespace("{{targetNamespace}}")
+            .flows("second.*")
+            .includeChildNamespaces(true)
+            .gitDirectory("{{gitDirectory}}")
+            .dryRun(true)
+            .build();
+
+        PushFlows.Output pushOutput = pushFlows.run(runContext);
+
+        GitService gitService = new GitService(pushFlows);
+        assertThat(gitService.branchExists(runContext, branch), is(false));
+
+        assertThat(pushOutput.getCommitURL(), nullValue());
+
+        assertDiffs(
+            runContext,
+            pushOutput.diffFileUri(),
+            List.of(
+                Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", gitDirectory + "/sub-namespace/second-flow.yml")
+            )
+        );
     }
 
     @Test

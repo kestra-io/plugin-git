@@ -54,7 +54,7 @@ public class GitService {
         return git;
     }
 
-    private boolean branchExists(RunContext runContext, String branch) throws Exception {
+    public boolean branchExists(RunContext runContext, String branch) throws Exception {
         return gitTask.authentified(Git.lsRemoteRepository().setRemote(runContext.render(gitTask.getUrl())), runContext)
             .callAsMap()
             .containsKey(R_HEADS + branch);

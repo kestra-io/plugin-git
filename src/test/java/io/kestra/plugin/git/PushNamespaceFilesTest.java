@@ -8,6 +8,7 @@ import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.Rethrow;
+import io.kestra.plugin.git.services.GitService;
 import io.micronaut.context.annotation.Value;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import jakarta.inject.Inject;
@@ -100,6 +101,8 @@ public class PushNamespaceFilesTest {
 
         try {
             PushNamespaceFiles.Output pushOutput = pushNamespaceFiles.run(runContext);
+            GitService gitService = new GitService(pushNamespaceFiles);
+            assertThat(gitService.branchExists(runContext, branch), is(true));
 
             Clone clone = Clone.builder()
                 .id("clone")
@@ -137,6 +140,54 @@ public class PushNamespaceFilesTest {
         } finally {
             this.deleteRemoteBranch(runContext.tempDir(), branch);
         }
+    }
+
+    @Test
+    void defaultCase_SingleRegexDryRun() throws Exception {
+        String tenantId = "my-tenant";
+        String namespace = IdUtils.create().toLowerCase();
+        String branch = IdUtils.create();
+        String gitDirectory = "my-files";
+        String authorEmail = "bmulier@kestra.io";
+        String authorName = "brianmulier";
+        String url = "https://github.com/kestra-io/unit-tests";
+        RunContext runContext = runContext(tenantId, url, authorEmail, authorName, branch, namespace, gitDirectory);
+
+        String firstFilePath = "first-file.txt";
+        storage.put(tenantId, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + firstFilePath), new ByteArrayInputStream("First file".getBytes()));
+        String secondFilePath = "nested/second-file.txt";
+        String secondFileContent = "Second file";
+        storage.put(tenantId, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
+
+        PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
+            .id("pushNamespaceFiles")
+            .type(PushNamespaceFiles.class.getName())
+            .branch("{{branch}}")
+            .url("{{url}}")
+            .commitMessage("Push from CI - {{description}}")
+            .username("{{pat}}")
+            .password("{{pat}}")
+            .authorEmail("{{email}}")
+            .authorName("{{name}}")
+            .namespace("{{namespace}}")
+            .files("second.*")
+            .gitDirectory("{{gitDirectory}}")
+            .dryRun(true)
+            .build();
+
+        PushNamespaceFiles.Output pushOutput = pushNamespaceFiles.run(runContext);
+        GitService gitService = new GitService(pushNamespaceFiles);
+        assertThat(gitService.branchExists(runContext, branch), is(false));
+
+        assertThat(pushOutput.getCommitURL(), nullValue());
+
+        assertDiffs(
+            runContext,
+            pushOutput.diffFileUri(),
+            List.of(
+                Map.of("additions", "+1", "deletions", "-0", "changes", "0", "file", gitDirectory + "/" + secondFilePath)
+            )
+        );
     }
 
     @Test
@@ -472,7 +523,7 @@ public class PushNamespaceFilesTest {
 
     private static RevCommit assertIsLastCommit(RunContext cloneRunContext, PushNamespaceFiles.Output pushOutput) throws IOException, GitAPIException {
         RevCommit revCommit;
-        try(Git git = Git.open(cloneRunContext.tempDir().toFile())) {
+        try (Git git = Git.open(cloneRunContext.tempDir().toFile())) {
             revCommit = StreamSupport.stream(git.log().setMaxCount(1).call().spliterator(), false).findFirst().orElse(null);
         }
         assertThat(revCommit.getId().getName(), is(pushOutput.getCommitId()));
@@ -498,7 +549,7 @@ public class PushNamespaceFilesTest {
     }
 
     private void deleteRemoteBranch(Path gitDirectory, String branchName) throws GitAPIException, IOException {
-        try(Git git = Git.open(gitDirectory.toFile())) {
+        try (Git git = Git.open(gitDirectory.toFile())) {
             git.checkout().setName("tmp").setCreateBranch(true).call();
             git.branchDelete().setBranchNames(R_HEADS + branchName).call();
             RefSpec refSpec = new RefSpec()
