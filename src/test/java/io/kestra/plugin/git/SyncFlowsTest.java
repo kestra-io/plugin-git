@@ -43,7 +43,7 @@ public class SyncFlowsTest {
     public static final String FLOW_ID = "self_flow";
     public static final Pattern NAMESPACE_FINDER_PATTERN = Pattern.compile("(?m)^namespace: (.*)$");
 
-    private final Map<String, Integer> previousRevisionByUid = new HashMap<>();
+    private static final Map<String, Integer> previousRevisionByUid = new HashMap<>();
 
     @Value("${kestra.git.pat}")
     private String pat;
@@ -62,7 +62,10 @@ public class SyncFlowsTest {
 
     @BeforeEach
     void init() {
-        flowRepositoryInterface.findAllForAllTenants().forEach(flowRepositoryInterface::delete);
+        flowRepositoryInterface.findAllForAllTenants().forEach(f -> {
+            Flow deleted = flowRepositoryInterface.delete(f);
+            previousRevisionByUid.put(deleted.uidWithoutRevision(), deleted.getRevision());
+        });
     }
 
     @Test
@@ -96,11 +99,11 @@ public class SyncFlowsTest {
                 type: io.kestra.core.tasks.log.Log
                 message: Hello from old-task""";
         Flow flow = yamlFlowParser.parse(flowSource, Flow.class).toBuilder().tenantId(TENANT_ID).build();
-        previousRevisionByUid.put(flow.uidWithoutRevision(), flowRepositoryInterface.create(
+        flowRepositoryInterface.create(
             flow,
             flowSource,
             flow
-        ).getRevision());
+        );
 
         // this flow is not on Git and should be deleted
         Flow flowToDelete = flow.toBuilder().id("flow-to-delete").namespace(NAMESPACE + ".child").build();
@@ -121,11 +124,11 @@ public class SyncFlowsTest {
 
         // a flow present on git that doesn't have any change
         Flow unchangedFlow = flow.toBuilder().id("unchanged-flow").build();
-        previousRevisionByUid.put(unchangedFlow.uidWithoutRevision(), flowRepositoryInterface.create(
+        flowRepositoryInterface.create(
             unchangedFlow,
             flowSource.replace("first-flow", unchangedFlow.getId()),
             unchangedFlow
-        ).getRevision());
+        );
 
         flowSource = """
             id: unpresent-on-git-flow
@@ -144,6 +147,7 @@ public class SyncFlowsTest {
 
         List<Flow> flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(5));
+        flows.forEach(f -> previousRevisionByUid.put(f.uidWithoutRevision(), f.getRevision()));
 
         SyncFlows task = SyncFlows.builder()
             .url("{{url}}")
@@ -170,9 +174,8 @@ public class SyncFlowsTest {
             .run(runContext);
         assertFlows(runContext.tempDir().resolve(Path.of(GIT_DIRECTORY)).toFile(), selfFlowSource);
 
-        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace.child")) {{
+        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace.child", "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1))) {{
             this.put("gitPath", null);
-            this.put("revision", null);
         }}));
     }
 
@@ -238,6 +241,7 @@ public class SyncFlowsTest {
 
         List<Flow> flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(5));
+        flows.forEach(f -> previousRevisionByUid.put(f.uidWithoutRevision(), f.getRevision()));
 
         SyncFlows task = SyncFlows.builder()
             .url("{{url}}")
@@ -279,11 +283,11 @@ public class SyncFlowsTest {
                 type: io.kestra.core.tasks.log.Log
                 message: Hello from old-task""";
         Flow flow = yamlFlowParser.parse(flowSource, Flow.class).toBuilder().tenantId(TENANT_ID).build();
-        previousRevisionByUid.put(flow.uidWithoutRevision(), flowRepositoryInterface.create(
+        flowRepositoryInterface.create(
             flow,
             flowSource,
             flow
-        ).getRevision());
+        );
 
         // this flow is not on Git and should be deleted
         Flow flowToDelete = flow.toBuilder().id("flow-to-delete").build();
@@ -313,11 +317,11 @@ public class SyncFlowsTest {
 
         // a flow present on git that doesn't have any change
         Flow unchangedFlow = flow.toBuilder().id("unchanged-flow").build();
-        previousRevisionByUid.put(unchangedFlow.uidWithoutRevision(), flowRepositoryInterface.create(
+        flowRepositoryInterface.create(
             unchangedFlow,
             flowSource.replace("first-flow", unchangedFlow.getId()),
             unchangedFlow
-        ).getRevision());
+        );
 
         flowSource = """
             id: unpresent-on-git-flow
@@ -336,6 +340,7 @@ public class SyncFlowsTest {
 
         List<Flow> flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(6));
+        flows.forEach(f -> previousRevisionByUid.put(f.uidWithoutRevision(), f.getRevision()));
 
         SyncFlows task = SyncFlows.builder()
             .url("{{url}}")
@@ -362,9 +367,8 @@ public class SyncFlowsTest {
             .run(runContext);
         assertFlows(runContext.tempDir().resolve(Path.of(GIT_DIRECTORY)).toFile(), selfFlowSource, unversionedFlowSourceInChildNamespace);
 
-        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace")) {{
+        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace", "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1))) {{
             this.put("gitPath", null);
-            this.put("revision", null);
         }}));
     }
 
@@ -381,11 +385,11 @@ public class SyncFlowsTest {
                 type: io.kestra.core.tasks.log.Log
                 message: Hello from old-task""";
         Flow flow = yamlFlowParser.parse(flowSource, Flow.class).toBuilder().tenantId(TENANT_ID).build();
-        previousRevisionByUid.put(flow.uidWithoutRevision(), flowRepositoryInterface.create(
+        flowRepositoryInterface.create(
             flow,
             flowSource,
             flow
-        ).getRevision());
+        );
 
         // this flow is not on Git and should be deleted
         Flow flowToDelete = flow.toBuilder().id("flow-to-delete").namespace(NAMESPACE + ".child").build();
@@ -406,11 +410,11 @@ public class SyncFlowsTest {
 
         // a flow present on git that doesn't have any change
         Flow unchangedFlow = flow.toBuilder().id("unchanged-flow").build();
-        previousRevisionByUid.put(unchangedFlow.uidWithoutRevision(), flowRepositoryInterface.create(
+        flowRepositoryInterface.create(
             unchangedFlow,
             flowSource.replace("first-flow", unchangedFlow.getId()),
             unchangedFlow
-        ).getRevision());
+        );
 
         flowSource = """
             id: unpresent-on-git-flow
@@ -429,6 +433,7 @@ public class SyncFlowsTest {
 
         List<Flow> flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(5));
+        flows.forEach(f -> previousRevisionByUid.put(f.uidWithoutRevision(), f.getRevision()));
 
         String[] beforeUpdateSources = flowRepositoryInterface.findWithSource(null, TENANT_ID, null, null).stream()
             .map(FlowWithSource::getSource)
@@ -456,19 +461,17 @@ public class SyncFlowsTest {
 
         assertThat(afterUpdateSources, arrayContainingInAnyOrder(beforeUpdateSources));
 
-        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace.child")) {{
+        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace.child", "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1))) {{
             this.put("gitPath", null);
-            this.put("revision", null);
         }}));
     }
 
     private List<Map<String, Object>> defaultCaseDiffs(Map<String, Object>... additionalDiffs) {
         List<Map<String, Object>> diffs = new ArrayList<>(List.of(
-            // TODO Once revision can be forecasted and we can detect unchanged flows, we should put revision to 1 and maybe add a syncState enum value to UNCHANGED
-            Map.of("gitPath", "to_clone/_flows/unchanged-flow.yaml", "syncState", "OVERWRITTEN", "flowId", "unchanged-flow", "namespace", NAMESPACE, "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, NAMESPACE, "unchanged-flow"), 1) + 1),
-            Map.of("gitPath", "to_clone/_flows/first-flow.yml", "syncState", "OVERWRITTEN", "flowId", "first-flow", "namespace", NAMESPACE, "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, NAMESPACE, "first-flow"), 1) + 1),
-            Map.of("gitPath", "to_clone/_flows/nested/namespace/nested_flow.yaml", "syncState", "ADDED", "flowId", "nested-flow", "namespace", "my.namespace.nested.namespace", "revision", 1),
-            Map.of("gitPath", "to_clone/_flows/second-flow.yml", "syncState", "ADDED", "flowId", "second-flow", "namespace", NAMESPACE, "revision", 1)
+            Map.of("gitPath", "to_clone/_flows/unchanged-flow.yaml", "syncState", "UNCHANGED", "flowId", "unchanged-flow", "namespace", NAMESPACE, "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, NAMESPACE, "unchanged-flow"), 1)),
+            Map.of("gitPath", "to_clone/_flows/first-flow.yml", "syncState", "UPDATED", "flowId", "first-flow", "namespace", NAMESPACE, "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, NAMESPACE, "first-flow"), 0) + 1),
+            Map.of("gitPath", "to_clone/_flows/nested/namespace/nested_flow.yaml", "syncState", "ADDED", "flowId", "nested-flow", "namespace", "my.namespace.nested.namespace", "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, "my.namespace.nested.namespace", "nested-flow"), 0) + 1),
+            Map.of("gitPath", "to_clone/_flows/second-flow.yml", "syncState", "ADDED", "flowId", "second-flow", "namespace", NAMESPACE, "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, NAMESPACE, "second-flow"), 0) + 1)
         ));
 
         diffs.addAll(Arrays.asList(additionalDiffs));
@@ -515,7 +518,7 @@ public class SyncFlowsTest {
                         nsMatcher.find();
                         Path parent = flowsPath.relativize(path).getParent();
 
-                        return nsMatcher.replaceFirst("namespace: " + NAMESPACE + (parent == null ? "" : "." + parent.toString().replace("/", ".")));
+                        return nsMatcher.replaceFirst("namespace: " + NAMESPACE + (parent == null ? "" : "." + parent.toString().replace("/", "."))).stripTrailing();
                     })),
                 Arrays.stream(additionalFlowSources)
             ).toArray(String[]::new);

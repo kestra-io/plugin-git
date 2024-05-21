@@ -14,8 +14,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.util.List;
-import java.util.Set;
-import java.util.function.Supplier;
+import java.util.Optional;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -100,12 +99,17 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFilesService, 
     }
 
     @Override
-    protected void writeResource(Logger logger, NamespaceFilesService namespaceFilesService, String tenantId, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+    protected URI simulateResourceWrite(NamespaceFilesService namespaceFilesService, String tenantId, String renderedNamespace, URI uri, InputStream inputStream) {
+        return namespaceFilesService.uri(renderedNamespace, uri);
+    }
+
+    @Override
+    protected URI writeResource(Logger logger, NamespaceFilesService namespaceFilesService, String tenantId, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
         if (inputStream == null) {
-            namespaceFilesService.createDirectory(tenantId, renderedNamespace, uri);
+            return namespaceFilesService.createDirectory(tenantId, renderedNamespace, uri);
         } else {
             try {
-                namespaceFilesService.createFile(tenantId, renderedNamespace, uri, inputStream);
+                return namespaceFilesService.createFile(tenantId, renderedNamespace, uri, inputStream);
             } catch (FileNotFoundException e) {
                 if (!this.isDelete()) {
                     if (e.getMessage().contains("Is directory")) {
@@ -114,7 +118,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFilesService, 
                         String path = uri.getPath();
                         logger.warn("Kestra already has a file named {} and Git has a directory with the same name. If you want to proceed with file replacement with directory, please add `delete: true` flag.", path.substring(0, path.lastIndexOf("/")));
                     }
-                    return;
+                    return null;
                 }
 
                 throw e;
@@ -123,19 +127,20 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFilesService, 
     }
 
     @Override
-    protected SyncResult wrapper(String renderedGitDirectory, String renderedNamespace, URI resourceUri, Supplier<InputStream> gitContent, URI uri) {
+    protected SyncResult wrapper(String renderedGitDirectory, String renderedNamespace, URI resourceUri, URI resourceBeforeUpdate, URI resourceAfterUpdate) {
         SyncState syncState;
-        if (gitContent == null) {
+        if (resourceUri == null) {
             syncState = SyncState.DELETED;
-        } else if (uri == null) {
+        } else if (resourceBeforeUpdate == null) {
             syncState = SyncState.ADDED;
         } else {
+            // here we don't want to query the content of the file to check if it has changed
             syncState = SyncState.OVERWRITTEN;
         }
 
         SyncResult.SyncResultBuilder<?, ?> builder = SyncResult.builder()
             .syncState(syncState)
-            .kestraPath(resourceUri.toString());
+            .kestraPath(Optional.ofNullable(resourceUri).map(Object::toString).orElse(null));
 
         if (syncState != SyncState.DELETED) {
             builder.gitPath(renderedGitDirectory + resourceUri);
@@ -145,12 +150,12 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFilesService, 
     }
 
     @Override
-    protected List<URI> instanceFilledResources(NamespaceFilesService namespaceFilesService, String tenantId, String renderedNamespace) throws IOException {
+    protected List<URI> fetchResources(NamespaceFilesService namespaceFilesService, String tenantId, String renderedNamespace) throws IOException {
         return namespaceFilesService.recursiveList(tenantId, renderedNamespace, null, true);
     }
 
     @Override
-    protected URI toUri(Set<URI> gitUris, String renderedNamespace, URI resource) {
+    protected URI toUri(String renderedNamespace, URI resource) {
         return resource;
     }
 
