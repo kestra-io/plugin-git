@@ -5,7 +5,6 @@ import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.services.FlowService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
@@ -20,8 +19,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
-import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -144,6 +141,15 @@ public class SyncFlows extends AbstractSyncTask<FlowService, Flow, SyncFlows.Out
     }
 
     @Override
+    protected Flow simulateResourceWrite(FlowService flowService, String tenantId, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+        if (inputStream == null) {
+            return null;
+        }
+
+        return flowService.importFlow(tenantId, SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream), true);
+    }
+
+    @Override
     protected boolean mustKeep(RunContext runContext, Flow instanceResource) {
         RunContext.FlowInfo flowInfo = runContext.flowInfo();
         return flowInfo.id().equals(instanceResource.getId()) &&
@@ -157,46 +163,48 @@ public class SyncFlows extends AbstractSyncTask<FlowService, Flow, SyncFlows.Out
     }
 
     @Override
-    protected void writeResource(Logger logger, FlowService flowService, String tenantId, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+    protected Flow writeResource(Logger logger, FlowService flowService, String tenantId, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
         if (inputStream == null) {
-            return;
+            return null;
         }
 
+        String flowSource = SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream);
+
+        return flowService.importFlow(tenantId, flowSource);
+    }
+
+    private static String replaceNamespace(String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
         String flowSource = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
         String uriStr = uri.toString();
         String newNamespace = renderedNamespace + uriStr.substring(0, uriStr.lastIndexOf("/")).replace("/", ".");
         Matcher matcher = NAMESPACE_FINDER_PATTERN.matcher(flowSource);
         flowSource = matcher.replaceFirst("namespace: " + newNamespace);
-
-        flowService.importFlow(tenantId, flowSource);
+        return flowSource.stripTrailing();
     }
 
     @Override
-    protected SyncResult wrapper(String renderedGitDirectory, String renderedNamespace, URI resourceUri, Supplier<InputStream> gitContent, Flow flow) throws IOException {
+    protected SyncResult wrapper(String renderedGitDirectory, String renderedNamespace, URI resourceUri, Flow flowBeforeUpdate, Flow flowAfterUpdate) {
         if (resourceUri != null && resourceUri.toString().endsWith("/")) {
             return null;
         }
 
         SyncState syncState;
-        Integer revision = null;
-        Flow flowAfterUpdate = flow;
-        if (gitContent == null) {
+        if (resourceUri == null) {
             syncState = SyncState.DELETED;
-        } else if (flow == null) {
+        } else if (flowBeforeUpdate == null) {
             syncState = SyncState.ADDED;
-            flowAfterUpdate = JacksonMapper.ofYaml().readValue(gitContent.get(), Flow.class).toBuilder()
-                .namespace(this.computeNamespaceFromUri(renderedNamespace, Objects.requireNonNull(resourceUri)))
-                .build();
-            revision = 1;
+        } else if (flowBeforeUpdate.getRevision().equals(Objects.requireNonNull(flowAfterUpdate).getRevision())){
+            syncState = SyncState.UNCHANGED;
         } else {
-            syncState = SyncState.OVERWRITTEN;
-            revision = flow.getRevision() + 1;
+            syncState = SyncState.UPDATED;
         }
+
+        Flow infoHolder = flowAfterUpdate == null ? flowBeforeUpdate : flowAfterUpdate;
         SyncResult.SyncResultBuilder<?, ?> builder = SyncResult.builder()
             .syncState(syncState)
-            .namespace(flowAfterUpdate.getNamespace())
-            .flowId(flowAfterUpdate.getId())
-            .revision(revision);
+            .namespace(infoHolder.getNamespace())
+            .flowId(infoHolder.getId())
+            .revision(infoHolder.getRevision());
 
         if (syncState != SyncState.DELETED) {
             builder.gitPath(renderedGitDirectory + resourceUri);
@@ -205,15 +213,8 @@ public class SyncFlows extends AbstractSyncTask<FlowService, Flow, SyncFlows.Out
         return builder.build();
     }
 
-    private String computeNamespaceFromUri(String renderedNamespace, URI resourceUri) {
-        String withoutLeadingSlash = resourceUri.toString().substring(1);
-        int namespaceToFlowIdSeparatorIdx = withoutLeadingSlash.lastIndexOf("/");
-        String subNamespace = namespaceToFlowIdSeparatorIdx == -1 ? "" : "." + withoutLeadingSlash.substring(0, namespaceToFlowIdSeparatorIdx).replace("/", ".");
-        return renderedNamespace + subNamespace;
-    }
-
     @Override
-    protected List<Flow> instanceFilledResources(FlowService flowService, String tenantId, String renderedNamespace) {
+    protected List<Flow> fetchResources(FlowService flowService, String tenantId, String renderedNamespace) {
         if (this.includeChildNamespaces) {
             return flowService.findByNamespacePrefix(tenantId, renderedNamespace);
         }
@@ -222,10 +223,14 @@ public class SyncFlows extends AbstractSyncTask<FlowService, Flow, SyncFlows.Out
     }
 
     @Override
-    protected URI toUri(Set<URI> gitUris, String renderedNamespace, Flow resource) {
+    protected URI toUri(String renderedNamespace, Flow resource) {
+        if (resource == null) {
+            return null;
+        }
+
         String gitSimulatedNamespaceUri = resource.getNamespace().equals(renderedNamespace) ? "" : "/" + resource.getNamespace().substring(renderedNamespace.length() + 1);
         String uriWithoutExtension = gitSimulatedNamespaceUri.replace(".", "/") + "/" + resource.getId();
-        return URI.create(uriWithoutExtension + (gitUris.contains(URI.create(uriWithoutExtension + ".yaml")) ? ".yaml" : ".yml"));
+        return URI.create(uriWithoutExtension + ".yml");
     }
 
     @Override

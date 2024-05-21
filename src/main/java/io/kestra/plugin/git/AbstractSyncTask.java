@@ -12,7 +12,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.eclipse.jgit.api.Git;
 import org.slf4j.Logger;
 
@@ -65,6 +65,9 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
             if (!this.traverseDirectories()) {
                 filtered = filtered.filter(Files::isRegularFile);
             }
+            KestraIgnore kestraIgnore = new KestraIgnore(baseDirectory);
+            filtered = filtered.filter(path -> !kestraIgnore.isIgnoredFile(path.toString(), true));
+
             return filtered.collect(Collectors.toMap(
                 gitPath -> URI.create("/" + baseDirectory.relativize(gitPath) + (gitPath.toFile().isDirectory() ? "/" : "")),
                 throwFunction(path -> throwSupplier(() -> {
@@ -80,23 +83,6 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
     protected boolean traverseDirectories() {
         return true;
     }
-
-    /**
-     * Removes any resource from the instance that is not on Git.
-     */
-    private List<T> deleteOutdatedResources(RunContext runContext, S service, String renderedNamespace, Set<URI> gitUris, List<T> instanceFilledResources) throws IOException {
-        List<T> deleted = new ArrayList<>();
-        instanceFilledResources.forEach(throwConsumer(instanceResource -> {
-            if (!gitUris.contains(toUri(gitUris, renderedNamespace, instanceResource)) && !this.mustKeep(runContext, instanceResource)) {
-                if (!this.dryRun) {
-                    this.deleteResource(service, runContext.tenantId(), renderedNamespace, instanceResource);
-                }
-                deleted.add(instanceResource);
-            }
-        }));
-
-        return deleted;
-    }
     
     protected boolean mustKeep(RunContext runContext, T instanceResource) {
         return false;
@@ -104,17 +90,13 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
 
     protected abstract void deleteResource(S service, String tenantId, String renderedNamespace, T instanceResource) throws IOException;
 
-    private void writeResources(Logger logger, S service, KestraIgnore kestraIgnore, Path gitDirectory, String tenantId, String renderedNamespace, Map<URI, Supplier<InputStream>> contentByPath) throws IOException {
-        contentByPath.entrySet().stream().sorted(Comparator.comparingInt(e -> StringUtils.countMatches(e.getKey().toString(), "/")))
-            .filter(e -> !kestraIgnore.isIgnoredFile(gitDirectory + e.getKey().toString(), true))
-            .forEach(throwConsumer(e -> this.writeResource(logger, service, tenantId, renderedNamespace, e.getKey(), e.getValue().get())));
-    }
+    protected abstract T simulateResourceWrite(S service, String tenantId, String renderedNamespace, URI uri, InputStream inputStream) throws IOException;
 
-    protected abstract void writeResource(Logger logger, S service, String tenantId, String renderedNamespace, URI uri, InputStream inputStream) throws IOException;
+    protected abstract T writeResource(Logger logger, S service, String tenantId, String renderedNamespace, URI uri, InputStream inputStream) throws IOException;
 
-    protected abstract SyncResult wrapper(String renderedGitDirectory, String renderedNamespace, URI resourceURI, Supplier<InputStream> gitContent, T resourceBeforeUpdate) throws IOException;
+    protected abstract SyncResult wrapper(String renderedGitDirectory, String renderedNamespace, URI resourceUri, T resourceBeforeUpdate, T resourceAfterUpdate) throws IOException;
 
-    private URI createDiffFile(RunContext runContext, KestraIgnore kestraIgnore, Path gitDirectory, String renderedNamespace, Map<URI, Supplier<InputStream>> gitContentByUri, Map<URI, T> instanceFilledResourcesByUri, List<T> deletedResources) throws IOException, IllegalVariableEvaluationException {
+    private URI createDiffFile(RunContext runContext, String renderedNamespace, Map<URI, URI> gitUriByResourceUri, Map<URI, T> beforeUpdateResourcesByUri, Map<URI, T> afterUpdateResourcesByUri, List<T> deletedResources) throws IOException, IllegalVariableEvaluationException {
         File diffFile = runContext.tempFile(".ion").toFile();
 
         try (BufferedWriter diffWriter = new BufferedWriter(new FileWriter(diffFile))) {
@@ -122,15 +104,20 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
 
             String renderedGitDirectory = runContext.render(this.getGitDirectory());
             if (deletedResources != null) {
-                deletedResources.stream().map(throwFunction(deletedResource -> wrapper(renderedGitDirectory, renderedNamespace, toUri(gitContentByUri.keySet(), renderedNamespace, deletedResource), null, deletedResource))).forEach(syncResults::add);
+                deletedResources.stream()
+                    .map(throwFunction(deletedResource -> wrapper(
+                        renderedGitDirectory,
+                        renderedNamespace,
+                        gitUriByResourceUri.get(this.toUri(renderedNamespace, deletedResource)),
+                        deletedResource,
+                        null
+                    ))).forEach(syncResults::add);
             }
 
-            gitContentByUri.entrySet().stream()
-                .filter(e -> !kestraIgnore.isIgnoredFile(gitDirectory + e.getKey().toString(), true))
-                .flatMap(throwFunction(e -> {
-                    SyncResult wrapper = wrapper(renderedGitDirectory, renderedNamespace, e.getKey(), e.getValue(), instanceFilledResourcesByUri.get(e.getKey()));
-                    return wrapper == null ? Stream.empty() : Stream.of(wrapper);
-                })).forEach(syncResults::add);
+            afterUpdateResourcesByUri.entrySet().stream().flatMap(throwFunction(e -> {
+                SyncResult syncResult = wrapper(renderedGitDirectory, renderedNamespace, gitUriByResourceUri.get(e.getKey()), beforeUpdateResourcesByUri.get(e.getKey()), afterUpdateResourcesByUri.get(e.getKey()));
+                return syncResult == null ? Stream.empty() : Stream.of(syncResult);
+            })).forEach(syncResults::add);
 
             syncResults.stream().sorted((s1, s2) -> {
                     if (s1.getGitPath() == null) {
@@ -163,40 +150,69 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
 
         Path localGitDirectory = this.createGitDirectory(runContext);
         Map<URI, Supplier<InputStream>> gitContentByUri = this.gitResourcesContentByUri(localGitDirectory);
-        Set<URI> gitUris = gitContentByUri.keySet();
-
 
         String renderedNamespace = runContext.render(this.fetchedNamespace());
+
         @SuppressWarnings("unchecked")
         S service = runContext.getApplicationContext().getBean((Class<S>) ((ParameterizedType) getClass().getGenericSuperclass()).getActualTypeArguments()[0]);
-        List<T> instanceFilledResources = this.instanceFilledResources(service, runContext.tenantId(), renderedNamespace);
-        List<T> deletedResources = null;
-        if (this.isDelete()) {
-            deletedResources = this.deleteOutdatedResources(
-                runContext,
-                service,
-                renderedNamespace,
-                gitUris,
-                instanceFilledResources
+
+        Map<URI, T> beforeUpdateResourcesByUri = this.fetchResources(service, runContext.tenantId(), renderedNamespace).stream().collect(Collectors.toMap(
+            resource -> this.toUri(renderedNamespace, resource),
+            Function.identity()
+        ));
+        Map<URI, URI> gitUriByResourceUri = new HashMap<>();
+        Map<URI, T> updatedResourcesByUri = gitContentByUri.entrySet().stream()
+            .map(throwFunction(e -> {
+                InputStream inputStream = e.getValue().get();
+                T resource;
+                if (this.dryRun) {
+                    resource = this.simulateResourceWrite(service, runContext.tenantId(), renderedNamespace, e.getKey(), inputStream);
+                } else {
+                    resource = this.writeResource(runContext.logger(), service, runContext.tenantId(), renderedNamespace, e.getKey(), inputStream);
+                }
+
+                return Pair.of(e.getKey(), resource);
+            }))
+            .collect(
+                HashMap::new,
+                (map, pair) -> {
+                    URI uri = pair.getLeft();
+                    T resource = pair.getRight();
+                    URI resourceUri = this.toUri(renderedNamespace, resource);
+                    map.put(resourceUri, resource);
+                    gitUriByResourceUri.put(resourceUri, uri);
+                },
+                HashMap::putAll
             );
+
+        List<T> deleted;
+        if (this.isDelete()) {
+            deleted = new ArrayList<>();
+            beforeUpdateResourcesByUri.entrySet().stream().filter(e -> !updatedResourcesByUri.containsKey(e.getKey())).forEach(throwConsumer(e -> {
+                if (this.mustKeep(runContext, e.getValue())) {
+                    return;
+                }
+
+                if (!this.dryRun) {
+                    this.deleteResource(service, runContext.tenantId(), renderedNamespace, e.getValue());
+                }
+
+                deleted.add(e.getValue());
+            }));
+        } else {
+            deleted = null;
         }
 
-        KestraIgnore kestraIgnore = new KestraIgnore(localGitDirectory);
-        if (!this.dryRun) {
-            this.writeResources(runContext.logger(), service, kestraIgnore, localGitDirectory, runContext.tenantId(), renderedNamespace, gitContentByUri);
-        }
-
-        Map<URI, T> instanceFilledResourcesByUri = instanceFilledResources.stream().collect(Collectors.toMap(resource -> this.toUri(gitUris, renderedNamespace, resource), Function.identity()));
-        URI diffFileStorageUri = this.createDiffFile(runContext, kestraIgnore, localGitDirectory, renderedNamespace, gitContentByUri, instanceFilledResourcesByUri, deletedResources);
+        URI diffFileStorageUri = this.createDiffFile(runContext, renderedNamespace, gitUriByResourceUri, beforeUpdateResourcesByUri, updatedResourcesByUri, deleted);
 
         git.close();
 
         return output(diffFileStorageUri);
     }
 
-    protected abstract List<T> instanceFilledResources(S service, String tenantId, String renderedNamespace) throws IOException;
+    protected abstract List<T> fetchResources(S service, String tenantId, String renderedNamespace) throws IOException;
 
-    protected abstract URI toUri(Set<URI> gitUris, String renderedNamespace, T resource);
+    protected abstract URI toUri(String renderedNamespace, T resource);
 
     protected abstract O output(URI diffFileStorageUri);
 
@@ -216,6 +232,8 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
     public enum SyncState {
         ADDED,
         DELETED,
-        OVERWRITTEN
+        OVERWRITTEN,
+        UPDATED,
+        UNCHANGED
     }
 }
