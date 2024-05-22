@@ -28,6 +28,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static io.kestra.core.utils.Rethrow.*;
+import static java.lang.Integer.MAX_VALUE;
 
 /**
  *
@@ -60,11 +61,8 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
     }
 
     protected Map<URI, Supplier<InputStream>> gitResourcesContentByUri(Path baseDirectory) throws IOException {
-        try (Stream<Path> paths = Files.walk(baseDirectory)) {
+        try (Stream<Path> paths = Files.walk(baseDirectory, this.traverseDirectories() ? MAX_VALUE : 1)) {
             Stream<Path> filtered = paths.skip(1);
-            if (!this.traverseDirectories()) {
-                filtered = filtered.filter(Files::isRegularFile);
-            }
             KestraIgnore kestraIgnore = new KestraIgnore(baseDirectory);
             filtered = filtered.filter(path -> !kestraIgnore.isIgnoredFile(path.toString(), true));
 

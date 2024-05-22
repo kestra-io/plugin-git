@@ -172,9 +172,9 @@ public class SyncFlowsTest {
             .branch(BRANCH)
             .build()
             .run(runContext);
-        assertFlows(runContext.tempDir().resolve(Path.of(GIT_DIRECTORY)).toFile(), selfFlowSource);
+        assertFlows(runContext.tempDir().resolve(Path.of(GIT_DIRECTORY)).toFile(), true, selfFlowSource);
 
-        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace.child", "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1))) {{
+        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true, new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace.child", "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1))) {{
             this.put("gitPath", null);
         }}));
     }
@@ -265,9 +265,9 @@ public class SyncFlowsTest {
             .branch(BRANCH)
             .build()
             .run(runContext);
-        assertFlows(runContext.tempDir().resolve(Path.of(GIT_DIRECTORY)).toFile(), selfFlowSource, nonVersionedFlowSource);
+        assertFlows(runContext.tempDir().resolve(Path.of(GIT_DIRECTORY)).toFile(), true, selfFlowSource, nonVersionedFlowSource);
 
-        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs());
+        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true));
     }
 
     @Test
@@ -355,7 +355,7 @@ public class SyncFlowsTest {
         SyncFlows.Output syncOutput = task.run(runContext);
 
         flows = flowRepositoryInterface.findAllForAllTenants();
-        assertThat(flows, hasSize(7));
+        assertThat(flows, hasSize(6));
 
         runContext = runContextFactory.of();
         Clone.builder()
@@ -365,9 +365,9 @@ public class SyncFlowsTest {
             .branch(BRANCH)
             .build()
             .run(runContext);
-        assertFlows(runContext.tempDir().resolve(Path.of(GIT_DIRECTORY)).toFile(), selfFlowSource, unversionedFlowSourceInChildNamespace);
+        assertFlows(runContext.tempDir().resolve(Path.of(GIT_DIRECTORY)).toFile(), false, selfFlowSource, unversionedFlowSourceInChildNamespace);
 
-        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace", "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1))) {{
+        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(false, new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace", "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1))) {{
             this.put("gitPath", null);
         }}));
     }
@@ -461,18 +461,21 @@ public class SyncFlowsTest {
 
         assertThat(afterUpdateSources, arrayContainingInAnyOrder(beforeUpdateSources));
 
-        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace.child", "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1))) {{
+        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true, new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace.child", "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1))) {{
             this.put("gitPath", null);
         }}));
     }
 
-    private List<Map<String, Object>> defaultCaseDiffs(Map<String, Object>... additionalDiffs) {
+    private List<Map<String, Object>> defaultCaseDiffs(boolean includeSubNamespaces, Map<String, Object>... additionalDiffs) {
         List<Map<String, Object>> diffs = new ArrayList<>(List.of(
             Map.of("gitPath", "to_clone/_flows/unchanged-flow.yaml", "syncState", "UNCHANGED", "flowId", "unchanged-flow", "namespace", NAMESPACE, "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, NAMESPACE, "unchanged-flow"), 1)),
             Map.of("gitPath", "to_clone/_flows/first-flow.yml", "syncState", "UPDATED", "flowId", "first-flow", "namespace", NAMESPACE, "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, NAMESPACE, "first-flow"), 0) + 1),
-            Map.of("gitPath", "to_clone/_flows/nested/namespace/nested_flow.yaml", "syncState", "ADDED", "flowId", "nested-flow", "namespace", "my.namespace.nested.namespace", "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, "my.namespace.nested.namespace", "nested-flow"), 0) + 1),
             Map.of("gitPath", "to_clone/_flows/second-flow.yml", "syncState", "ADDED", "flowId", "second-flow", "namespace", NAMESPACE, "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, NAMESPACE, "second-flow"), 0) + 1)
         ));
+
+        if (includeSubNamespaces) {
+            diffs.add(Map.of("gitPath", "to_clone/_flows/nested/namespace/nested_flow.yaml", "syncState", "ADDED", "flowId", "nested-flow", "namespace", "my.namespace.nested.namespace", "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, "my.namespace.nested.namespace", "nested-flow"), 0) + 1));
+        }
 
         diffs.addAll(Arrays.asList(additionalDiffs));
         return diffs;
@@ -502,9 +505,9 @@ public class SyncFlowsTest {
         assertThat(diffMaps, containsInAnyOrder(expectedDiffs.toArray(Map[]::new)));
     }
 
-    private void assertFlows(File flowsDir, String... additionalFlowSources) throws IOException {
+    private void assertFlows(File flowsDir, boolean includeSubNamespaces, String... additionalFlowSources) throws IOException {
         Path flowsPath = flowsDir.toPath();
-        try (Stream<Path> flows = Files.walk(flowsPath)) {
+        try (Stream<Path> flows = Files.walk(flowsPath, includeSubNamespaces ? Integer.MAX_VALUE : 1)) {
             String[] expectedFlowSources = Stream.concat(
                 flows
                     .filter(Files::isRegularFile)
