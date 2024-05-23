@@ -241,12 +241,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
 
         // perform all required additions/updates
         gitContentByFilePath.entrySet().stream()
-            .sorted((e1, e2) -> {
-                int depthComparator = StringUtils.countMatches(e1.getKey(), "/") - StringUtils.countMatches(e2.getKey(), "/");
-                return fullUriByRelativeNsFilesPath.containsKey(e1.getKey())
-                    ? fullUriByRelativeNsFilesPath.containsKey(e2.getKey()) ? depthComparator : 1
-                    : fullUriByRelativeNsFilesPath.containsKey(e2.getKey()) ? -1 : depthComparator;
-            })
+            .sorted(Comparator.comparing(e -> StringUtils.countMatches(e.getKey(), "/")))
             .forEach(throwConsumer(contentByFilePath -> {
                 String path = contentByFilePath.getKey();
                 if (fullUriByRelativeNsFilesPath.containsKey(path)) {

@@ -12,6 +12,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.eclipse.jgit.api.Git;
 import org.slf4j.Logger;
@@ -92,9 +93,9 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
 
     protected abstract T writeResource(Logger logger, S service, String tenantId, String renderedNamespace, URI uri, InputStream inputStream) throws IOException;
 
-    protected abstract SyncResult wrapper(String renderedGitDirectory, String renderedNamespace, URI resourceUri, T resourceBeforeUpdate, T resourceAfterUpdate) throws IOException;
+    protected abstract SyncResult wrapper(S service, String renderedGitDirectory, String renderedNamespace, URI resourceUri, T resourceBeforeUpdate, T resourceAfterUpdate) throws IOException;
 
-    private URI createDiffFile(RunContext runContext, String renderedNamespace, Map<URI, URI> gitUriByResourceUri, Map<URI, T> beforeUpdateResourcesByUri, Map<URI, T> afterUpdateResourcesByUri, List<T> deletedResources) throws IOException, IllegalVariableEvaluationException {
+    private URI createDiffFile(RunContext runContext, S service, String renderedNamespace, Map<URI, URI> gitUriByResourceUri, Map<URI, T> beforeUpdateResourcesByUri, Map<URI, T> afterUpdateResourcesByUri, List<T> deletedResources) throws IOException, IllegalVariableEvaluationException {
         File diffFile = runContext.tempFile(".ion").toFile();
 
         try (BufferedWriter diffWriter = new BufferedWriter(new FileWriter(diffFile))) {
@@ -104,16 +105,23 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
             if (deletedResources != null) {
                 deletedResources.stream()
                     .map(throwFunction(deletedResource -> wrapper(
+                        service,
                         renderedGitDirectory,
                         renderedNamespace,
-                        gitUriByResourceUri.get(this.toUri(renderedNamespace, deletedResource)),
+                        gitUriByResourceUri.get(this.toUri(service, renderedNamespace, deletedResource)),
                         deletedResource,
                         null
                     ))).forEach(syncResults::add);
             }
 
             afterUpdateResourcesByUri.entrySet().stream().flatMap(throwFunction(e -> {
-                SyncResult syncResult = wrapper(renderedGitDirectory, renderedNamespace, gitUriByResourceUri.get(e.getKey()), beforeUpdateResourcesByUri.get(e.getKey()), afterUpdateResourcesByUri.get(e.getKey()));
+                SyncResult syncResult = wrapper(
+                    service,
+                    renderedGitDirectory,
+                    renderedNamespace,
+                    gitUriByResourceUri.get(e.getKey()), beforeUpdateResourcesByUri.get(e.getKey()),
+                    afterUpdateResourcesByUri.get(e.getKey())
+                );
                 return syncResult == null ? Stream.empty() : Stream.of(syncResult);
             })).forEach(syncResults::add);
 
@@ -155,11 +163,12 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
         S service = runContext.getApplicationContext().getBean((Class<S>) ((ParameterizedType) getClass().getGenericSuperclass()).getActualTypeArguments()[0]);
 
         Map<URI, T> beforeUpdateResourcesByUri = this.fetchResources(service, runContext.tenantId(), renderedNamespace).stream().collect(Collectors.toMap(
-            resource -> this.toUri(renderedNamespace, resource),
+            resource -> this.toUri(service, renderedNamespace, resource),
             Function.identity()
         ));
         Map<URI, URI> gitUriByResourceUri = new HashMap<>();
         Map<URI, T> updatedResourcesByUri = gitContentByUri.entrySet().stream()
+            .sorted(Comparator.comparing(e -> StringUtils.countMatches(e.getKey().getPath(), "/")))
             .map(throwFunction(e -> {
                 InputStream inputStream = e.getValue().get();
                 T resource;
@@ -176,7 +185,7 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
                 (map, pair) -> {
                     URI uri = pair.getLeft();
                     T resource = pair.getRight();
-                    URI resourceUri = this.toUri(renderedNamespace, resource);
+                    URI resourceUri = this.toUri(service, renderedNamespace, resource);
                     map.put(resourceUri, resource);
                     gitUriByResourceUri.put(resourceUri, uri);
                 },
@@ -201,7 +210,7 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
             deleted = null;
         }
 
-        URI diffFileStorageUri = this.createDiffFile(runContext, renderedNamespace, gitUriByResourceUri, beforeUpdateResourcesByUri, updatedResourcesByUri, deleted);
+        URI diffFileStorageUri = this.createDiffFile(runContext, service, renderedNamespace, gitUriByResourceUri, beforeUpdateResourcesByUri, updatedResourcesByUri, deleted);
 
         git.close();
 
@@ -210,7 +219,7 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
 
     protected abstract List<T> fetchResources(S service, String tenantId, String renderedNamespace) throws IOException;
 
-    protected abstract URI toUri(String renderedNamespace, T resource);
+    protected abstract URI toUri(S service, String renderedNamespace, T resource);
 
     protected abstract O output(URI diffFileStorageUri);
 

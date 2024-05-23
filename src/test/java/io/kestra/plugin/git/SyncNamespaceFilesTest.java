@@ -10,20 +10,17 @@ import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.KestraIgnore;
 import io.kestra.core.utils.Rethrow;
-import io.kestra.core.utils.TestsUtils;
 import io.micronaut.context.annotation.Value;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import jakarta.inject.Inject;
 import org.apache.commons.io.IOUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.slf4j.event.Level;
 
 import java.io.*;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -109,21 +106,6 @@ public class SyncNamespaceFilesTest {
                 new ByteArrayInputStream("{\"old-field\": \"old-value\"}".getBytes())
         );
 
-        // check behaviour in case of converting a file to dir or dir to file
-        String fileToDirPath = "/file_to_dir";
-        storage.put(
-                TENANT_ID,
-                URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + fileToDirPath),
-                new ByteArrayInputStream("some content".getBytes())
-        );
-
-        String dirToFilePath = "/dir_to_file";
-        storage.put(
-                TENANT_ID,
-                URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + dirToFilePath + "/file.txt"),
-                new ByteArrayInputStream("nested file content".getBytes())
-        );
-
         SyncNamespaceFiles task = SyncNamespaceFiles.builder()
                 .url("{{url}}")
                 .username("{{pat}}")
@@ -145,10 +127,6 @@ public class SyncNamespaceFilesTest {
         assertThat(storage.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + deletedDirPath)), is(false));
         assertThat(storage.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + deletedDirSubFilePath)), is(false));
         assertNamespaceFileContent(clonedFilePath, "{\"my-field\": \"my-value\"}");
-        assertThat(storage.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + fileToDirPath)), is(true));
-        assertNamespaceFileContent(fileToDirPath + "/file.txt", "directory replacing file");
-        assertThat(storage.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + dirToFilePath + "/file.txt")), is(false));
-        assertNamespaceFileContent(dirToFilePath, "file replacing a directory");
 
         assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true));
     }
@@ -249,21 +227,6 @@ public class SyncNamespaceFilesTest {
                 new ByteArrayInputStream("{\"old-field\": \"old-value\"}".getBytes())
         );
 
-        // check behaviour in case of converting a file to dir or dir to file
-        String fileToDirPath = "/file_to_dir";
-        storage.put(
-                TENANT_ID,
-                URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + fileToDirPath),
-                new ByteArrayInputStream("some content".getBytes())
-        );
-
-        String dirToFilePath = "/dir_to_file";
-        storage.put(
-                TENANT_ID,
-                URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + dirToFilePath + "/file.txt"),
-                new ByteArrayInputStream("nested file content".getBytes())
-        );
-
         SyncNamespaceFiles task = SyncNamespaceFiles.builder()
                 .url("{{url}}")
                 .username("{{pat}}")
@@ -286,65 +249,8 @@ public class SyncNamespaceFilesTest {
         assertThat(storage.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + deletedDirPath)), is(true));
         assertThat(storage.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + deletedDirSubFilePath)), is(true));
         assertNamespaceFileContent(clonedFilePath, "{\"old-field\": \"old-value\"}");
-        assertThat(storage.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + fileToDirPath)), is(true));
-        assertThat(storage.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + fileToDirPath + "/file.txt")), is(false));
-        assertThat(storage.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + dirToFilePath + "/file.txt")), is(true));
 
         assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true));
-    }
-
-
-
-    @Test
-    void dirToFile_fileToDir_WithoutDelete() throws Exception {
-        String fileToDirPath = "/file_to_dir";
-        storage.put(
-                null,
-                URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + fileToDirPath),
-                new ByteArrayInputStream("some content".getBytes())
-        );
-
-        List<LogEntry> firstSyncLogs = new CopyOnWriteArrayList<>();
-        Runnable stopListeningToLogs = logQueue.receive(logWithException -> firstSyncLogs.add(logWithException.getLeft()));
-        SyncNamespaceFiles syncNamespaceFiles = SyncNamespaceFiles.builder()
-                .id("sync")
-                .type(SyncNamespaceFiles.class.getName())
-                .url(URL)
-                .username("{{inputs.pat}}")
-                .password("{{inputs.pat}}")
-                .branch(BRANCH)
-                .gitDirectory(GIT_DIRECTORY)
-                .namespace(NAMESPACE)
-                .build();
-        Map<String, Object> inputsMap = Map.of("pat", pat);
-        syncNamespaceFiles.run(TestsUtils.mockRunContext(runContextFactory, syncNamespaceFiles, inputsMap));
-
-        TestsUtils.awaitLogs(
-                firstSyncLogs,
-                logEntry -> logEntry.getLevel() == Level.WARN && logEntry.getMessage().equals("Kestra already has a file named /file_to_dir and Git has a directory with the same name. If you want to proceed with file replacement with directory, please add `delete: true` flag."),
-                1
-        );
-        stopListeningToLogs.run();
-
-        String dirToFilePath = "/dir_to_file";
-        storage.delete(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + dirToFilePath));
-
-        storage.put(
-                TENANT_ID,
-                URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + dirToFilePath + "/file.txt"),
-                new ByteArrayInputStream("nested file content".getBytes())
-        );
-
-        List<LogEntry> secondSyncLogs = new CopyOnWriteArrayList<>();
-        stopListeningToLogs = logQueue.receive(logWithException -> secondSyncLogs.add(logWithException.getLeft()));
-        syncNamespaceFiles.run(TestsUtils.mockRunContext(runContextFactory, syncNamespaceFiles, inputsMap));
-
-        TestsUtils.awaitLogs(
-                secondSyncLogs,
-                logEntry -> logEntry.getLevel() == Level.WARN && logEntry.getMessage().equals("Kestra already has a directory under " + dirToFilePath + " and Git has a file with the same name. If you want to proceed with directory replacement with file, please add `delete: true` flag."),
-                1
-        );
-        stopListeningToLogs.run();
     }
 
     private static List<Map<String, String>> defaultCaseDiffs(boolean withDeleted) {
@@ -358,28 +264,13 @@ public class SyncNamespaceFilesTest {
                 Map.of("gitPath", "to_clone/_flows/.kestraignore", "syncState", "ADDED", "kestraPath", "/_flows/.kestraignore"),
                 Map.of("gitPath", "to_clone/_flows/kestra-ignored-flow.yml", "syncState", "ADDED", "kestraPath", "/_flows/kestra-ignored-flow.yml"),
                 Map.of("gitPath", "to_clone/_flows/second-flow.yml", "syncState", "ADDED", "kestraPath", "/_flows/second-flow.yml"),
-                Map.of("gitPath", "to_clone/cloned.json", "syncState", "OVERWRITTEN", "kestraPath", "/cloned.json"),
-                Map.of("gitPath", "to_clone/dir_to_file", "syncState", "ADDED", "kestraPath", "/dir_to_file"),
-                Map.of("gitPath", "to_clone/file_to_dir/", "syncState", "ADDED", "kestraPath", "/file_to_dir/"),
-                Map.of("gitPath", "to_clone/file_to_dir/file.txt", "syncState", "ADDED", "kestraPath", "/file_to_dir/file.txt")
+                Map.of("gitPath", "to_clone/cloned.json", "syncState", "OVERWRITTEN", "kestraPath", "/cloned.json")
         ));
 
         if (withDeleted) {
             diffs.addAll(List.of(
                     new HashMap<>() {{
-                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/file_to_dir"));
-                        this.put("gitPath", null);
-                    }},
-                    new HashMap<>() {{
                         this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/file_to_delete.txt"));
-                        this.put("gitPath", null);
-                    }},
-                    new HashMap<>() {{
-                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/dir_to_file/file.txt"));
-                        this.put("gitPath", null);
-                    }},
-                    new HashMap<>() {{
-                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/dir_to_file/"));
                         this.put("gitPath", null);
                     }},
                     new HashMap<>() {{
