@@ -183,7 +183,7 @@ public class SyncFlows extends AbstractSyncTask<FlowService, Flow, SyncFlows.Out
     }
 
     @Override
-    protected SyncResult wrapper(String renderedGitDirectory, String renderedNamespace, URI resourceUri, Flow flowBeforeUpdate, Flow flowAfterUpdate) {
+    protected SyncResult wrapper(FlowService flowService, String renderedGitDirectory, String renderedNamespace, URI resourceUri, Flow flowBeforeUpdate, Flow flowAfterUpdate) {
         if (resourceUri != null && resourceUri.toString().endsWith("/")) {
             return null;
         }
@@ -223,7 +223,7 @@ public class SyncFlows extends AbstractSyncTask<FlowService, Flow, SyncFlows.Out
     }
 
     @Override
-    protected URI toUri(String renderedNamespace, Flow resource) {
+    protected URI toUri(FlowService flowService, String renderedNamespace, Flow resource) {
         if (resource == null) {
             return null;
         }

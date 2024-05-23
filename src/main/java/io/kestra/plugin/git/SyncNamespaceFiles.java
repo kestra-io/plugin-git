@@ -9,7 +9,6 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.slf4j.Logger;
 
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -108,26 +107,12 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFilesService, 
         if (inputStream == null) {
             return namespaceFilesService.createDirectory(tenantId, renderedNamespace, uri);
         } else {
-            try {
-                return namespaceFilesService.createFile(tenantId, renderedNamespace, uri, inputStream);
-            } catch (FileNotFoundException e) {
-                if (!this.isDelete()) {
-                    if (e.getMessage().contains("Is directory")) {
-                        logger.warn("Kestra already has a directory under {} and Git has a file with the same name. If you want to proceed with directory replacement with file, please add `delete: true` flag.", uri);
-                    } else if (e.getMessage().contains("Not a directory")) {
-                        String path = uri.getPath();
-                        logger.warn("Kestra already has a file named {} and Git has a directory with the same name. If you want to proceed with file replacement with directory, please add `delete: true` flag.", path.substring(0, path.lastIndexOf("/")));
-                    }
-                    return null;
-                }
-
-                throw e;
-            }
+            return namespaceFilesService.createFile(tenantId, renderedNamespace, uri, inputStream);
         }
     }
 
     @Override
-    protected SyncResult wrapper(String renderedGitDirectory, String renderedNamespace, URI resourceUri, URI resourceBeforeUpdate, URI resourceAfterUpdate) {
+    protected SyncResult wrapper(NamespaceFilesService namespaceFilesService, String renderedGitDirectory, String renderedNamespace, URI resourceUri, URI resourceBeforeUpdate, URI resourceAfterUpdate) {
         SyncState syncState;
         if (resourceUri == null) {
             syncState = SyncState.DELETED;
@@ -138,9 +123,14 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFilesService, 
             syncState = SyncState.OVERWRITTEN;
         }
 
+        String kestraPath = Optional.ofNullable(this.toUri(
+            namespaceFilesService,
+            renderedNamespace,
+            resourceAfterUpdate == null ? resourceBeforeUpdate : resourceAfterUpdate
+        )).map(URI::getPath).orElse(null);
         SyncResult.SyncResultBuilder<?, ?> builder = SyncResult.builder()
             .syncState(syncState)
-            .kestraPath(Optional.ofNullable(resourceUri).map(Object::toString).orElse(null));
+            .kestraPath(kestraPath);
 
         if (syncState != SyncState.DELETED) {
             builder.gitPath(renderedGitDirectory + resourceUri);
@@ -155,7 +145,15 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFilesService, 
     }
 
     @Override
-    protected URI toUri(String renderedNamespace, URI resource) {
+    protected URI toUri(NamespaceFilesService namespaceFilesService, String renderedNamespace, URI resource) {
+        if (resource == null) {
+            return null;
+        }
+
+        URI rootNamespaceFilesUri = namespaceFilesService.uri(renderedNamespace, null);
+        if (resource.getPath().startsWith(rootNamespaceFilesUri.getPath())) {
+            return URI.create("/" + URI.create(rootNamespaceFilesUri.getPath()).relativize(URI.create(resource.getPath())));
+        }
         return resource;
     }
 
