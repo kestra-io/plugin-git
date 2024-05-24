@@ -92,7 +92,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
                 "",
                 "tasks:",
                 "  - id: wdir",
-                "    type: io.kestra.core.tasks.flows.WorkingDirectory",
+                "    type: io.kestra.plugin.core.flow.WorkingDirectory",
                 "    tasks:",
                 "      - id: clone",
                 "        type: io.kestra.plugin.git.Clone",
