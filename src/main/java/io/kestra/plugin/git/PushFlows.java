@@ -50,7 +50,7 @@ import static io.kestra.core.utils.Rethrow.*;
                         type: io.kestra.plugin.git.PushFlows
                         sourceNamespace: dev # the namespace from which flows are pushed
                         targetNamespace: prod # the target production namespace; if different than sourceNamespace, the sourceNamespace in the source code will be overwritten by the targetNamespace
-                        flows: "*"  # optional list of Regex strings; by default, all flows are pushed
+                        flows: ".*"  # optional list of Regex strings; by default, all flows are pushed
                         includeChildNamespaces: true # optional boolean, false by default
                         gitDirectory: _flows
                         url: https://github.com/kestra-io/scripts # required string
