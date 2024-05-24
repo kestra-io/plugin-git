@@ -81,7 +81,7 @@ import static io.kestra.core.utils.Rethrow.*;
                     \s
                     tasks:
                       - id: if
-                        type: io.kestra.core.tasks.flows.If
+                        type: io.kestra.plugin.core.flow.If
                         condition: "{{ inputs.push == true}}"
                         then:
                           - id: commit_and_push
