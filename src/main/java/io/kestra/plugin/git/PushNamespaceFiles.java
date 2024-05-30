@@ -60,31 +60,6 @@ import static io.kestra.core.utils.Rethrow.*;
                         type: io.kestra.plugin.core.trigger.Schedule
                         cron: "*/15 * * * *\""""
             }
-        ),
-        @Example(
-            title = "Manually push a single file specified in the input to Git.",
-            full = true,
-            code = {
-                """
-                    id: myflow
-                    namespace: system
-                    \s
-                    inputs:
-                      - id: file_to_commit
-                        type: STRING
-                    \s
-                    tasks:
-                      - id: commit_and_push
-                        type: io.kestra.plugin.git.PushNamespaceFiles
-                        namespace: dev
-                        files:
-                          - "{{ inputs.file_to_commit }}"
-                        url: https://github.com/kestra-io/scripts
-                        username: git_username
-                        password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
-                        branch: kestra
-                        commitMessage: "add {{ inputs.file_to_commit }}\""""
-            }
         )
     }
 )
