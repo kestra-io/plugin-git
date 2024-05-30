@@ -11,7 +11,9 @@ import lombok.experimental.SuperBuilder;
 
 import java.io.InputStream;
 import java.net.URI;
+import java.nio.file.FileSystems;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -45,8 +47,7 @@ import static io.kestra.core.utils.Rethrow.*;
                       - id: commit_and_push
                         type: io.kestra.plugin.git.PushNamespaceFiles
                         namespace: dev
-                        files:
-                          - "*"  # optional list of Regex strings; by default, all files are pushed
+                        files: "*"  # optional list of glob patterns; by default, all files are pushed
                         gitDirectory: _files # optional path in Git where Namespace Files should be pushed
                         url: https://github.com/kestra-io/scripts # required string
                         username: git_username # required string needed for Auth with Git
@@ -101,9 +102,9 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         description = """
             By default, Kestra will push all Namespace Files from the specified namespace.
             If you want to push only a specific file or directory e.g. myfile.py, you can set it explicitly using files: myfile.py.
-            Given that this is a Regex string (or a list of Regex strings), you can include as many files as you wish, provided that the user is authorized to access that namespace.
-            Note that each regex try to match the file name OR the relative path starting from `gitDirectory`""",
-        defaultValue = ".*"
+            Given that this is a glob pattern string (or a list of glob patterns), you can include as many files as you wish, provided that the user is authorized to access that namespace.
+            Note that each glob pattern try to match the file name OR the relative path starting from `gitDirectory`""",
+        defaultValue = "**"
 
     )
     @PluginProperty(dynamic = true)
@@ -119,7 +120,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     }
 
     @Override
-    public Object regexes() {
+    public Object globs() {
         return this.files;
     }
 
@@ -129,24 +130,26 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     }
 
     @Override
-    protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path baseDirectory, List<String> regexes) throws Exception {
+    protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path baseDirectory, List<String> globs) throws Exception {
         NamespaceFilesService namespaceFilesService = runContext.getApplicationContext().getBean(NamespaceFilesService.class);
 
         String tenantId = runContext.tenantId();
         String renderedNamespace = runContext.render(this.namespace);
-        Stream<URI> pathsStream = namespaceFilesService.recursiveList(
+        Stream<URI> uriStream = namespaceFilesService.recursiveList(
             tenantId,
             renderedNamespace,
             null
         ).stream();
-        if (regexes != null) {
-            pathsStream = pathsStream.filter(path ->
-                regexes.stream().anyMatch(path.getPath()::matches)
-                    || regexes.stream().anyMatch(Path.of(path.getPath()).getFileName().toString()::matches)
-            );
+        if (globs != null) {
+            List<PathMatcher> matchers = globs.stream().map(glob -> FileSystems.getDefault().getPathMatcher("glob:" + glob)).toList();
+            uriStream = uriStream.filter(uri ->
+            {
+                Path path = Path.of(uri.getPath());
+                return matchers.stream().anyMatch(matcher -> matcher.matches(path) || matcher.matches(path.getFileName()));
+            });
         }
 
-        return pathsStream.map(uri -> {
+        return uriStream.map(uri -> {
             String path = uri.toString();
             return path.startsWith("/") ? path.substring(1) : path;
         }).collect(Collectors.toMap(

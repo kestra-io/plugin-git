@@ -31,8 +31,10 @@ import org.slf4j.Logger;
 
 import java.io.*;
 import java.net.URI;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -73,7 +75,7 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
 
     public abstract String getGitDirectory();
 
-    public abstract Object regexes();
+    public abstract Object globs();
 
     public abstract String fetchedNamespace();
 
@@ -83,12 +85,12 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         return flowDirectory;
     }
 
-    protected abstract Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path baseDirectory, List<String> regexes) throws Exception;
+    protected abstract Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path baseDirectory, List<String> globs) throws Exception;
 
     /**
      * Removes any file from the remote that is no longer present on the instance
      */
-    private void deleteOutdatedResources(Git git, Path basePath, Map<Path, Supplier<InputStream>> contentByPath, List<String> regexes) throws IOException, GitAPIException {
+    private void deleteOutdatedResources(Git git, Path basePath, Map<Path, Supplier<InputStream>> contentByPath, List<String> globs) throws IOException, GitAPIException {
         try (Stream<Path> paths = Files.walk(basePath)) {
             Stream<Path> filteredPathsStream = paths.filter(path ->
                 !contentByPath.containsKey(path) &&
@@ -96,10 +98,11 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
                     !path.equals(basePath)
             );
 
-            if (regexes != null) {
-                filteredPathsStream = filteredPathsStream.filter(path -> regexes.stream().anyMatch(regex ->
-                    path.getFileName().toString().matches(regex)
-                        || path.toString().matches(regex)
+            if (globs != null) {
+                List<PathMatcher> matchers = globs.stream().map(glob -> FileSystems.getDefault().getPathMatcher("glob:" + glob)).toList();
+                filteredPathsStream = filteredPathsStream.filter(path -> matchers.stream().anyMatch(matcher ->
+                    matcher.matches(path) ||
+                        matcher.matches(path.getFileName())
                 ));
             }
 
@@ -277,13 +280,13 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
 
         Path localGitDirectory = this.createGitDirectory(runContext);
 
-        List<String> regexes = Optional.ofNullable(this.regexes())
-            .map(regexObject -> regexObject instanceof List<?> ? (List<String>) regexObject : Collections.singletonList((String) regexObject))
+        List<String> globs = Optional.ofNullable(this.globs())
+            .map(globObject -> globObject instanceof List<?> ? (List<String>) globObject : Collections.singletonList((String) globObject))
             .map(throwFunction(runContext::render))
             .orElse(null);
-        Map<Path, Supplier<InputStream>> contentByPath = this.instanceResourcesContentByPath(runContext, localGitDirectory, regexes);
+        Map<Path, Supplier<InputStream>> contentByPath = this.instanceResourcesContentByPath(runContext, localGitDirectory, globs);
 
-        this.deleteOutdatedResources(git, localGitDirectory, contentByPath, regexes);
+        this.deleteOutdatedResources(git, localGitDirectory, contentByPath, globs);
 
         this.writeResourceFiles(contentByPath);
 

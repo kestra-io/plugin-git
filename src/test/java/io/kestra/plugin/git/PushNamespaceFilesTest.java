@@ -95,7 +95,7 @@ public class PushNamespaceFilesTest {
             .authorEmail("{{email}}")
             .authorName("{{name}}")
             .namespace("{{namespace}}")
-            .files("second.*")
+            .files("second*")
             .gitDirectory("{{gitDirectory}}")
             .build();
 
@@ -170,7 +170,7 @@ public class PushNamespaceFilesTest {
             .authorEmail("{{email}}")
             .authorName("{{name}}")
             .namespace("{{namespace}}")
-            .files("second.*")
+            .files("second*")
             .gitDirectory("{{gitDirectory}}")
             .dryRun(true)
             .build();
@@ -267,7 +267,7 @@ public class PushNamespaceFilesTest {
 
             storage.delete(tenantId, toDeleteURI);
             pushOutput = pushNamespaceFiles.toBuilder()
-                .files("second.*")
+                .files("second*")
                 .build().run(runContext(tenantId, url, authorEmail, authorName, branch, namespace, gitDirectory));
 
             cloneOutput = clone.run(runContextFactory.of());
@@ -407,7 +407,7 @@ public class PushNamespaceFilesTest {
             .authorEmail("{{email}}")
             .authorName("{{name}}")
             .namespace("{{namespace}}")
-            .files(List.of("first.*", "second.*"))
+            .files(List.of("first*", "second*"))
             .gitDirectory("{{gitDirectory}}")
             .build();
 

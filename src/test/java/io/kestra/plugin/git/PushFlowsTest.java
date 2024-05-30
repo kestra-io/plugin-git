@@ -99,7 +99,7 @@ public class PushFlowsTest {
             .authorName("{{name}}")
             .sourceNamespace("{{sourceNamespace}}")
             .targetNamespace("{{targetNamespace}}")
-            .flows("second.*")
+            .flows("second*")
             .includeChildNamespaces(true)
             .gitDirectory("{{gitDirectory}}")
             .build();
@@ -175,7 +175,7 @@ public class PushFlowsTest {
             .authorName("{{name}}")
             .sourceNamespace("{{sourceNamespace}}")
             .targetNamespace("{{targetNamespace}}")
-            .flows("second.*")
+            .flows("second*")
             .includeChildNamespaces(true)
             .gitDirectory("{{gitDirectory}}")
             .dryRun(true)
@@ -271,7 +271,7 @@ public class PushFlowsTest {
 
             flowRepositoryInterface.delete(deletedFlowOnSecondPush);
             pushOutput = pushFlows.toBuilder()
-                .flows("second.*")
+                .flows("second*")
                 .build().run(runContext(tenantId, url, authorEmail, authorName, branch, sourceNamespace, targetNamespace, gitDirectory));
 
             cloneOutput = clone.run(runContextFactory.of());
@@ -409,7 +409,7 @@ public class PushFlowsTest {
             .authorName("{{name}}")
             .sourceNamespace("{{sourceNamespace}}")
             .targetNamespace("{{targetNamespace}}")
-            .flows(List.of("first.*", "second.*"))
+            .flows(List.of("first*", "second*"))
             .includeChildNamespaces(true)
             .gitDirectory("{{gitDirectory}}")
             .build();

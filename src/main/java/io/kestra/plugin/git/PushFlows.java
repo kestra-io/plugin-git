@@ -15,7 +15,9 @@ import lombok.experimental.SuperBuilder;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.net.URI;
+import java.nio.file.FileSystems;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -50,7 +52,7 @@ import static io.kestra.core.utils.Rethrow.*;
                         type: io.kestra.plugin.git.PushFlows
                         sourceNamespace: dev # the namespace from which flows are pushed
                         targetNamespace: prod # the target production namespace; if different than sourceNamespace, the sourceNamespace in the source code will be overwritten by the targetNamespace
-                        flows: ".*"  # optional list of Regex strings; by default, all flows are pushed
+                        flows: "*"  # optional list of glob patterns; by default, all flows are pushed
                         includeChildNamespaces: true # optional boolean, false by default
                         gitDirectory: _flows
                         url: https://github.com/kestra-io/scripts # required string
@@ -134,14 +136,14 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     private String targetNamespace;
 
     @Schema(
-        title = "A list of Regex strings that declare which flows should be included in the Git commit.",
+        title = "List of glob patterns or a single one that declare which flows should be included in the Git commit.",
         description = """
             By default, all flows from the specified sourceNamespace will be pushed (and optionally adjusted to match the targetNamespace before pushing to Git).
             If you want to push only the current flow, you can use the "{{flow.id}}" expression or specify the flow ID explicitly, e.g. myflow.
-            Given that this is a list of Regex strings, you can include as many flows as you wish, provided that the user is authorized to access that namespace.
-            Note that each regex try to match the file name OR the relative path starting from `gitDirectory`""",
+            Given that this is a list of glob patterns, you can include as many flows as you wish, provided that the user is authorized to access that namespace.
+            Note that each glob pattern try to match the file name OR the relative path starting from `gitDirectory`""",
         oneOf = {String.class, String[].class},
-        defaultValue = ".*"
+        defaultValue = "**"
     )
     @PluginProperty(dynamic = true)
     private Object flows;
@@ -174,7 +176,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     }
 
     @Override
-    public Object regexes() {
+    public Object globs() {
         return this.flows;
     }
 
@@ -183,7 +185,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         return this.sourceNamespace;
     }
 
-    protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path flowDirectory, List<String> regexes) throws IllegalVariableEvaluationException {
+    protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path flowDirectory, List<String> globs) throws IllegalVariableEvaluationException {
         FlowRepositoryInterface flowRepository = runContext.getApplicationContext().getBean(FlowRepositoryInterface.class);
 
         Map<String, String> flowProps = Optional.ofNullable((Map<String, String>) runContext.getVariables().get("flow")).orElse(Collections.emptyMap());
@@ -197,10 +199,11 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         }
 
         Stream<FlowWithSource> filteredFlowsToPush = flowsToPush.stream();
-        if (regexes != null) {
+        if (globs != null) {
+            List<PathMatcher> matchers = globs.stream().map(glob -> FileSystems.getDefault().getPathMatcher("glob:" + glob)).toList();
             filteredFlowsToPush = filteredFlowsToPush.filter(flowWithSource -> {
                 String flowId = flowWithSource.getId();
-                return regexes.stream().anyMatch(flowId::matches);
+                return matchers.stream().anyMatch(matcher -> matcher.matches(Path.of(flowId)));
             });
         }
 
