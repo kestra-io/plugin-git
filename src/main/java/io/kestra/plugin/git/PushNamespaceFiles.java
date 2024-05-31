@@ -5,6 +5,7 @@ import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.runners.NamespaceFilesService;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.utils.PathUtil;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -141,11 +142,11 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
             null
         ).stream();
         if (globs != null) {
-            List<PathMatcher> matchers = globs.stream().map(glob -> FileSystems.getDefault().getPathMatcher("glob:" + glob)).toList();
+            List<PathMatcher> matchers = globs.stream().map(glob -> FileSystems.getDefault().getPathMatcher("glob:" + PathUtil.checkLeadingSlash(glob))).toList();
             uriStream = uriStream.filter(uri ->
             {
                 Path path = Path.of(uri.getPath());
-                return matchers.stream().anyMatch(matcher -> matcher.matches(path) || matcher.matches(path.getFileName()));
+                return matchers.stream().anyMatch(matcher -> matcher.matches(path) || matcher.matches(Path.of(PathUtil.checkLeadingSlash(path.getFileName().toString()))));
             });
         }
 

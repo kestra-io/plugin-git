@@ -95,7 +95,7 @@ public class PushNamespaceFilesTest {
             .authorEmail("{{email}}")
             .authorName("{{name}}")
             .namespace("{{namespace}}")
-            .files("second*")
+            .files("nested/*")
             .gitDirectory("{{gitDirectory}}")
             .build();
 
