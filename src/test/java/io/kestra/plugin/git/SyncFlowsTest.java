@@ -513,7 +513,7 @@ public class SyncFlowsTest {
                     .filter(Files::isRegularFile)
                     .filter(path -> {
                         String fileName = path.getFileName().toString();
-                        return !fileName.equals("kestra-ignored-flow.yml") && !fileName.equals(".kestraignore");
+                        return !fileName.equals("kestra-ignored-flow.yml") && !fileName.equals(".kestraignore") && !path.toString().contains(".git");
                     })
                     .map(throwFunction(path -> {
                         String rawSource = Files.readString(path);
