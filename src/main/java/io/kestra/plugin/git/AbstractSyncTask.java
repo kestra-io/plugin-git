@@ -66,6 +66,7 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
             Stream<Path> filtered = paths.skip(1);
             KestraIgnore kestraIgnore = new KestraIgnore(baseDirectory);
             filtered = filtered.filter(path -> !kestraIgnore.isIgnoredFile(path.toString(), true));
+            filtered = filtered.filter(path -> !path.toString().contains(".git"));
 
             return filtered.collect(Collectors.toMap(
                 gitPath -> URI.create("/" + baseDirectory.relativize(gitPath) + (gitPath.toFile().isDirectory() ? "/" : "")),
