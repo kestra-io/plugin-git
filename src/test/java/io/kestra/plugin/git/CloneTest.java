@@ -3,7 +3,7 @@ package io.kestra.plugin.git;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.micronaut.context.annotation.Value;
-import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import io.kestra.core.junit.annotations.KestraTest;
 import jakarta.inject.Inject;
 import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.Test;
@@ -15,7 +15,7 @@ import java.util.Collection;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
-@MicronautTest
+@KestraTest
 class CloneTest {
     @Inject
     private RunContextFactory runContextFactory;

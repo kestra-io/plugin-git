@@ -11,7 +11,7 @@ import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.IdUtils;
 import io.micronaut.context.annotation.Value;
-import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import io.kestra.core.junit.annotations.KestraTest;
 import jakarta.inject.Inject;
 import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.Git;
@@ -36,7 +36,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
-@MicronautTest
+@KestraTest
 class PushTest {
     public static final String BRANCH = "ci";
     public static final String INPUT_FILE_NAME = "input_file.txt";
