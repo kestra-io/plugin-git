@@ -3,6 +3,7 @@ package io.kestra.plugin.git;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.RunnableTask;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.utils.KestraIgnore;
@@ -161,7 +162,7 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
         String renderedNamespace = runContext.render(this.fetchedNamespace());
 
         @SuppressWarnings("unchecked")
-        S service = runContext.getApplicationContext().getBean((Class<S>) ((ParameterizedType) getClass().getGenericSuperclass()).getActualTypeArguments()[0]);
+        S service = ((DefaultRunContext)runContext).getApplicationContext().getBean((Class<S>) ((ParameterizedType) getClass().getGenericSuperclass()).getActualTypeArguments()[0]);
 
         Map<URI, T> beforeUpdateResourcesByUri = this.fetchResources(service, runContext.tenantId(), renderedNamespace).stream().collect(Collectors.toMap(
             resource -> this.toUri(service, renderedNamespace, resource),

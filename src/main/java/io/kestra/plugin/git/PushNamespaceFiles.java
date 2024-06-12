@@ -3,6 +3,7 @@ package io.kestra.plugin.git;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.NamespaceFilesService;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.PathUtil;
@@ -132,7 +133,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
 
     @Override
     protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path baseDirectory, List<String> globs) throws Exception {
-        NamespaceFilesService namespaceFilesService = runContext.getApplicationContext().getBean(NamespaceFilesService.class);
+        NamespaceFilesService namespaceFilesService = ((DefaultRunContext)runContext).getApplicationContext().getBean(NamespaceFilesService.class);
 
         String tenantId = runContext.tenantId();
         String renderedNamespace = runContext.render(this.namespace);

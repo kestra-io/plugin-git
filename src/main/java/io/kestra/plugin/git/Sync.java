@@ -7,6 +7,7 @@ import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.models.tasks.VoidOutput;
 import io.kestra.core.repositories.FlowRepositoryInterface;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.services.FlowService;
 import io.kestra.core.storages.StorageContext;
@@ -132,8 +133,8 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
         // synchronize flows directory to namespace flows
         File flowsDirectory = flowsDirectoryBasePath.toFile();
         if (flowsDirectory.exists()) {
-            FlowRepositoryInterface flowRepository = runContext.getApplicationContext().getBean(FlowRepositoryInterface.class);
-            FlowService flowService = runContext.getApplicationContext().getBean(FlowService.class);
+            FlowRepositoryInterface flowRepository = ((DefaultRunContext)runContext).getApplicationContext().getBean(FlowRepositoryInterface.class);
+            FlowService flowService = ((DefaultRunContext)runContext).getApplicationContext().getBean(FlowService.class);
 
             Set<String> flowIdsImported = Arrays.stream(flowsDirectory.listFiles())
                 .map(File::toPath)
@@ -211,7 +212,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
                 }), HashMap::putAll);
         }
 
-        StorageInterface storage = runContext.getApplicationContext().getBean(StorageInterface.class);
+        StorageInterface storage = ((DefaultRunContext)runContext).getApplicationContext().getBean(StorageInterface.class);
         URI namespaceFilePrefix = URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/");
         if (this.namespaceFilesDirectory != null) {
             String renderedNamespaceFilesDirectory = runContext.render(this.namespaceFilesDirectory);
