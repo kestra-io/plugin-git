@@ -1,6 +1,7 @@
 package io.kestra.plugin.git.services;
 
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.services.FlowService;
 import io.kestra.plugin.git.AbstractGitTask;
@@ -81,7 +82,7 @@ public class GitService {
     }
 
     public void namespaceAccessGuard(RunContext runContext, String namespaceToAccess) throws IllegalVariableEvaluationException {
-        FlowService flowService = runContext.getApplicationContext().getBean(FlowService.class);
+        FlowService flowService = ((DefaultRunContext)runContext).getApplicationContext().getBean(FlowService.class);
         RunContext.FlowInfo flowInfo = runContext.flowInfo();
         flowService.checkAllowedNamespace(
             runContext.tenantId(),

@@ -10,6 +10,7 @@ import io.kestra.core.models.tasks.NamespaceFiles;
 import io.kestra.core.models.tasks.NamespaceFilesInterface;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.repositories.FlowRepositoryInterface;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.FilesService;
 import io.kestra.core.runners.NamespaceFilesService;
 import io.kestra.core.runners.RunContext;
@@ -242,7 +243,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         String namespace = flowProps.get("namespace");
         if (this.namespaceFiles != null) {
 
-            NamespaceFilesService namespaceFilesService = runContext.getApplicationContext().getBean(NamespaceFilesService.class);
+            NamespaceFilesService namespaceFilesService = ((DefaultRunContext)runContext).getApplicationContext().getBean(NamespaceFilesService.class);
             namespaceFilesService.inject(
                 runContext,
                 tenantId,
@@ -253,7 +254,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         }
 
         if (Boolean.TRUE.equals(this.flows.enabled)) {
-            FlowRepositoryInterface flowRepository = runContext.getApplicationContext().getBean(FlowRepositoryInterface.class);
+            FlowRepositoryInterface flowRepository = ((DefaultRunContext)runContext).getApplicationContext().getBean(FlowRepositoryInterface.class);
 
             List<FlowWithSource> flows;
             if (Boolean.TRUE.equals(this.flows.childNamespaces)) {
