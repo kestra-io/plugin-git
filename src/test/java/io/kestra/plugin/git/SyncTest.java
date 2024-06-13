@@ -20,6 +20,7 @@ import org.apache.commons.io.FileUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.event.Level;
+import reactor.core.publisher.Flux;
 
 import java.io.*;
 import java.net.URI;
@@ -311,7 +312,7 @@ class SyncTest {
     @Test
     void reconcile_DryRun_ShouldDoNothing() throws Exception {
         List<LogEntry> logs = new CopyOnWriteArrayList<>();
-        logQueue.receive(l -> logs.add(l.getLeft()));
+        Flux<LogEntry> receive = TestsUtils.receive(logQueue, l -> logs.add(l.getLeft()));
         String namespace = SyncTest.class.getName().toLowerCase();
 
         String flowSource = """
@@ -390,6 +391,7 @@ class SyncTest {
         assertHasInfoLog(logs, "~ " + toUpdateFilePath);
         assertHasInfoLog(logs, "- " + someFilePath);
         assertHasInfoLog(logs, "+ /cloned.json");
+        receive.blockLast();
     }
 
     private static void assertHasInfoLog(List<LogEntry> logs, String expectedMessage) {
