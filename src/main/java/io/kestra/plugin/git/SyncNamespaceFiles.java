@@ -3,15 +3,17 @@ package io.kestra.plugin.git;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
-import io.kestra.core.runners.NamespaceFilesService;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.storages.Namespace;
+import io.kestra.core.storages.NamespaceFile;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
@@ -56,7 +58,7 @@ import java.util.Optional;
         )
     }
 )
-public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFilesService, URI, SyncNamespaceFiles.Output> {
+public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles.Output> {
     @Schema(
         title = "The branch from which Namespace Files will be synced to Kestra."
     )
@@ -93,26 +95,26 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFilesService, 
     }
 
     @Override
-    protected void deleteResource(NamespaceFilesService namespaceFilesService, String tenantId, String renderedNamespace, URI instanceUri) throws IOException {
-        namespaceFilesService.delete(tenantId, renderedNamespace, instanceUri);
+    protected void deleteResource(RunContext runContext, String renderedNamespace, URI instanceUri) throws IOException {
+        runContext.storage().namespace(renderedNamespace).delete(Path.of(instanceUri.getPath()));
     }
 
     @Override
-    protected URI simulateResourceWrite(NamespaceFilesService namespaceFilesService, String tenantId, String renderedNamespace, URI uri, InputStream inputStream) {
-        return namespaceFilesService.uri(renderedNamespace, uri);
+    protected URI simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) {
+        return NamespaceFile.of(renderedNamespace, uri).uri();
     }
 
     @Override
-    protected URI writeResource(Logger logger, NamespaceFilesService namespaceFilesService, String tenantId, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
-        if (inputStream == null) {
-            return namespaceFilesService.createDirectory(tenantId, renderedNamespace, uri);
-        } else {
-            return namespaceFilesService.createFile(tenantId, renderedNamespace, uri, inputStream);
-        }
+    protected URI writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+        Namespace namespace = runContext.storage().namespace(renderedNamespace);
+
+        return inputStream == null ?
+            URI.create(namespace.createDirectory(Path.of(uri.getPath())) + "/") :
+            namespace.putFile(Path.of(uri.getPath()), inputStream).uri();
     }
 
     @Override
-    protected SyncResult wrapper(NamespaceFilesService namespaceFilesService, String renderedGitDirectory, String renderedNamespace, URI resourceUri, URI resourceBeforeUpdate, URI resourceAfterUpdate) {
+    protected SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, URI resourceBeforeUpdate, URI resourceAfterUpdate) {
         SyncState syncState;
         if (resourceUri == null) {
             syncState = SyncState.DELETED;
@@ -124,7 +126,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFilesService, 
         }
 
         String kestraPath = Optional.ofNullable(this.toUri(
-            namespaceFilesService,
+            runContext,
             renderedNamespace,
             resourceAfterUpdate == null ? resourceBeforeUpdate : resourceAfterUpdate
         )).map(URI::getPath).orElse(null);
@@ -140,21 +142,21 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFilesService, 
     }
 
     @Override
-    protected List<URI> fetchResources(NamespaceFilesService namespaceFilesService, String tenantId, String renderedNamespace) throws IOException {
-        return namespaceFilesService.recursiveList(tenantId, renderedNamespace, null, true);
+    protected List<URI> fetchResources(RunContext runContext, String renderedNamespace) throws IOException {
+        return runContext.storage().namespace(renderedNamespace).all(true)
+            .stream()
+            .map(namespaceFile -> toUri(runContext, renderedNamespace, namespaceFile.uri()))
+            .toList();
     }
 
     @Override
-    protected URI toUri(NamespaceFilesService namespaceFilesService, String renderedNamespace, URI resource) {
+    protected URI toUri(RunContext runContext, String renderedNamespace, URI resource) {
         if (resource == null) {
             return null;
         }
-
-        URI rootNamespaceFilesUri = namespaceFilesService.uri(renderedNamespace, null);
-        if (resource.getPath().startsWith(rootNamespaceFilesUri.getPath())) {
-            return URI.create("/" + URI.create(rootNamespaceFilesUri.getPath()).relativize(URI.create(resource.getPath())));
-        }
-        return resource;
+        NamespaceFile namespaceFile = NamespaceFile.of(renderedNamespace, resource);
+        String trailingSlash = namespaceFile.isDirectory() ? "/" : "";
+        return URI.create(namespaceFile.path(true).toString() + trailingSlash);
     }
 
     @Override

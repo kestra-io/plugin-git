@@ -34,19 +34,15 @@ import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @KestraTest
-public class SyncFlowsTest {
+public class SyncFlowsTest extends AbstractGitTest {
     public static final String BRANCH = "sync";
     public static final String GIT_DIRECTORY = "to_clone/_flows";
     public static final String TENANT_ID = "my-tenant";
     public static final String NAMESPACE = "my.namespace";
-    public static final String URL = "https://github.com/kestra-io/unit-tests";
     public static final String FLOW_ID = "self_flow";
     public static final Pattern NAMESPACE_FINDER_PATTERN = Pattern.compile("(?m)^namespace: (.*)$");
 
     private static final Map<String, Integer> previousRevisionByUid = new HashMap<>();
-
-    @Value("${kestra.git.pat}")
-    private String pat;
 
     @Inject
     private RunContextFactory runContextFactory;
@@ -73,7 +69,7 @@ public class SyncFlowsTest {
         SyncFlows syncFlows = SyncFlows.builder()
             .id("syncFlows")
             .type(PushNamespaceFiles.class.getName())
-            .url(URL)
+            .url(repositoryUrl)
             .password("my-password")
             .build();
 
@@ -164,15 +160,15 @@ public class SyncFlowsTest {
         flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(6));
 
-        runContext = runContextFactory.of();
+        RunContext cloneRunContext = runContextFactory.of();
         Clone.builder()
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .username(pat)
             .password(pat)
             .branch(BRANCH)
             .build()
-            .run(runContext);
-        assertFlows(runContext.tempDir().resolve(Path.of(GIT_DIRECTORY)).toFile(), true, selfFlowSource);
+            .run(cloneRunContext);
+        assertFlows(cloneRunContext.workingDir().path().resolve(Path.of(GIT_DIRECTORY)).toFile(), true, selfFlowSource);
 
         assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true, new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace.child", "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1))) {{
             this.put("gitPath", null);
@@ -257,15 +253,15 @@ public class SyncFlowsTest {
         flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(7));
 
-        runContext = runContextFactory.of();
+        RunContext cloneRunContext = runContextFactory.of();
         Clone.builder()
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .username(pat)
             .password(pat)
             .branch(BRANCH)
             .build()
-            .run(runContext);
-        assertFlows(runContext.tempDir().resolve(Path.of(GIT_DIRECTORY)).toFile(), true, selfFlowSource, nonVersionedFlowSource);
+            .run(cloneRunContext);
+        assertFlows(cloneRunContext.workingDir().path().resolve(Path.of(GIT_DIRECTORY)).toFile(), true, selfFlowSource, nonVersionedFlowSource);
 
         assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true));
     }
@@ -357,15 +353,15 @@ public class SyncFlowsTest {
         flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(6));
 
-        runContext = runContextFactory.of();
+        RunContext cloneRunContext = runContextFactory.of();
         Clone.builder()
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .username(pat)
             .password(pat)
             .branch(BRANCH)
             .build()
-            .run(runContext);
-        assertFlows(runContext.tempDir().resolve(Path.of(GIT_DIRECTORY)).toFile(), false, selfFlowSource, unversionedFlowSourceInChildNamespace);
+            .run(cloneRunContext);
+        assertFlows(cloneRunContext.workingDir().path().resolve(Path.of(GIT_DIRECTORY)).toFile(), false, selfFlowSource, unversionedFlowSourceInChildNamespace);
 
         assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(false, new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace", "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1))) {{
             this.put("gitPath", null);
@@ -488,7 +484,7 @@ public class SyncFlowsTest {
                 "namespace", SyncFlowsTest.NAMESPACE,
                 "id", SyncFlowsTest.FLOW_ID
             ),
-            "url", SyncFlowsTest.URL,
+            "url", repositoryUrl,
             "pat", pat,
             "branch", SyncFlowsTest.BRANCH,
             "namespace", SyncFlowsTest.NAMESPACE,

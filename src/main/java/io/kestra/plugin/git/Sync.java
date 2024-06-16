@@ -126,7 +126,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
         clone.run(runContext);
 
         // we should synchronize git flows with current namespace flows
-        Path absoluteGitDirPath = runContext.resolve(Optional.ofNullable(runContext.render(this.gitDirectory)).map(Path::of).orElse(null));
+        Path absoluteGitDirPath = runContext.workingDir().resolve(Optional.ofNullable(runContext.render(this.gitDirectory)).map(Path::of).orElse(null));
         Path flowsDirectoryBasePath = absoluteGitDirPath.resolve(FLOWS_DIRECTORY);
         KestraIgnore kestraIgnore = new KestraIgnore(absoluteGitDirPath);
 

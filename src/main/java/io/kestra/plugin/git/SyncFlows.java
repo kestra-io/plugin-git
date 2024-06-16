@@ -4,6 +4,7 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.Flow;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.services.FlowService;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -11,7 +12,6 @@ import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.apache.commons.io.IOUtils;
-import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -63,7 +63,7 @@ import java.util.regex.Pattern;
         )
     }
 )
-public class SyncFlows extends AbstractSyncTask<FlowService, Flow, SyncFlows.Output> {
+public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     public static final Pattern NAMESPACE_FINDER_PATTERN = Pattern.compile("(?m)^namespace: (.*)$");
 
     @Schema(
@@ -129,6 +129,16 @@ public class SyncFlows extends AbstractSyncTask<FlowService, Flow, SyncFlows.Out
     @Builder.Default
     private boolean delete = false;
 
+    private FlowService flowService;
+
+
+    private FlowService flowService(RunContext runContext) {
+        if (flowService == null) {
+            flowService = ((DefaultRunContext) runContext).getApplicationContext().getBean(FlowService.class);
+        }
+        return flowService;
+    }
+
 
     @Override
     public String fetchedNamespace() {
@@ -136,17 +146,17 @@ public class SyncFlows extends AbstractSyncTask<FlowService, Flow, SyncFlows.Out
     }
 
     @Override
-    protected void deleteResource(FlowService flowService, String tenantId, String renderedNamespace, Flow flow) {
-        flowService.delete(flow);
+    protected void deleteResource(RunContext runContext, String renderedNamespace, Flow flow) {
+        flowService(runContext).delete(flow);
     }
 
     @Override
-    protected Flow simulateResourceWrite(FlowService flowService, String tenantId, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+    protected Flow simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
         if (inputStream == null) {
             return null;
         }
 
-        return flowService.importFlow(tenantId, SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream), true);
+        return flowService(runContext).importFlow(runContext.tenantId(), SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream), true);
     }
 
     @Override
@@ -163,14 +173,14 @@ public class SyncFlows extends AbstractSyncTask<FlowService, Flow, SyncFlows.Out
     }
 
     @Override
-    protected Flow writeResource(Logger logger, FlowService flowService, String tenantId, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+    protected Flow writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
         if (inputStream == null) {
             return null;
         }
 
         String flowSource = SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream);
 
-        return flowService.importFlow(tenantId, flowSource);
+        return flowService(runContext).importFlow(runContext.tenantId(), flowSource);
     }
 
     private static String replaceNamespace(String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
@@ -183,7 +193,7 @@ public class SyncFlows extends AbstractSyncTask<FlowService, Flow, SyncFlows.Out
     }
 
     @Override
-    protected SyncResult wrapper(FlowService flowService, String renderedGitDirectory, String renderedNamespace, URI resourceUri, Flow flowBeforeUpdate, Flow flowAfterUpdate) {
+    protected SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, Flow flowBeforeUpdate, Flow flowAfterUpdate) {
         if (resourceUri != null && resourceUri.toString().endsWith("/")) {
             return null;
         }
@@ -214,16 +224,16 @@ public class SyncFlows extends AbstractSyncTask<FlowService, Flow, SyncFlows.Out
     }
 
     @Override
-    protected List<Flow> fetchResources(FlowService flowService, String tenantId, String renderedNamespace) {
+    protected List<Flow> fetchResources(RunContext runContext, String renderedNamespace) {
         if (this.includeChildNamespaces) {
-            return flowService.findByNamespacePrefix(tenantId, renderedNamespace);
+            return flowService(runContext).findByNamespacePrefix(runContext.tenantId(), renderedNamespace);
         }
 
-        return flowService.findByNamespace(tenantId, renderedNamespace);
+        return flowService(runContext).findByNamespace(runContext.tenantId(), renderedNamespace);
     }
 
     @Override
-    protected URI toUri(FlowService flowService, String renderedNamespace, Flow resource) {
+    protected URI toUri(RunContext runContext, String renderedNamespace, Flow resource) {
         if (resource == null) {
             return null;
         }

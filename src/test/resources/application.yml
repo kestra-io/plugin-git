@@ -1,4 +1,9 @@
 kestra:
+  git:
+    repository-url: https://github.com/kestra-io/unit-tests
+    user:
+      email: github-ci@kestra.io
+      name: Kestra GitHub CI
   repository:
     type: memory
   queue:

@@ -16,12 +16,9 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 @KestraTest
-class CloneTest {
+class CloneTest extends AbstractGitTest {
     @Inject
     private RunContextFactory runContextFactory;
-
-    @Value("${kestra.git.pat}")
-    private String pat;
 
     @Test
     void publicRepository() throws Exception {
@@ -45,7 +42,7 @@ class CloneTest {
         RunContext runContext = runContextFactory.of();
 
         Clone task = Clone.builder()
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .username(pat)
             .password(pat)
             .build();

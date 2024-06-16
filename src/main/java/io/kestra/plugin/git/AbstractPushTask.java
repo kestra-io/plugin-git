@@ -80,7 +80,7 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
     public abstract String fetchedNamespace();
 
     private Path createGitDirectory(RunContext runContext) throws IllegalVariableEvaluationException {
-        Path flowDirectory = runContext.resolve(Path.of(runContext.render(this.getGitDirectory())));
+        Path flowDirectory = runContext.workingDir().resolve(Path.of(runContext.render(this.getGitDirectory())));
         flowDirectory.toFile().mkdirs();
         return flowDirectory;
     }
@@ -131,7 +131,7 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
     }
 
     private URI createDiffFile(RunContext runContext, Git git) throws IOException, GitAPIException {
-        File diffFile = runContext.tempFile(".ion").toFile();
+        File diffFile = runContext.workingDir().createTempFile(".ion").toFile();
         try (DiffFormatter diffFormatter = new DiffFormatter(null);
              BufferedWriter diffWriter = new BufferedWriter(new FileWriter(diffFile))) {
             diffFormatter.setRepository(git.getRepository());
