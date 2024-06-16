@@ -12,8 +12,8 @@ import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.FilesService;
-import io.kestra.core.runners.NamespaceFilesService;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.utils.Rethrow;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.annotation.Nullable;
 import jakarta.validation.constraints.NotNull;
@@ -31,6 +31,7 @@ import org.eclipse.jgit.lib.PersonIdent;
 import org.slf4j.Logger;
 
 import java.io.File;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
@@ -167,7 +168,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
 
     private boolean branchExists(RunContext runContext, String branch) throws Exception {
         if (this.url == null) {
-            try (Git git = Git.open(runContext.resolve(Path.of(runContext.render(this.directory))).toFile())) {
+            try (Git git = Git.open(runContext.workingDir().resolve(Path.of(runContext.render(this.directory))).toFile())) {
                 return git.branchList().setListMode(ListBranchCommand.ListMode.REMOTE).call().stream()
                     .anyMatch(ref -> ref.getName().equals(R_HEADS + branch));
             }
@@ -182,9 +183,9 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
     public Output run(RunContext runContext) throws Exception {
         Logger logger = runContext.logger();
 
-        Path basePath = runContext.tempDir();
+        Path basePath = runContext.workingDir().path();
         if (this.directory != null) {
-            basePath = runContext.resolve(Path.of(runContext.render(this.directory)));
+            basePath = runContext.workingDir().resolve(Path.of(runContext.render(this.directory)));
         }
 
         String branch = runContext.render(this.branch);
@@ -238,22 +239,22 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
             FilesService.inputFiles(runContext, this.inputFiles);
         }
 
-        Map<String, String> flowProps = Optional.ofNullable((Map<String, String>) runContext.getVariables().get("flow")).orElse(Collections.emptyMap());
-        String tenantId = flowProps.get("tenantId");
-        String namespace = flowProps.get("namespace");
-        if (this.namespaceFiles != null) {
-
-            NamespaceFilesService namespaceFilesService = ((DefaultRunContext)runContext).getApplicationContext().getBean(NamespaceFilesService.class);
-            namespaceFilesService.inject(
-                runContext,
-                tenantId,
-                namespace,
-                runContext.tempDir(),
-                this.namespaceFiles
-            );
+        if (this.namespaceFiles != null && this.namespaceFiles.getEnabled()) {
+            runContext.storage()
+                .namespace()
+                .findAllFilesMatching(this.namespaceFiles.getInclude(), this.namespaceFiles.getExclude())
+                .forEach(Rethrow.throwConsumer(namespaceFile -> {
+                    InputStream content = runContext.storage().getFile(namespaceFile.uri());
+                    runContext.workingDir().putFile(namespaceFile.path(), content);
+                }));
         }
 
         if (Boolean.TRUE.equals(this.flows.enabled)) {
+
+            Map<String, String> flowProps = Optional.ofNullable((Map<String, String>) runContext.getVariables().get("flow")).orElse(Collections.emptyMap());
+            String tenantId = flowProps.get("tenantId");
+            String namespace = flowProps.get("namespace");
+
             FlowRepositoryInterface flowRepository = ((DefaultRunContext)runContext).getApplicationContext().getBean(FlowRepositoryInterface.class);
 
             List<FlowWithSource> flows;

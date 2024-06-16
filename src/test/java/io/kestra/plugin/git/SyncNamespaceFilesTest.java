@@ -28,15 +28,11 @@ import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @KestraTest
-public class SyncNamespaceFilesTest {
+public class SyncNamespaceFilesTest extends AbstractGitTest {
     public static final String BRANCH = "sync";
     public static final String GIT_DIRECTORY = "to_clone";
     public static final String TENANT_ID = "my-tenant";
     public static final String NAMESPACE = "my.namespace";
-    public static final String URL = "https://github.com/kestra-io/unit-tests";
-
-    @Value("${kestra.git.pat}")
-    private String pat;
 
     @Inject
     private RunContextFactory runContextFactory;
@@ -57,7 +53,7 @@ public class SyncNamespaceFilesTest {
         SyncNamespaceFiles syncNamespaceFiles = SyncNamespaceFiles.builder()
                 .id("syncNamespaceFiles")
                 .type(PushNamespaceFiles.class.getName())
-                .url(URL)
+                .url(repositoryUrl)
                 .password("my-password")
                 .build();
 
@@ -296,7 +292,7 @@ public class SyncNamespaceFilesTest {
                         "tenantId", SyncNamespaceFilesTest.TENANT_ID,
                         "namespace", "system"
                 ),
-                "url", SyncNamespaceFilesTest.URL,
+                "url", repositoryUrl,
                 "pat", pat,
                 "branch", SyncNamespaceFilesTest.BRANCH,
                 "namespace", SyncNamespaceFilesTest.NAMESPACE,

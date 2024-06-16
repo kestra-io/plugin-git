@@ -44,7 +44,7 @@ public class GitService {
         }
 
 
-        Git git = Git.open(runContext.tempDir().toFile());
+        Git git = Git.open(runContext.workingDir().path().toFile());
         if (!branchExists && git.getRepository().resolve(Constants.HEAD) != null) {
             git.checkout()
                 .setName(branch)

@@ -34,14 +34,13 @@ import static java.lang.Integer.MAX_VALUE;
 
 /**
  *
- * @param <S> Service class
  * @param <T> Resource type
  * @param <O> Output class
  */
 @SuperBuilder(toBuilder = true)
 @NoArgsConstructor
 @Getter
-public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> extends AbstractCloningTask implements RunnableTask<O> {
+public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> extends AbstractCloningTask implements RunnableTask<O> {
 
     @Schema(
         title = "If `true`, the task will only output modifications without performing any modification to Kestra. If `false` (default), all listed modifications will be applied."
@@ -57,7 +56,7 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
     public abstract String fetchedNamespace();
 
     private Path createGitDirectory(RunContext runContext) throws IllegalVariableEvaluationException {
-        Path syncDirectory = runContext.resolve(Path.of(runContext.render(this.getGitDirectory())));
+        Path syncDirectory = runContext.workingDir().resolve(Path.of(runContext.render(this.getGitDirectory())));
         syncDirectory.toFile().mkdirs();
         return syncDirectory;
     }
@@ -89,16 +88,16 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
         return false;
     }
 
-    protected abstract void deleteResource(S service, String tenantId, String renderedNamespace, T instanceResource) throws IOException;
+    protected abstract void deleteResource(RunContext runContext, String renderedNamespace, T instanceResource) throws IOException;
 
-    protected abstract T simulateResourceWrite(S service, String tenantId, String renderedNamespace, URI uri, InputStream inputStream) throws IOException;
+    protected abstract T simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException;
 
-    protected abstract T writeResource(Logger logger, S service, String tenantId, String renderedNamespace, URI uri, InputStream inputStream) throws IOException;
+    protected abstract T writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException;
 
-    protected abstract SyncResult wrapper(S service, String renderedGitDirectory, String renderedNamespace, URI resourceUri, T resourceBeforeUpdate, T resourceAfterUpdate) throws IOException;
+    protected abstract SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, T resourceBeforeUpdate, T resourceAfterUpdate) throws IOException;
 
-    private URI createDiffFile(RunContext runContext, S service, String renderedNamespace, Map<URI, URI> gitUriByResourceUri, Map<URI, T> beforeUpdateResourcesByUri, Map<URI, T> afterUpdateResourcesByUri, List<T> deletedResources) throws IOException, IllegalVariableEvaluationException {
-        File diffFile = runContext.tempFile(".ion").toFile();
+    private URI createDiffFile(RunContext runContext, String renderedNamespace, Map<URI, URI> gitUriByResourceUri, Map<URI, T> beforeUpdateResourcesByUri, Map<URI, T> afterUpdateResourcesByUri, List<T> deletedResources) throws IOException, IllegalVariableEvaluationException {
+        File diffFile = runContext.workingDir().createTempFile(".ion").toFile();
 
         try (BufferedWriter diffWriter = new BufferedWriter(new FileWriter(diffFile))) {
             List<SyncResult> syncResults = new ArrayList<>();
@@ -107,10 +106,10 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
             if (deletedResources != null) {
                 deletedResources.stream()
                     .map(throwFunction(deletedResource -> wrapper(
-                        service,
+                        runContext,
                         renderedGitDirectory,
                         renderedNamespace,
-                        gitUriByResourceUri.get(this.toUri(service, renderedNamespace, deletedResource)),
+                        gitUriByResourceUri.get(this.toUri(runContext, renderedNamespace, deletedResource)),
                         deletedResource,
                         null
                     ))).forEach(syncResults::add);
@@ -118,7 +117,7 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
 
             afterUpdateResourcesByUri.entrySet().stream().flatMap(throwFunction(e -> {
                 SyncResult syncResult = wrapper(
-                    service,
+                    runContext,
                     renderedGitDirectory,
                     renderedNamespace,
                     gitUriByResourceUri.get(e.getKey()), beforeUpdateResourcesByUri.get(e.getKey()),
@@ -161,11 +160,10 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
 
         String renderedNamespace = runContext.render(this.fetchedNamespace());
 
-        @SuppressWarnings("unchecked")
-        S service = ((DefaultRunContext)runContext).getApplicationContext().getBean((Class<S>) ((ParameterizedType) getClass().getGenericSuperclass()).getActualTypeArguments()[0]);
-
-        Map<URI, T> beforeUpdateResourcesByUri = this.fetchResources(service, runContext.tenantId(), renderedNamespace).stream().collect(Collectors.toMap(
-            resource -> this.toUri(service, renderedNamespace, resource),
+        Map<URI, T> beforeUpdateResourcesByUri = this.fetchResources(runContext, renderedNamespace)
+            .stream()
+            .collect(Collectors.toMap(
+            resource -> this.toUri(runContext, renderedNamespace, resource),
             Function.identity()
         ));
         Map<URI, URI> gitUriByResourceUri = new HashMap<>();
@@ -175,9 +173,9 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
                 InputStream inputStream = e.getValue().get();
                 T resource;
                 if (this.dryRun) {
-                    resource = this.simulateResourceWrite(service, runContext.tenantId(), renderedNamespace, e.getKey(), inputStream);
+                    resource = this.simulateResourceWrite(runContext, renderedNamespace, e.getKey(), inputStream);
                 } else {
-                    resource = this.writeResource(runContext.logger(), service, runContext.tenantId(), renderedNamespace, e.getKey(), inputStream);
+                    resource = this.writeResource(runContext, renderedNamespace, e.getKey(), inputStream);
                 }
 
                 return Pair.of(e.getKey(), resource);
@@ -187,7 +185,7 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
                 (map, pair) -> {
                     URI uri = pair.getLeft();
                     T resource = pair.getRight();
-                    URI resourceUri = this.toUri(service, renderedNamespace, resource);
+                    URI resourceUri = this.toUri(runContext, renderedNamespace, resource);
                     map.put(resourceUri, resource);
                     gitUriByResourceUri.put(resourceUri, uri);
                 },
@@ -203,7 +201,7 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
                 }
 
                 if (!this.dryRun) {
-                    this.deleteResource(service, runContext.tenantId(), renderedNamespace, e.getValue());
+                    this.deleteResource(runContext, renderedNamespace, e.getValue());
                 }
 
                 deleted.add(e.getValue());
@@ -212,16 +210,16 @@ public abstract class AbstractSyncTask<S, T, O extends AbstractSyncTask.Output> 
             deleted = null;
         }
 
-        URI diffFileStorageUri = this.createDiffFile(runContext, service, renderedNamespace, gitUriByResourceUri, beforeUpdateResourcesByUri, updatedResourcesByUri, deleted);
+        URI diffFileStorageUri = this.createDiffFile(runContext, renderedNamespace, gitUriByResourceUri, beforeUpdateResourcesByUri, updatedResourcesByUri, deleted);
 
         git.close();
 
         return output(diffFileStorageUri);
     }
 
-    protected abstract List<T> fetchResources(S service, String tenantId, String renderedNamespace) throws IOException;
+    protected abstract List<T> fetchResources(RunContext runContext, String renderedNamespace) throws IOException;
 
-    protected abstract URI toUri(S service, String renderedNamespace, T resource);
+    protected abstract URI toUri(RunContext runContext, String renderedNamespace, T resource);
 
     protected abstract O output(URI diffFileStorageUri);
 

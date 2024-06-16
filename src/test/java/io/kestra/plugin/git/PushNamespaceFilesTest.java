@@ -37,11 +37,8 @@ import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @KestraTest
-public class PushNamespaceFilesTest {
+public class PushNamespaceFilesTest extends AbstractGitTest {
     public static final String DESCRIPTION = "One-task push";
-
-    @Value("${kestra.git.pat}")
-    private String pat;
 
     @Inject
     private RunContextFactory runContextFactory;
@@ -54,7 +51,7 @@ public class PushNamespaceFilesTest {
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
             .type(PushNamespaceFiles.class.getName())
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .password("my-password")
             .build();
 
@@ -73,10 +70,8 @@ public class PushNamespaceFilesTest {
         String namespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-files";
-        String authorEmail = "bmulier@kestra.io";
-        String authorName = "brianmulier";
-        String url = "https://github.com/kestra-io/unit-tests";
-        RunContext runContext = runContext(tenantId, url, authorEmail, authorName, branch, namespace, gitDirectory);
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory);
 
         String firstFilePath = "first-file.txt";
         storage.put(tenantId, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + firstFilePath), new ByteArrayInputStream("First file".getBytes()));
@@ -107,7 +102,7 @@ public class PushNamespaceFilesTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(url)
+                .url(repositoryUrl)
                 .username(pat)
                 .password(pat)
                 .branch(branch)
@@ -124,7 +119,7 @@ public class PushNamespaceFilesTest {
             String fileContent = FileUtils.readFileToString(nsFile, "UTF-8");
             assertThat(fileContent, is(secondFileContent));
 
-            assertThat(pushOutput.getCommitURL(), is(url + "/commit/" + pushOutput.getCommitId()));
+            assertThat(pushOutput.getCommitURL(), is(repositoryUrl + "/commit/" + pushOutput.getCommitId()));
 
             assertDiffs(
                 runContext,
@@ -136,9 +131,9 @@ public class PushNamespaceFilesTest {
 
             RevCommit revCommit = assertIsLastCommit(cloneRunContext, pushOutput);
             assertThat(revCommit.getFullMessage(), is("Push from CI - " + DESCRIPTION));
-            assertAuthor(revCommit, authorEmail, authorName);
+            assertAuthor(revCommit, gitUserEmail, gitUserName);
         } finally {
-            this.deleteRemoteBranch(runContext.tempDir(), branch);
+            this.deleteRemoteBranch(runContext.workingDir().path(), branch);
         }
     }
 
@@ -148,10 +143,8 @@ public class PushNamespaceFilesTest {
         String namespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-files";
-        String authorEmail = "bmulier@kestra.io";
-        String authorName = "brianmulier";
-        String url = "https://github.com/kestra-io/unit-tests";
-        RunContext runContext = runContext(tenantId, url, authorEmail, authorName, branch, namespace, gitDirectory);
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory);
 
         String firstFilePath = "first-file.txt";
         storage.put(tenantId, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + firstFilePath), new ByteArrayInputStream("First file".getBytes()));
@@ -196,10 +189,8 @@ public class PushNamespaceFilesTest {
         String namespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-files";
-        String authorEmail = "bmulier@kestra.io";
-        String authorName = "brianmulier";
-        String url = "https://github.com/kestra-io/unit-tests";
-        RunContext runContext = runContext(tenantId, url, authorEmail, authorName, branch, namespace, gitDirectory);
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory);
 
         String nonMatchingFilePath = "first-file.txt";
         String nonMatchingFileContent = "First file";
@@ -232,7 +223,7 @@ public class PushNamespaceFilesTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(url)
+                .url(repositoryUrl)
                 .username(pat)
                 .password(pat)
                 .branch(branch)
@@ -268,7 +259,7 @@ public class PushNamespaceFilesTest {
             storage.delete(tenantId, toDeleteURI);
             pushOutput = pushNamespaceFiles.toBuilder()
                 .files("second*")
-                .build().run(runContext(tenantId, url, authorEmail, authorName, branch, namespace, gitDirectory));
+                .build().run(runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory));
 
             cloneOutput = clone.run(runContextFactory.of());
 
@@ -293,7 +284,7 @@ public class PushNamespaceFilesTest {
                 )
             );
         } finally {
-            this.deleteRemoteBranch(runContext.tempDir(), branch);
+            this.deleteRemoteBranch(runContext.workingDir().path(), branch);
         }
     }
 
@@ -303,10 +294,8 @@ public class PushNamespaceFilesTest {
         String namespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-files";
-        String authorEmail = "bmulier@kestra.io";
-        String authorName = "brianmulier";
-        String url = "https://github.com/kestra-io/unit-tests";
-        RunContext runContext = runContext(tenantId, url, authorEmail, authorName, branch, namespace, gitDirectory);
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory);
 
         String firstFilePath = "first-file.txt";
         String firstFileContent = "First file";
@@ -335,7 +324,7 @@ public class PushNamespaceFilesTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(url)
+                .url(repositoryUrl)
                 .username(pat)
                 .password(pat)
                 .branch(branch)
@@ -357,7 +346,7 @@ public class PushNamespaceFilesTest {
             fileContent = FileUtils.readFileToString(nsFile, "UTF-8");
             assertThat(fileContent, is(secondFileContent));
 
-            assertThat(pushOutput.getCommitURL(), is(url + "/commit/" + pushOutput.getCommitId()));
+            assertThat(pushOutput.getCommitURL(), is(repositoryUrl + "/commit/" + pushOutput.getCommitId()));
 
             assertDiffs(
                 runContext,
@@ -370,9 +359,9 @@ public class PushNamespaceFilesTest {
 
             RevCommit revCommit = assertIsLastCommit(cloneRunContext, pushOutput);
             assertThat(revCommit.getFullMessage(), is("Push from CI - " + DESCRIPTION));
-            assertAuthor(revCommit, authorEmail, authorName);
+            assertAuthor(revCommit, gitUserEmail, gitUserName);
         } finally {
-            this.deleteRemoteBranch(runContext.tempDir(), branch);
+            this.deleteRemoteBranch(runContext.workingDir().path(), branch);
         }
     }
 
@@ -382,10 +371,8 @@ public class PushNamespaceFilesTest {
         String namespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-files";
-        String authorEmail = "bmulier@kestra.io";
-        String authorName = "brianmulier";
-        String url = "https://github.com/kestra-io/unit-tests";
-        RunContext runContext = runContext(tenantId, url, authorEmail, authorName, branch, namespace, gitDirectory);
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory);
 
         String firstFilePath = "first-file.txt";
         String firstFileContent = "First file";
@@ -417,7 +404,7 @@ public class PushNamespaceFilesTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(url)
+                .url(repositoryUrl)
                 .username(pat)
                 .password(pat)
                 .branch(branch)
@@ -439,7 +426,7 @@ public class PushNamespaceFilesTest {
             nsFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), thirdFilePath);
             assertThat(nsFile.exists(), is(false));
 
-            assertThat(pushOutput.getCommitURL(), is(url + "/commit/" + pushOutput.getCommitId()));
+            assertThat(pushOutput.getCommitURL(), is(repositoryUrl + "/commit/" + pushOutput.getCommitId()));
 
             assertDiffs(
                 runContext,
@@ -452,9 +439,9 @@ public class PushNamespaceFilesTest {
 
             RevCommit revCommit = assertIsLastCommit(cloneRunContext, pushOutput);
             assertThat(revCommit.getFullMessage(), is("Push from CI - " + DESCRIPTION));
-            assertAuthor(revCommit, authorEmail, authorName);
+            assertAuthor(revCommit, gitUserEmail, gitUserName);
         } finally {
-            this.deleteRemoteBranch(runContext.tempDir(), branch);
+            this.deleteRemoteBranch(runContext.workingDir().path(), branch);
         }
     }
 
@@ -464,8 +451,8 @@ public class PushNamespaceFilesTest {
         String namespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-files";
-        String url = "https://github.com/kestra-io/unit-tests";
-        RunContext runContext = runContext(tenantId, url, "", "", branch, namespace, gitDirectory);
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, "", "", branch, namespace, gitDirectory);
 
         storage.put(tenantId, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/first-file.txt"), new ByteArrayInputStream("First file".getBytes()));
 
@@ -487,7 +474,7 @@ public class PushNamespaceFilesTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(url)
+                .url(repositoryUrl)
                 .username(pat)
                 .password(pat)
                 .branch(branch)
@@ -500,7 +487,7 @@ public class PushNamespaceFilesTest {
             assertThat(revCommit.getAuthorIdent().getName(), notNullValue());
             assertThat(revCommit.getAuthorIdent().getEmailAddress(), notNullValue());
         } finally {
-            this.deleteRemoteBranch(runContext.tempDir(), branch);
+            this.deleteRemoteBranch(runContext.workingDir().path(), branch);
         }
     }
 
@@ -523,7 +510,7 @@ public class PushNamespaceFilesTest {
 
     private static RevCommit assertIsLastCommit(RunContext cloneRunContext, PushNamespaceFiles.Output pushOutput) throws IOException, GitAPIException {
         RevCommit revCommit;
-        try (Git git = Git.open(cloneRunContext.tempDir().toFile())) {
+        try (Git git = Git.open(cloneRunContext.workingDir().path().toFile())) {
             revCommit = StreamSupport.stream(git.log().setMaxCount(1).call().spliterator(), false).findFirst().orElse(null);
         }
         assertThat(revCommit.getId().getName(), is(pushOutput.getCommitId()));

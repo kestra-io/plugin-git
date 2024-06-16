@@ -40,7 +40,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 
 @KestraTest
-class SyncTest {
+class SyncTest extends AbstractGitTest {
     public static final String BRANCH = "reconcile";
     public static final String NAMESPACE = "my.namespace";
     public static final String TENANT_ID = "my-tenant";
@@ -61,9 +61,6 @@ class SyncTest {
     @Inject
     @Named(QueueFactoryInterface.WORKERTASKLOG_NAMED)
     private QueueInterface<LogEntry> logQueue;
-
-    @Value("${kestra.git.pat}")
-    private String pat;
 
     @BeforeEach
     void init() throws IOException {
@@ -169,7 +166,7 @@ class SyncTest {
         String clonedGitDirectory = "to_clone";
         String destinationDirectory = "sync_directory";
         Sync task = Sync.builder()
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .username(pat)
             .password(pat)
             .branch(BRANCH)
@@ -190,13 +187,13 @@ class SyncTest {
 
         RunContext runContext = runContextFactory.of();
         Clone.builder()
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .username(pat)
             .password(pat)
             .branch(BRANCH)
             .build()
             .run(runContext);
-        assertFlows(TENANT_ID, runContext.tempDir().resolve(Path.of(clonedGitDirectory, "_flows")).toFile(), selfFlowSource);
+        assertFlows(TENANT_ID, runContext.workingDir().path().resolve(Path.of(clonedGitDirectory, "_flows")).toFile(), selfFlowSource);
         // endregion
 
         // region namespace files
@@ -272,11 +269,12 @@ class SyncTest {
 
         // region WHEN
         Sync task = Sync.builder()
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .username(pat)
             .password(pat)
             .branch(BRANCH)
             .build();
+
         task.run(runContextFactory.of(Map.of("flow", Map.of(
             "namespace", NAMESPACE,
             "id", selfFlowId,
@@ -291,13 +289,13 @@ class SyncTest {
 
         RunContext runContext = runContextFactory.of();
         Clone.builder()
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .username(pat)
             .password(pat)
             .branch(BRANCH)
             .build()
             .run(runContext);
-        assertFlows(TENANT_ID, runContext.tempDir().resolve("_flows").toFile(), selfFlowSource);
+        assertFlows(TENANT_ID, runContext.workingDir().path().resolve("_flows").toFile(), selfFlowSource);
         // endregion
 
         // region namespace files
@@ -366,7 +364,7 @@ class SyncTest {
         Sync task = Sync.builder()
             .id("reconcile")
             .type(Sync.class.getName())
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .username(pat)
             .password(pat)
             .branch(BRANCH)

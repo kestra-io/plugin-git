@@ -38,11 +38,8 @@ import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @KestraTest
-public class PushFlowsTest {
+public class PushFlowsTest extends AbstractGitTest {
     public static final String DESCRIPTION = "One-task push";
-
-    @Value("${kestra.git.pat}")
-    private String pat;
 
     @Inject
     private RunContextFactory runContextFactory;
@@ -58,7 +55,7 @@ public class PushFlowsTest {
         PushFlows pushFlows = PushFlows.builder()
             .id("pushFlows")
             .type(PushFlows.class.getName())
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .password("my-password")
             .build();
 
@@ -78,10 +75,8 @@ public class PushFlowsTest {
         String targetNamespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-flows";
-        String authorEmail = "bmulier@kestra.io";
-        String authorName = "brianmulier";
-        String url = "https://github.com/kestra-io/unit-tests";
-        RunContext runContext = runContext(tenantId, url, authorEmail, authorName, branch, sourceNamespace, targetNamespace, gitDirectory);
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
 
         FlowWithSource createdFlow = this.createFlow(tenantId, "first-flow", sourceNamespace);
         String subNamespace = "sub-namespace";
@@ -112,7 +107,7 @@ public class PushFlowsTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(url)
+                .url(repositoryUrl)
                 .username(pat)
                 .password(pat)
                 .branch(branch)
@@ -129,7 +124,7 @@ public class PushFlowsTest {
             String fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
             assertThat(fileContent, is(createdSubNsFlow.getSource().replace(sourceNamespace, targetNamespace)));
 
-            assertThat(pushOutput.getCommitURL(), is(url + "/commit/" + pushOutput.getCommitId()));
+            assertThat(pushOutput.getCommitURL(), is(repositoryUrl + "/commit/" + pushOutput.getCommitId()));
 
             assertDiffs(
                 runContext,
@@ -141,9 +136,9 @@ public class PushFlowsTest {
 
             RevCommit revCommit = assertIsLastCommit(cloneRunContext, pushOutput);
             assertThat(revCommit.getFullMessage(), is("Push from CI - " + DESCRIPTION));
-            assertAuthor(revCommit, authorEmail, authorName);
+            assertAuthor(revCommit, gitUserEmail, gitUserName);
         } finally {
-            this.deleteRemoteBranch(runContext.tempDir(), branch);
+            this.deleteRemoteBranch(runContext.workingDir().path(), branch);
         }
     }
 
@@ -154,10 +149,8 @@ public class PushFlowsTest {
         String targetNamespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-flows";
-        String authorEmail = "bmulier@kestra.io";
-        String authorName = "brianmulier";
-        String url = "https://github.com/kestra-io/unit-tests";
-        RunContext runContext = runContext(tenantId, url, authorEmail, authorName, branch, sourceNamespace, targetNamespace, gitDirectory);
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
 
         FlowWithSource createdFlow = this.createFlow(tenantId, "first-flow", sourceNamespace);
         String subNamespace = "sub-namespace";
@@ -204,10 +197,8 @@ public class PushFlowsTest {
         String targetNamespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-flows";
-        String authorEmail = "bmulier@kestra.io";
-        String authorName = "brianmulier";
-        String url = "https://github.com/kestra-io/unit-tests";
-        RunContext runContext = runContext(tenantId, url, authorEmail, authorName, branch, sourceNamespace, targetNamespace, gitDirectory);
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
 
         FlowWithSource nonMatchingRegexKeptFlow = this.createFlow(tenantId, "first-flow", sourceNamespace);
         String subNamespace = "sub-namespace";
@@ -236,7 +227,7 @@ public class PushFlowsTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(url)
+                .url(repositoryUrl)
                 .username(pat)
                 .password(pat)
                 .branch(branch)
@@ -272,7 +263,7 @@ public class PushFlowsTest {
             flowRepositoryInterface.delete(deletedFlowOnSecondPush);
             pushOutput = pushFlows.toBuilder()
                 .flows("second*")
-                .build().run(runContext(tenantId, url, authorEmail, authorName, branch, sourceNamespace, targetNamespace, gitDirectory));
+                .build().run(runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory));
 
             cloneOutput = clone.run(runContextFactory.of());
 
@@ -297,7 +288,7 @@ public class PushFlowsTest {
                 )
             );
         } finally {
-            this.deleteRemoteBranch(runContext.tempDir(), branch);
+            this.deleteRemoteBranch(runContext.workingDir().path(), branch);
         }
     }
 
@@ -308,10 +299,8 @@ public class PushFlowsTest {
         String targetNamespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-flows";
-        String authorEmail = "bmulier@kestra.io";
-        String authorName = "brianmulier";
-        String url = "https://github.com/kestra-io/unit-tests";
-        RunContext runContext = runContext(tenantId, url, authorEmail, authorName, branch, sourceNamespace, targetNamespace, gitDirectory);
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
 
         FlowWithSource createdFlow = this.createFlow(tenantId, sourceNamespace);
         String subNamespace = "sub-namespace";
@@ -339,7 +328,7 @@ public class PushFlowsTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(url)
+                .url(repositoryUrl)
                 .username(pat)
                 .password(pat)
                 .branch(branch)
@@ -361,7 +350,7 @@ public class PushFlowsTest {
             fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
             assertThat(fileContent, is(createdSubNsFlow.getSource().replace(sourceNamespace, targetNamespace)));
 
-            assertThat(pushOutput.getCommitURL(), is(url + "/commit/" + pushOutput.getCommitId()));
+            assertThat(pushOutput.getCommitURL(), is(repositoryUrl + "/commit/" + pushOutput.getCommitId()));
 
             assertDiffs(
                 runContext,
@@ -374,9 +363,9 @@ public class PushFlowsTest {
 
             RevCommit revCommit = assertIsLastCommit(cloneRunContext, pushOutput);
             assertThat(revCommit.getFullMessage(), is("Push from CI - " + DESCRIPTION));
-            assertAuthor(revCommit, authorEmail, authorName);
+            assertAuthor(revCommit, gitUserEmail, gitUserName);
         } finally {
-            this.deleteRemoteBranch(runContext.tempDir(), branch);
+            this.deleteRemoteBranch(runContext.workingDir().path(), branch);
         }
     }
 
@@ -387,10 +376,8 @@ public class PushFlowsTest {
         String targetNamespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-flows";
-        String authorEmail = "bmulier@kestra.io";
-        String authorName = "brianmulier";
-        String url = "https://github.com/kestra-io/unit-tests";
-        RunContext runContext = runContext(tenantId, url, authorEmail, authorName, branch, sourceNamespace, targetNamespace, gitDirectory);
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
 
         FlowWithSource createdFlow = this.createFlow(tenantId, "first-flow", sourceNamespace);
         String subNamespace = "sub-namespace";
@@ -420,7 +407,7 @@ public class PushFlowsTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(url)
+                .url(repositoryUrl)
                 .username(pat)
                 .password(pat)
                 .branch(branch)
@@ -442,7 +429,7 @@ public class PushFlowsTest {
             flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, subNamespace).toString(), thirdFlow.getId() + ".yml");
             assertThat(flowFile.exists(), is(false));
 
-            assertThat(pushOutput.getCommitURL(), is(url + "/commit/" + pushOutput.getCommitId()));
+            assertThat(pushOutput.getCommitURL(), is(repositoryUrl + "/commit/" + pushOutput.getCommitId()));
 
             assertDiffs(
                 runContext,
@@ -455,9 +442,9 @@ public class PushFlowsTest {
 
             RevCommit revCommit = assertIsLastCommit(cloneRunContext, pushOutput);
             assertThat(revCommit.getFullMessage(), is("Push from CI - " + DESCRIPTION));
-            assertAuthor(revCommit, authorEmail, authorName);
+            assertAuthor(revCommit, gitUserEmail, gitUserName);
         } finally {
-            this.deleteRemoteBranch(runContext.tempDir(), branch);
+            this.deleteRemoteBranch(runContext.workingDir().path(), branch);
         }
     }
 
@@ -468,9 +455,8 @@ public class PushFlowsTest {
         String targetNamespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-flows";
-        String authorEmail = "bmulier@kestra.io";
-        String url = "https://github.com/kestra-io/unit-tests";
-        RunContext runContext = runContext(tenantId, url, authorEmail, "", branch, sourceNamespace, targetNamespace, gitDirectory);
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, "", branch, sourceNamespace, targetNamespace, gitDirectory);
 
         FlowWithSource createdFlow = this.createFlow(tenantId, sourceNamespace);
         String subNamespace = "sub-namespace";
@@ -496,7 +482,7 @@ public class PushFlowsTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(url)
+                .url(repositoryUrl)
                 .username(pat)
                 .password(pat)
                 .branch(branch)
@@ -522,9 +508,9 @@ public class PushFlowsTest {
             );
 
             RevCommit revCommit = assertIsLastCommit(cloneRunContext, pushOutput);
-            assertAuthor(revCommit, authorEmail, pat);
+            assertAuthor(revCommit, gitUserEmail, pat);
         } finally {
-            this.deleteRemoteBranch(runContext.tempDir(), branch);
+            this.deleteRemoteBranch(runContext.workingDir().path(), branch);
         }
     }
 
@@ -535,8 +521,8 @@ public class PushFlowsTest {
         String targetNamespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-flows";
-        String url = "https://github.com/kestra-io/unit-tests";
-        RunContext runContext = runContext(tenantId, url, "", "", branch, sourceNamespace, targetNamespace, gitDirectory);
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, "", "", branch, sourceNamespace, targetNamespace, gitDirectory);
 
         this.createFlow(tenantId, sourceNamespace);
 
@@ -560,7 +546,7 @@ public class PushFlowsTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(url)
+                .url(repositoryUrl)
                 .username(pat)
                 .password(pat)
                 .branch(branch)
@@ -573,7 +559,7 @@ public class PushFlowsTest {
             assertThat(revCommit.getAuthorIdent().getName(), notNullValue());
             assertThat(revCommit.getAuthorIdent().getEmailAddress(), notNullValue());
         } finally {
-            this.deleteRemoteBranch(runContext.tempDir(), branch);
+            this.deleteRemoteBranch(runContext.workingDir().path(), branch);
         }
     }
 
@@ -597,7 +583,7 @@ public class PushFlowsTest {
 
     private static RevCommit assertIsLastCommit(RunContext cloneRunContext, PushFlows.Output pushOutput) throws IOException, GitAPIException {
         RevCommit revCommit;
-        try(Git git = Git.open(cloneRunContext.tempDir().toFile())) {
+        try(Git git = Git.open(cloneRunContext.workingDir().path().toFile())) {
             revCommit = StreamSupport.stream(git.log().setMaxCount(1).call().spliterator(), false).findFirst().orElse(null);
         }
         assertThat(revCommit.getId().getName(), is(pushOutput.getCommitId()));

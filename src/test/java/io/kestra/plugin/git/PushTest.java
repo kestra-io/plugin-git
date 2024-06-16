@@ -4,8 +4,10 @@ import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.tasks.NamespaceFiles;
 import io.kestra.core.repositories.FlowRepositoryInterface;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.runners.RunContextInitializer;
 import io.kestra.core.serializers.YamlFlowParser;
 import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
@@ -37,15 +39,15 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 @KestraTest
-class PushTest {
+class PushTest extends AbstractGitTest {
     public static final String BRANCH = "ci";
     public static final String INPUT_FILE_NAME = "input_file.txt";
 
     @Inject
     private RunContextFactory runContextFactory;
 
-    @Value("${kestra.git.pat}")
-    private String pat;
+    @Inject
+    private RunContextInitializer runContextInitializer;
 
     @Inject
     private StorageInterface storageInterface;
@@ -61,7 +63,7 @@ class PushTest {
         Clone clone = Clone.builder()
             .id("clone")
             .type(Clone.class.getName())
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .username(pat)
             .password(pat)
             .branch(BRANCH)
@@ -70,7 +72,7 @@ class PushTest {
         RunContext cloneRunContext = runContextFactory.of();
         clone.run(cloneRunContext);
 
-        File extraFile = cloneRunContext.resolve(Path.of("some_file.txt")).toFile();
+        File extraFile = cloneRunContext.workingDir().resolve(Path.of("some_file.txt")).toFile();
         String extraFileContent = "some content";
         FileUtils.writeStringToFile(
             extraFile,
@@ -109,7 +111,7 @@ class PushTest {
 
     private static String getLastCommitId(RunContext runContext) throws GitAPIException, IOException {
         RevCommit lastCommit = StreamSupport.stream(
-            Git.open(runContext.tempDir().toFile())
+            Git.open(runContext.workingDir().path().toFile())
                 .log()
                 .call().spliterator(),
             false
@@ -122,7 +124,7 @@ class PushTest {
         Clone clone = Clone.builder()
             .id("clone")
             .type(Clone.class.getName())
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .username(pat)
             .password(pat)
             .branch(BRANCH)
@@ -154,7 +156,7 @@ class PushTest {
 
             assertThat(getLastCommitId(ciBranchContext), is(ciBranchExpectedLastCommitId));
         } finally {
-            deleteRemoteBranch(cloneRunContext.tempDir().toString(), otherBranch);
+            deleteRemoteBranch(cloneRunContext.workingDir().path().toString(), otherBranch);
         }
     }
 
@@ -162,11 +164,9 @@ class PushTest {
     void oneTaskPush_ExistingBranch() throws Exception {
         String namespace = "my-namespace";
         String tenantId = "my-tenant";
-        RunContext runContext = runContextFactory.of(Map.of(
-            "flow", Map.of(
-                "tenantId", tenantId,
-                "namespace", namespace
-            ),
+        FlowWithSource flow = this.createFlow(tenantId, namespace);
+
+        RunContext runContext = runContextFactory.of(flow, Map.of(
             "description", "One-task push"
         ));
 
@@ -182,13 +182,12 @@ class PushTest {
             );
         }
 
-        this.createFlow(tenantId, namespace);
 
         String shouldNotBeCommitted = "do_not_commit";
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .commitMessage("Push from CI - {{description}}")
             .flows(Push.FlowFiles.builder()
                 .enabled(false)
@@ -215,7 +214,7 @@ class PushTest {
         Clone clone = Clone.builder()
             .id("clone")
             .type(Clone.class.getName())
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .username(pat)
             .password(pat)
             .branch(BRANCH)
@@ -238,7 +237,7 @@ class PushTest {
         Clone clone = Clone.builder()
             .id("clone")
             .type(Clone.class.getName())
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .username(pat)
             .password(pat)
             .branch(branchName)
@@ -250,7 +249,7 @@ class PushTest {
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .inputFiles(Map.of(
                 toDeleteFileName, "some content"
             ))
@@ -266,7 +265,7 @@ class PushTest {
 
         RunContext runContext = runContextFactory.of();
         clone.run(runContext);
-        assertThat(runContext.resolve(Path.of(toDeleteFileName)).toFile().exists(), is(true));
+        assertThat(runContext.workingDir().resolve(Path.of(toDeleteFileName)).toFile().exists(), is(true));
 
         push = push.toBuilder()
             .inputFiles(null)
@@ -276,9 +275,9 @@ class PushTest {
         runContext = runContextFactory.of();
         try {
             clone.run(runContext);
-            assertThat(runContext.resolve(Path.of(toDeleteFileName)).toFile().exists(), is(false));
+            assertThat(runContext.workingDir().resolve(Path.of(toDeleteFileName)).toFile().exists(), is(false));
         } finally {
-            deleteRemoteBranch(runContext.tempDir().toString(), branchName);
+            deleteRemoteBranch(runContext.workingDir().path().toString(), branchName);
         }
     }
 
@@ -288,7 +287,7 @@ class PushTest {
         Clone clone = Clone.builder()
             .id("clone")
             .type(Clone.class.getName())
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .username(pat)
             .password(pat)
             .branch(branchName)
@@ -298,7 +297,7 @@ class PushTest {
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .inputFiles(Map.of(
                 toDeleteFileName, "some content"
             ))
@@ -319,7 +318,7 @@ class PushTest {
 
             runContext = runContextFactory.of();
             clone.run(runContext);
-            try (Git git = Git.open(runContext.tempDir().toFile())) {
+            try (Git git = Git.open(runContext.workingDir().path().toFile())) {
                 String lastCommitId = StreamSupport.stream(
                     git
                         .log()
@@ -330,7 +329,7 @@ class PushTest {
                 assertThat(lastCommitId, is(firstPush.getCommitId()));
             }
         } finally {
-            deleteRemoteBranch(runContext.tempDir().toString(), branchName);
+            deleteRemoteBranch(runContext.workingDir().path().toString(), branchName);
         }
     }
 
@@ -346,7 +345,7 @@ class PushTest {
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .commitMessage("Push from CI - One-task push with specified directory")
             .flows(Push.FlowFiles.builder()
                 .enabled(false)
@@ -368,7 +367,7 @@ class PushTest {
         Clone clone = Clone.builder()
             .id("clone")
             .type(Clone.class.getName())
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .username(pat)
             .password(pat)
             .branch(BRANCH)
@@ -402,7 +401,7 @@ class PushTest {
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .commitMessage("Push from CI - {{description}}")
             .username(pat)
             .password(pat)
@@ -415,7 +414,7 @@ class PushTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url("https://github.com/kestra-io/unit-tests")
+                .url(repositoryUrl)
                 .username(pat)
                 .password(pat)
                 .branch(branchName)
@@ -433,7 +432,7 @@ class PushTest {
             fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
             assertThat(fileContent, is(createdSubNsFlow.getSource()));
         } finally {
-            this.deleteRemoteBranch(runContext.tempDir().toString(), branchName);
+            this.deleteRemoteBranch(runContext.workingDir().path().toString(), branchName);
         }
     }
 
@@ -456,7 +455,7 @@ class PushTest {
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .commitMessage("Push from CI - {{description}}")
             .flows(Push.FlowFiles.builder()
                 .childNamespaces(false)
@@ -464,8 +463,8 @@ class PushTest {
             .username(pat)
             .password(pat)
             .author(Push.Author.builder()
-                .name("loicmathieu")
-                .email("lmathieu@kestra.io")
+                .name(gitUserName)
+                .email(gitUserEmail)
                 .build())
             .branch(branchName)
             .build();
@@ -476,7 +475,7 @@ class PushTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url("https://github.com/kestra-io/unit-tests")
+                .url(repositoryUrl)
                 .username(pat)
                 .password(pat)
                 .branch(branchName)
@@ -492,7 +491,7 @@ class PushTest {
             flowFile = new File(Path.of(cloneOutput.getDirectory(), Sync.FLOWS_DIRECTORY).toString(), createdSubNsFlow.getNamespace() + "." + createdSubNsFlow.getId() + ".yml");
             assertThat(flowFile.exists(), is(false));
         } finally {
-            this.deleteRemoteBranch(runContext.tempDir().toString(), branchName);
+            this.deleteRemoteBranch(runContext.workingDir().path().toString(), branchName);
         }
     }
 
@@ -515,12 +514,12 @@ class PushTest {
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
-            .url("https://github.com/kestra-io/unit-tests")
+            .url(repositoryUrl)
             .commitMessage("Push from CI - {{description}}")
             .username(pat)
             .password(pat)
             .author(Push.Author.builder()
-                .email("lmathieu@kestra.io")
+                .email(gitUserEmail)
                 .build())
             .branch(branchName)
             .flows(Push.FlowFiles.builder()
@@ -534,7 +533,7 @@ class PushTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url("https://github.com/kestra-io/unit-tests")
+                .url(repositoryUrl)
                 .username(pat)
                 .password(pat)
                 .branch(branchName)
@@ -552,7 +551,7 @@ class PushTest {
             fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
             assertThat(fileContent, is(createdSubNsFlow.getSource()));
         } finally {
-            this.deleteRemoteBranch(runContext.tempDir().toString(), branchName);
+            this.deleteRemoteBranch(runContext.workingDir().path().toString(), branchName);
         }
     }
 

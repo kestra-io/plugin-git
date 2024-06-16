@@ -3,27 +3,25 @@ package io.kestra.plugin.git;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
-import io.kestra.core.runners.DefaultRunContext;
-import io.kestra.core.runners.NamespaceFilesService;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.utils.PathUtil;
+import io.kestra.core.storages.Namespace;
+import io.kestra.core.utils.PathMatcherPredicate;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 import java.io.InputStream;
 import java.net.URI;
-import java.nio.file.FileSystems;
 import java.nio.file.Path;
-import java.nio.file.PathMatcher;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
-import static io.kestra.core.utils.Rethrow.*;
+import static io.kestra.core.utils.Rethrow.throwFunction;
+import static io.kestra.core.utils.Rethrow.throwSupplier;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -133,31 +131,17 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
 
     @Override
     protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path baseDirectory, List<String> globs) throws Exception {
-        NamespaceFilesService namespaceFilesService = ((DefaultRunContext)runContext).getApplicationContext().getBean(NamespaceFilesService.class);
 
-        String tenantId = runContext.tenantId();
-        String renderedNamespace = runContext.render(this.namespace);
-        Stream<URI> uriStream = namespaceFilesService.recursiveList(
-            tenantId,
-            renderedNamespace,
-            null
-        ).stream();
-        if (globs != null) {
-            List<PathMatcher> matchers = globs.stream().map(glob -> FileSystems.getDefault().getPathMatcher("glob:" + PathUtil.checkLeadingSlash(glob))).toList();
-            uriStream = uriStream.filter(uri ->
-            {
-                Path path = Path.of(uri.getPath());
-                return matchers.stream().anyMatch(matcher -> matcher.matches(path) || matcher.matches(Path.of(PathUtil.checkLeadingSlash(path.getFileName().toString()))));
-            });
-        }
+        Namespace storage = runContext.storage().namespace(runContext.render(this.namespace));
+        Predicate<Path> matcher = (globs != null) ? PathMatcherPredicate.matches(globs) : (path -> true);
 
-        return uriStream.map(uri -> {
-            String path = uri.toString();
-            return path.startsWith("/") ? path.substring(1) : path;
-        }).collect(Collectors.toMap(
-            baseDirectory::resolve,
-            throwFunction(path -> throwSupplier(() -> namespaceFilesService.content(tenantId, renderedNamespace, URI.create("/" + path))))
-        ));
+        return storage
+            .findAllFilesMatching(matcher)
+            .stream()
+            .collect(Collectors.toMap(
+                nsFile -> baseDirectory.resolve(nsFile.path(false)),
+                throwFunction(nsFile -> throwSupplier(() -> storage.getFileContent(nsFile.path())))
+            ));
     }
 
     @Override

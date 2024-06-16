@@ -100,10 +100,10 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         Logger logger = runContext.logger();
         String url = runContext.render(this.url);
 
-        Path path = runContext.tempDir();
+        Path path = runContext.workingDir().path();
         if (this.directory != null) {
             String directory = runContext.render(this.directory);
-            path = runContext.resolve(Path.of(directory));
+            path = runContext.workingDir().resolve(Path.of(directory));
         }
 
         CloneCommand cloneCommand = Git.cloneRepository()
