@@ -46,7 +46,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
 @NoArgsConstructor
 @Schema(
     title = "Commit and push files to a Git repository.",
-    description = "You can use this task to push your flows and namespace files to Git. To do that, you can set the `enabled` child property of `flows` and/or `namespaceFiles` to `true`. You can also add additional `inputFiles` to be committed and pushed. Furthermore, you can use this task in combination with the `Clone` task so that you can first clone the repository, then add or modify files and push to Git afterwards. " +
+    description = "Replaced by [PushFlows](https://kestra.io/plugins/plugin-git/tasks/io.kestra.plugin.git.pushflows) and [PushNamespaceFiles](https://kestra.io/plugins/plugin-git/tasks/io.kestra.plugin.git.pushnamespacefiles). Previously, this task helps you to push your flows and namespace files to Git. To do that, you can set the `enabled` child property of `flows` and/or `namespaceFiles` to `true`. You can also add additional `inputFiles` to be committed and pushed. Furthermore, you can use this task in combination with the `Clone` task so that you can first clone the repository, then add or modify files and push to Git afterwards. " +
         "Check the examples below as well as the [Version Control with Git](https://kestra.io/docs/developer-guide/git) documentation for more information."
 )
 @Plugin(
