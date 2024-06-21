@@ -40,7 +40,7 @@ import java.util.regex.Pattern;
             code = {
                 """
                 id: sync_flows_from_git
-                namespace: system
+                namespace: company.team
 
                 tasks:
                   - id: git

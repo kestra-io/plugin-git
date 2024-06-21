@@ -36,7 +36,7 @@ import java.util.Optional;
             code = {
                 """
                     id: sync_flows_from_git
-                    namespace: system
+                    namespace: company.team
                     \s
                     tasks:
                       - id: git

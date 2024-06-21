@@ -56,7 +56,7 @@ import java.nio.file.Path;
             title = "Clone a GitHub repository and run a Python ETL script. Note that the `Worker` task is required so that the Python script shares the same local file system with files cloned from GitHub in the previous task.",
             code = {
                 "id: gitPython",
-                "namespace: prod",
+                "namespace: company.team",
                 "",
                 "tasks:",
                 "  - id: fileSystem",

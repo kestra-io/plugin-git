@@ -57,7 +57,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
             full = true,
             code = {
                 "id: push_to_git",
-                "namespace: prod",
+                "namespace: company.team",
                 "",
                 "tasks:",
                 "  - id: commit_and_push",
@@ -85,7 +85,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
             full = true,
             code = {
                 "id: push_new_file_to_git",
-                "namespace: dev",
+                "namespace: company.team",
                 "",
                 "inputs:",
                 "  - id: commit_message",

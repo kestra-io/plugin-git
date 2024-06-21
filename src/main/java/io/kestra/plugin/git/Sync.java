@@ -58,7 +58,7 @@ import static io.kestra.core.utils.Rethrow.*;
             full = true,
             code = {
                 "id: sync_from_git",
-                "namespace: prod",
+                "namespace: company.team",
                 "",
                 "tasks:",
                 "  - id: git",

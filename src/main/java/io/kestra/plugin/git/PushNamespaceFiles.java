@@ -41,7 +41,7 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
             code = {
                 """
                     id: push_to_git
-                    namespace: system
+                    namespace: company.team
                     \s
                     tasks:
                       - id: commit_and_push

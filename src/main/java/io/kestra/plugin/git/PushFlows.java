@@ -46,7 +46,7 @@ import static io.kestra.core.utils.Rethrow.*;
             code = {
                 """
                     id: push_to_git
-                    namespace: system
+                    namespace: company.team
                     \s
                     tasks:
                       - id: commit_and_push
@@ -75,7 +75,7 @@ import static io.kestra.core.utils.Rethrow.*;
             code = {
                 """
                     id: myflow
-                    namespace: prod
+                    namespace: company.team
                     \s
                     inputs:
                       - id: push
