@@ -35,7 +35,7 @@ import java.util.Optional;
             full = true,
             code = {
                 """
-                    id: sync_flows_from_git
+                    id: sync_from_git
                     namespace: system
                     \s
                     tasks:
