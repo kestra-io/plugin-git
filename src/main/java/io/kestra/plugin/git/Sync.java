@@ -252,7 +252,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
                 }
 
                 if (!dryRun) {
-                    URI fileUri = finalNamespaceFilePrefix.resolve(path.substring(1));
+                    URI fileUri = finalNamespaceFilePrefix.resolve(path.replace("\\","/").substring(1));
                     if (contentByFilePath.getValue() == null) {
                         storage.createDirectory(tenantId, fileUri);
                     } else {
