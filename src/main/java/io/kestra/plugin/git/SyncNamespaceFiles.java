@@ -13,6 +13,7 @@ import lombok.experimental.SuperBuilder;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
@@ -108,9 +109,13 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     protected URI writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
         Namespace namespace = runContext.storage().namespace(renderedNamespace);
 
-        return inputStream == null ?
-            URI.create(namespace.createDirectory(Path.of(uri.getPath())) + "/") :
-            namespace.putFile(Path.of(uri.getPath()), inputStream).uri();
+        try {
+            return inputStream == null ?
+                URI.create(namespace.createDirectory(Path.of(uri.getPath())) + "/") :
+                namespace.putFile(Path.of(uri.getPath()), inputStream).uri();
+        } catch (URISyntaxException e) {
+            throw new IOException(e);
+        }
     }
 
     @Override

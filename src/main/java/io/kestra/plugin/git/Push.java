@@ -245,7 +245,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
                 .findAllFilesMatching(this.namespaceFiles.getInclude(), this.namespaceFiles.getExclude())
                 .forEach(Rethrow.throwConsumer(namespaceFile -> {
                     InputStream content = runContext.storage().getFile(namespaceFile.uri());
-                    runContext.workingDir().putFile(namespaceFile.path(), content);
+                    runContext.workingDir().putFile(Path.of(namespaceFile.path()), content);
                 }));
         }
 

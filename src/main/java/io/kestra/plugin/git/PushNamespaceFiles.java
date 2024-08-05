@@ -140,7 +140,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
             .stream()
             .collect(Collectors.toMap(
                 nsFile -> baseDirectory.resolve(nsFile.path(false)),
-                throwFunction(nsFile -> throwSupplier(() -> storage.getFileContent(nsFile.path())))
+                throwFunction(nsFile -> throwSupplier(() -> storage.getFileContent(Path.of(nsFile.path()))))
             ));
     }
 
