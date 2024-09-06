@@ -37,10 +37,9 @@ import java.util.regex.Pattern;
         @Example(
             title = "Sync flows from a Git repository. This flow can run either on a schedule (using the [Schedule](https://kestra.io/docs/workflow-components/triggers#schedule-trigger) trigger) or anytime you push a change to a given Git branch (using the [Webhook](https://kestra.io/docs/workflow-components/triggers#webhook-trigger) trigger).",
             full = true,
-            code = {
-                """
+            code = """
                 id: sync_flows_from_git
-                namespace: system
+                namespace: company.team
 
                 tasks:
                   - id: git
@@ -58,8 +57,8 @@ import java.util.regex.Pattern;
                 triggers:
                   - id: every_full_hour
                     type: io.kestra.plugin.core.trigger.Schedule
-                    cron: "0 * * * *\""""
-            }
+                    cron: "0 * * * *"
+                """
         )
     }
 )

@@ -43,61 +43,59 @@ import static io.kestra.core.utils.Rethrow.*;
         @Example(
             title = "Automatically push all saved flows from the dev namespace and all child namespaces to a Git repository every day at 5 p.m. Before pushing to Git, the task will adjust the flow's source code to match the targetNamespace to prepare the Git branch for merging to the production namespace.",
             full = true,
-            code = {
+            code = """
+                id: push_to_git
+                namespace: company.team
+                
+                tasks:
+                  - id: commit_and_push
+                    type: io.kestra.plugin.git.PushFlows
+                    sourceNamespace: dev # the namespace from which flows are pushed
+                    targetNamespace: prod # the target production namespace; if different than sourceNamespace, the sourceNamespace in the source code will be overwritten by the targetNamespace
+                    flows: "*"  # optional list of glob patterns; by default, all flows are pushed
+                    includeChildNamespaces: true # optional boolean, false by default
+                    gitDirectory: _flows
+                    url: https://github.com/kestra-io/scripts # required string
+                    username: git_username # required string needed for Auth with Git
+                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                    branch: kestra # optional, uses "kestra" by default
+                    commitMessage: "add flows {{ now() }}" # optional string
+                    dryRun: true  # if true, you'll see what files will be added, modified or deleted based on the state in Git without overwriting the files yet
+                
+                triggers:
+                  - id: schedule_push
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "0 17 * * *" # release/push to Git every day at 5pm
                 """
-                    id: push_to_git
-                    namespace: system
-                    \s
-                    tasks:
-                      - id: commit_and_push
-                        type: io.kestra.plugin.git.PushFlows
-                        sourceNamespace: dev # the namespace from which flows are pushed
-                        targetNamespace: prod # the target production namespace; if different than sourceNamespace, the sourceNamespace in the source code will be overwritten by the targetNamespace
-                        flows: "*"  # optional list of glob patterns; by default, all flows are pushed
-                        includeChildNamespaces: true # optional boolean, false by default
-                        gitDirectory: _flows
-                        url: https://github.com/kestra-io/scripts # required string
-                        username: git_username # required string needed for Auth with Git
-                        password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
-                        branch: kestra # optional, uses "kestra" by default
-                        commitMessage: "add flows {{ now() }}" # optional string
-                        dryRun: true  # if true, you'll see what files will be added, modified or deleted based on the state in Git without overwriting the files yet
-                    \s
-                    triggers:
-                      - id: schedule_push
-                        type: io.kestra.plugin.core.trigger.Schedule
-                        cron: "0 17 * * *" # release/push to Git every day at 5pm"""
-            }
         ),
         @Example(
             title = "Manually push a single flow to Git if the input push is set to true.",
             full = true,
-            code = {
+            code = """
+                id: myflow
+                namespace: prod
+                
+                inputs:
+                  - id: push
+                    type: BOOLEAN
+                    defaults: false
+                
+                tasks:
+                  - id: if
+                    type: io.kestra.plugin.core.flow.If
+                    condition: "{{ inputs.push == true}}"
+                    then:
+                      - id: commit_and_push
+                        type: io.kestra.plugin.git.PushFlows
+                        sourceNamespace: prod # optional; if you prefer templating, you can use "{{ flow.namespace }}"
+                        targetNamespace: prod # optional; by default, set to the same namespace as defined in sourceNamespace
+                        flows: myflow # if you prefer templating, you can use "{{ flow.id }}"
+                        url: https://github.com/kestra-io/scripts
+                        username: git_username
+                        password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                        branch: kestra
+                        commitMessage: "add flow {{ flow.namespace ~ '.' ~ flow.id }}"
                 """
-                    id: myflow
-                    namespace: prod
-                    \s
-                    inputs:
-                      - id: push
-                        type: BOOLEAN
-                        defaults: false
-                    \s
-                    tasks:
-                      - id: if
-                        type: io.kestra.plugin.core.flow.If
-                        condition: "{{ inputs.push == true}}"
-                        then:
-                          - id: commit_and_push
-                            type: io.kestra.plugin.git.PushFlows
-                            sourceNamespace: prod # optional; if you prefer templating, you can use "{{ flow.namespace }}"
-                            targetNamespace: prod # optional; by default, set to the same namespace as defined in sourceNamespace
-                            flows: myflow # if you prefer templating, you can use "{{ flow.id }}"
-                            url: https://github.com/kestra-io/scripts
-                            username: git_username
-                            password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
-                            branch: kestra
-                            commitMessage: "add flow {{ flow.namespace ~ '.' ~ flow.id }}"\s"""
-            }
         )
     }
 )

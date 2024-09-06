@@ -55,68 +55,68 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
         @Example(
             title = "Push flows and namespace files to a Git repository every 15 minutes.",
             full = true,
-            code = {
-                "id: push_to_git",
-                "namespace: prod",
-                "",
-                "tasks:",
-                "  - id: commit_and_push",
-                "    type: io.kestra.plugin.git.Push",
-                "    namespaceFiles:",
-                "      enabled: true",
-                "    flows:",
-                "      enabled: true",
-                "    url: https://github.com/kestra-io/scripts",
-                "    branch: kestra",
-                "    username: git_username",
-                "    password: \"{{ secret('GITHUB_ACCESS_TOKEN') }}\"",
-                "    commitMessage: \"add flows and scripts {{ now() }}\"",
-                "",
-                "triggers:",
-                "  - id: schedule_push",
-                "    type: io.kestra.plugin.core.trigger.Schedule",
-                "    cron: \"*/15 * * * *\""
-            }
+            code = """
+                id: push_to_git
+                namespace: company.team
+                
+                tasks:
+                  - id: commit_and_push
+                    type: io.kestra.plugin.git.Push
+                    namespaceFiles:
+                      enabled: true
+                    flows:
+                      enabled: true
+                    url: https://github.com/kestra-io/scripts
+                    branch: kestra
+                    username: git_username
+                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                    commitMessage: "add flows and scripts {{ now() }}"
+                
+                triggers:
+                  - id: schedule_push
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "*/15 * * * *"
+                """
         ),
         @Example(
             title = "Clone the main branch, generate a file in a script, and then push that new file to Git. " +
                 "Since we're in a working directory with a `.git` directory, you don't need to specify the URL in the Push task. " +
                 "However, the Git credentials always need to be explicitly provided on both Clone and Push tasks (unless using task defaults).",
             full = true,
-            code = {
-                "id: push_new_file_to_git",
-                "namespace: dev",
-                "",
-                "inputs:",
-                "  - id: commit_message",
-                "    type: STRING",
-                "    defaults: add a new file to Git",
-                "",
-                "tasks:",
-                "  - id: wdir",
-                "    type: io.kestra.plugin.core.flow.WorkingDirectory",
-                "    tasks:",
-                "      - id: clone",
-                "        type: io.kestra.plugin.git.Clone",
-                "        branch: main",
-                "        url: https://github.com/kestra-io/scripts",
-                "      - id: generate_data",
-                "        type: io.kestra.plugin.scripts.python.Commands",
-                "        docker:",
-                "          image: ghcr.io/kestra-io/pydata:latest",
-                "        commands:",
-                "          - python generate_data/generate_orders.py",
-                "      - id: push",
-                "        type: io.kestra.plugin.git.Push",
-                "        username: git_username",
-                "        password: myPAT",
-                "        branch: feature_branch",
-                "        inputFiles:",
-                "          to_commit/avg_order.txt: \"{{ outputs.generate_data.vars.average_order }}\"",
-                "        addFilesPattern:",
-                "          - to_commit",
-                "        commitMessage: \"{{ inputs.commit_message }}\""
-            }
+            code = """
+                id: push_new_file_to_git
+                namespace: company.team
+                
+                inputs:
+                  - id: commit_message
+                    type: STRING
+                    defaults: add a new file to Git
+                
+                tasks:
+                  - id: wdir
+                    type: io.kestra.plugin.core.flow.WorkingDirectory
+                    tasks:
+                      - id: clone
+                        type: io.kestra.plugin.git.Clone
+                        branch: main
+                        url: https://github.com/kestra-io/scripts
+                      - id: generate_data
+                        type: io.kestra.plugin.scripts.python.Commands
+                        docker:
+                          image: ghcr.io/kestra-io/pydata:latest
+                        commands:
+                          - python generate_data/generate_orders.py
+                      - id: push
+                        type: io.kestra.plugin.git.Push
+                        username: git_username
+                        password: myPAT
+                        branch: feature_branch
+                        inputFiles:
+                          to_commit/avg_order.txt: "{{ outputs.generate_data.vars.average_order }}"
+                        addFilesPattern:
+                          - to_commit
+                        commitMessage: "{{ inputs.commit_message }}"
+                """
         )
     }
 )
