@@ -56,26 +56,26 @@ import static io.kestra.core.utils.Rethrow.*;
         @Example(
             title = "Synchronizes namespace files and flows based on the current state in a Git repository. This flow can run either on a schedule (using the Schedule trigger) or anytime you push a change to a given Git branch (using the Webhook trigger).",
             full = true,
-            code = {
-                "id: sync_from_git",
-                "namespace: prod",
-                "",
-                "tasks:",
-                "  - id: git",
-                "    type: io.kestra.plugin.git.Sync",
-                "    url: https://github.com/kestra-io/scripts",
-                "    branch: main",
-                "    username: git_username",
-                "    password: \"{{ secret('GITHUB_ACCESS_TOKEN') }}\"",
-                "    gitDirectory: your_git_dir # optional, otherwise all files",
-                "    namespaceFilesDirectory: your_namespace_files_location # optional, otherwise the namespace root directory",
-                "    dryRun: true  # if true, print the output of what files will be added/modified or deleted without overwriting the files yet",
-                "",
-                "triggers:",
-                "  - id: every_minute",
-                "    type: io.kestra.plugin.core.trigger.Schedule",
-                "    cron: \"*/1 * * * *\""
-            }
+            code = """
+                id: sync_from_git
+                namespace: company.team
+                
+                tasks:
+                  - id: git
+                    type: io.kestra.plugin.git.Sync
+                    url: https://github.com/kestra-io/scripts
+                    branch: main
+                    username: git_username
+                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                    gitDirectory: your_git_dir # optional, otherwise all files
+                    namespaceFilesDirectory: your_namespace_files_location # optional, otherwise the namespace root directory
+                    dryRun: true  # if true, print the output of what files will be added/modified or deleted without overwriting the files yet
+                
+                triggers:
+                  - id: every_minute
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "*/1 * * * *"
+                """
         )
     }
 )

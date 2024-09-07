@@ -28,52 +28,72 @@ import java.nio.file.Path;
     examples = {
         @Example(
             title = "Clone a public GitHub repository.",
-            code = {
-                "url: https://github.com/dbt-labs/jaffle_shop",
-                "branch: main",
-            }
+            full = true,
+            code = """
+                id: git_clone
+                namespace: company.team
+
+                tasks:
+                  - id: clone
+                    type: io.kestra.plugin.git.Clone
+                    url: https://github.com/dbt-labs/jaffle_shop
+                    branch: main
+                """
         ),
         @Example(
             title = "Clone a private repository from an HTTP server such as a private GitHub repository using a [personal access token](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/creating-a-personal-access-token).",
-            code = {
-                "url: https://github.com/kestra-io/examples",
-                "branch: main",
-                "username: git_username",
-                "password: your_personal_access_token"
-            }
+            full = true,
+            code = """
+                id: git_clone
+                namespace: company.team
+
+                tasks:
+                  - id: clone
+                    type: io.kestra.plugin.git.Clone
+                    url: https://github.com/kestra-io/examples
+                    branch: main
+                    username: git_username
+                    password: your_personal_access_token
+                """
         ),
         @Example(
             title = "Clone a repository from an SSH server. If you want to clone the repository into a specific directory, you can configure the `directory` property as shown below.",
-            code = {
-                "url: git@github.com:kestra-io/kestra.git",
-                "directory: kestra",
-                "privateKey: <keyfile_content>",
-                "passphrase: <passphrase>"
-            }
+            full = true,
+            code = """
+                id: git_clone
+                namespace: company.team
+
+                tasks:
+                  - id: clone
+                    type: io.kestra.plugin.git.Clone
+                    url: git@github.com:kestra-io/kestra.git
+                    directory: kestra
+                    privateKey: <keyfile_content>
+                    passphrase: <passphrase>
+                """
         ),
         @Example(
-            full = true,
             title = "Clone a GitHub repository and run a Python ETL script. Note that the `Worker` task is required so that the Python script shares the same local file system with files cloned from GitHub in the previous task.",
-            code = {
-                "id: gitPython",
-                "namespace: prod",
-                "",
-                "tasks:",
-                "  - id: fileSystem",
-                "    type: io.kestra.plugin.core.flow.WorkingDirectory",
-                "    tasks:",
-                "      - id: cloneRepository",
-                "        type: io.kestra.plugin.git.Clone",
-                "        url: https://github.com/kestra-io/examples",
-                "        branch: main",
-
-                "      - id: pythonETL",
-                "        type: io.kestra.plugin.scripts.python.Commands",
-                "        beforeCommands:",
-                "          - pip install requests pandas > /dev/null",
-                "        commands:",
-                "          - python examples/scripts/etl_script.py",
-            }
+            full = true,
+            code = """
+                id: git_python
+                namespace: company.team
+                
+                tasks:
+                  - id: file_system
+                    type: io.kestra.plugin.core.flow.WorkingDirectory
+                    tasks:
+                      - id: clone_repository
+                        type: io.kestra.plugin.git.Clone
+                        url: https://github.com/kestra-io/examples
+                        branch: main
+                      - id: python_etl
+                        type: io.kestra.plugin.scripts.python.Commands
+                        beforeCommands:
+                          - pip install requests pandas > /dev/null
+                        commands:
+                          - python examples/scripts/etl_script.py
+                """
         )
     }
 )
