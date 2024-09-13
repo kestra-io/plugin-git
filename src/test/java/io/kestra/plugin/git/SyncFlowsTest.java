@@ -11,7 +11,6 @@ import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.serializers.YamlFlowParser;
 import io.kestra.core.utils.Rethrow;
-import io.micronaut.context.annotation.Value;
 import io.kestra.core.junit.annotations.KestraTest;
 import jakarta.inject.Inject;
 import org.apache.commons.io.IOUtils;
@@ -431,7 +430,7 @@ public class SyncFlowsTest extends AbstractGitTest {
         assertThat(flows, hasSize(5));
         flows.forEach(f -> previousRevisionByUid.put(f.uidWithoutRevision(), f.getRevision()));
 
-        String[] beforeUpdateSources = flowRepositoryInterface.findWithSource(null, TENANT_ID, null, null).stream()
+        String[] beforeUpdateSources = flowRepositoryInterface.findWithSource(null, TENANT_ID, null, null, null).stream()
             .map(FlowWithSource::getSource)
             .toArray(String[]::new);
 
@@ -451,7 +450,7 @@ public class SyncFlowsTest extends AbstractGitTest {
         flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(5));
 
-        String[] afterUpdateSources = flowRepositoryInterface.findWithSource(null, TENANT_ID, null, null).stream()
+        String[] afterUpdateSources = flowRepositoryInterface.findWithSource(null, TENANT_ID, null, null, null).stream()
             .map(FlowWithSource::getSource)
             .toArray(String[]::new);
 
@@ -521,7 +520,7 @@ public class SyncFlowsTest extends AbstractGitTest {
                     })),
                 Arrays.stream(additionalFlowSources)
             ).toArray(String[]::new);
-            String[] actualFlowSources = flowRepositoryInterface.findWithSource(null, SyncFlowsTest.TENANT_ID, NAMESPACE, null).stream()
+            String[] actualFlowSources = flowRepositoryInterface.findWithSource(null, SyncFlowsTest.TENANT_ID, null, NAMESPACE, null).stream()
                 .map(FlowWithSource::getSource)
                 .toArray(String[]::new);
             assertThat(actualFlowSources, arrayContainingInAnyOrder(expectedFlowSources));

@@ -1,5 +1,6 @@
 package io.kestra.plugin.git;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
@@ -35,7 +36,6 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.stream.Stream;
 
 import static io.kestra.core.utils.Rethrow.throwConsumer;
 import static org.eclipse.jgit.lib.Constants.R_HEADS;
@@ -47,7 +47,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
 @NoArgsConstructor
 @Schema(
     title = "Commit and push files to a Git repository.",
-    description = "Replaced by [PushFlows](https://kestra.io/plugins/plugin-git/tasks/io.kestra.plugin.git.pushflows) and [PushNamespaceFiles](https://kestra.io/plugins/plugin-git/tasks/io.kestra.plugin.git.pushnamespacefiles). Previously, this task helps you to push your flows and namespace files to Git. To do that, you can set the `enabled` child property of `flows` and/or `namespaceFiles` to `true`. You can also add additional `inputFiles` to be committed and pushed. Furthermore, you can use this task in combination with the `Clone` task so that you can first clone the repository, then add or modify files and push to Git afterwards. " +
+    description = "Replaced by [PushFlows](https://kestra.io/plugins/plugin-git/tasks/io.kestra.plugin.git.pushflows) and [PushNamespaceFiles](https://kestra.io/plugins/plugin-git/tasks/io.kestra.plugin.git.pushnamespacefiles) for flow and namespace files push scenario. You can add `inputFiles` to be committed and pushed. Furthermore, you can use this task in combination with the `Clone` task so that you can first clone the repository, then add or modify files and push to Git afterwards. " +
         "Check the examples below as well as the [Version Control with Git](https://kestra.io/docs/developer-guide/git) documentation for more information."
 )
 @Plugin(
@@ -120,7 +120,6 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
         )
     }
 )
-@Deprecated
 public class Push extends AbstractCloningTask implements RunnableTask<Push.Output>, NamespaceFilesInterface, InputFilesInterface {
     @Schema(
         title = "The optional directory associated with the clone operation.",
@@ -226,13 +225,17 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
 
         if (this.url != null) {
             RmCommand rm = git.rm();
-            Stream<String> previouslyTrackedRelativeFilePaths = Arrays.stream(basePath.toFile().listFiles())
+            List<String> previouslyTrackedRelativeFilePaths = Optional.ofNullable(basePath.toFile().listFiles()).stream().flatMap(Arrays::stream)
                 .filter(file -> !file.isDirectory() || !file.getName().equals(".git"))
                 .map(File::toPath)
                 .map(basePath::relativize)
-                .map(Path::toString);
-            previouslyTrackedRelativeFilePaths.forEach(rm::addFilepattern);
-            rm.call();
+                .map(Path::toString)
+                .toList();
+
+            if (!previouslyTrackedRelativeFilePaths.isEmpty()) {
+                previouslyTrackedRelativeFilePaths.forEach(rm::addFilepattern);
+                rm.call();
+            }
         }
 
         if (this.inputFiles != null) {
@@ -259,7 +262,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
 
             List<FlowWithSource> flows;
             if (Boolean.TRUE.equals(this.flows.childNamespaces)) {
-                flows = flowRepository.findWithSource(null, tenantId, namespace, null);
+                flows = flowRepository.findWithSource(null, tenantId, null, namespace, null);
             } else {
                 flows = flowRepository.findByNamespaceWithSource(tenantId, namespace);
             }
@@ -346,6 +349,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         )
         @PluginProperty
         @Builder.Default
+        @JsonInclude(JsonInclude.Include.NON_NULL)
         private Boolean enabled = true;
 
         @Schema(
@@ -353,11 +357,11 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         )
         @PluginProperty
         @Builder.Default
+        @JsonInclude(JsonInclude.Include.NON_NULL)
         private Boolean childNamespaces = true;
 
         @Schema(
-            title = "To which directory flows should be pushed (relative to `directory`).",
-            description = "The default is `_flows`. This is the same directory name that you can see in the VS Code Editor."
+            title = "To which directory flows should be pushed (relative to `directory`)."
         )
         @PluginProperty(dynamic = true)
         @Builder.Default

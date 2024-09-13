@@ -12,7 +12,6 @@ import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.KestraIgnore;
 import io.kestra.core.utils.TestsUtils;
-import io.micronaut.context.annotation.Value;
 import io.kestra.core.junit.annotations.KestraTest;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
@@ -424,7 +423,7 @@ class SyncTest extends AbstractGitTest {
                 Map.Entry::getKey,
                 Map.Entry::getValue
             ));
-        Map<String, String> namespaceForActualFlowSources = flowRepositoryInterface.findWithSource(null, tenantId, NAMESPACE, null).stream()
+        Map<String, String> namespaceForActualFlowSources = flowRepositoryInterface.findWithSource(null, tenantId, null, NAMESPACE, null).stream()
             .map(flowWithSource -> Map.entry(flowWithSource.getSource(), flowWithSource.getNamespace()))
             .collect(Collectors.toMap(
                 Map.Entry::getKey,
