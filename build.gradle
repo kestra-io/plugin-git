@@ -52,7 +52,7 @@ dependencies {
     compileOnly group: "io.kestra", name: "script", version: kestraVersion
 
     // git
-    api 'org.eclipse.jgit:org.eclipse.jgit:6.9.0.202403050737-r'
+    api 'org.eclipse.jgit:org.eclipse.jgit:7.0.0.202409031743-r'
     api 'org.eclipse.jgit:org.eclipse.jgit.ssh.jsch:6.10.0.202406032230-r'
 }
 
