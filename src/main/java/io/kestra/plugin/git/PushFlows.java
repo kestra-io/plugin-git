@@ -58,7 +58,7 @@ import static io.kestra.core.utils.Rethrow.*;
                     url: https://github.com/kestra-io/scripts # required string
                     username: git_username # required string needed for Auth with Git
                     password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
-                    branch: kestra # optional, uses "kestra" by default
+                    branch: main
                     commitMessage: "add flows {{ now() }}" # optional string
                     dryRun: true  # if true, you'll see what files will be added, modified or deleted based on the state in Git without overwriting the files yet
                 
@@ -93,7 +93,7 @@ import static io.kestra.core.utils.Rethrow.*;
                         url: https://github.com/kestra-io/scripts
                         username: git_username
                         password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
-                        branch: kestra
+                        branch: main
                         commitMessage: "add flow {{ flow.namespace ~ '.' ~ flow.id }}"
                 """
         )
@@ -106,7 +106,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     )
     @PluginProperty(dynamic = true)
     @Builder.Default
-    private String branch = "kestra";
+    private String branch = "main";
 
     @Schema(
         title = "Directory to which flows should be pushed.",
