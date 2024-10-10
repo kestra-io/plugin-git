@@ -64,7 +64,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     )
     @PluginProperty(dynamic = true)
     @Builder.Default
-    private String branch = "kestra";
+    private String branch = "main";
 
     @Schema(
         title = "The namespace from which files should be synced from the `gitDirectory` to Kestra."
