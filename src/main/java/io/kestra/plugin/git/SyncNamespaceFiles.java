@@ -105,7 +105,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     }
 
     @Override
-    protected URI writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+    protected URI writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, URISyntaxException {
         Namespace namespace = runContext.storage().namespace(renderedNamespace);
 
         try {
@@ -160,7 +160,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
         }
         NamespaceFile namespaceFile = NamespaceFile.of(renderedNamespace, resource);
         String trailingSlash = namespaceFile.isDirectory() ? "/" : "";
-        return URI.create(namespaceFile.path(true).toString() + trailingSlash);
+        return URI.create(namespaceFile.path(true).toString().replace("\\", "/") + trailingSlash);
     }
 
     @Override

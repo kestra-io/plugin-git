@@ -146,7 +146,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
     @Override
     protected void deleteResource(RunContext runContext, String renderedNamespace, Flow flow) {
-        flowService(runContext).delete(flow);
+        flowService(runContext).delete(flow.withSource(""));
     }
 
     @Override

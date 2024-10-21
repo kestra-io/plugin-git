@@ -180,7 +180,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
             // prevent self deletion
             flowIdsImported.add(flowProps.get("id"));
 
-            flowRepository.findByNamespace(tenantId, namespace).stream()
+            flowRepository.findByNamespaceWithSource(tenantId, namespace).stream()
                 .filter(flow -> !flowIdsImported.contains(flow.getId()))
                 .forEach(flow -> {
                     if (!dryRun) {
