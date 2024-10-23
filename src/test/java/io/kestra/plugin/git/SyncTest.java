@@ -63,7 +63,7 @@ class SyncTest extends AbstractGitTest {
 
     @BeforeEach
     void init() throws IOException {
-        flowRepositoryInterface.findAllForAllTenants().forEach(flow -> flowRepositoryInterface.delete(flow));
+        flowRepositoryInterface.findAllForAllTenants().forEach(flow -> flowRepositoryInterface.delete(flow.withSource("")));
         storageInterface.deleteByPrefix(null, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE)));
         storageInterface.deleteByPrefix(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE)));
     }
