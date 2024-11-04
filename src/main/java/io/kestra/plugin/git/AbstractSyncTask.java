@@ -70,7 +70,7 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
             filtered = filtered.filter(path -> !path.toString().contains(".git"));
 
             return filtered.collect(Collectors.toMap(
-                gitPath -> URI.create("/" + baseDirectory.relativize(gitPath) + (gitPath.toFile().isDirectory() ? "/" : "")),
+                gitPath -> URI.create(("/" + baseDirectory.relativize(gitPath) + (gitPath.toFile().isDirectory() ? "/" : "")).replace("\\", "/")),
                 throwFunction(path -> throwSupplier(() -> {
                     if (Files.isDirectory(path)) {
                         return null;
