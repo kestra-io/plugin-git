@@ -6,6 +6,7 @@ import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.storages.Namespace;
 import io.kestra.core.storages.NamespaceFile;
+import io.kestra.core.utils.WindowsUtils;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -158,7 +159,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
         if (resource == null) {
             return null;
         }
-        NamespaceFile namespaceFile = NamespaceFile.of(renderedNamespace, resource);
+        NamespaceFile namespaceFile = NamespaceFile.of(renderedNamespace, WindowsUtils.windowsToUnixURI(resource));
         String trailingSlash = namespaceFile.isDirectory() ? "/" : "";
         return URI.create(namespaceFile.path(true).toString().replace("\\", "/") + trailingSlash);
     }
