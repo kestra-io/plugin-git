@@ -1,6 +1,7 @@
 package io.kestra.plugin.git;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.queues.QueueInterface;
 import io.kestra.core.runners.RunContext;
@@ -10,8 +11,6 @@ import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.KestraIgnore;
 import io.kestra.core.utils.Rethrow;
-import io.micronaut.context.annotation.Value;
-import io.kestra.core.junit.annotations.KestraTest;
 import jakarta.inject.Inject;
 import org.apache.commons.io.IOUtils;
 import org.junit.jupiter.api.BeforeEach;
@@ -20,11 +19,15 @@ import org.junit.jupiter.api.Test;
 import java.io.*;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @KestraTest
@@ -251,34 +254,34 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
 
     private static List<Map<String, String>> defaultCaseDiffs(boolean withDeleted) {
         ArrayList<Map<String, String>> diffs = new ArrayList<>(List.of(
-                Map.of("gitPath", "to_clone/_flows/", "syncState", "ADDED", "kestraPath", "/_flows/"),
-                Map.of("gitPath", "to_clone/_flows/nested/", "syncState", "ADDED", "kestraPath", "/_flows/nested/"),
-                Map.of("gitPath", "to_clone/_flows/nested/namespace/", "syncState", "ADDED", "kestraPath", "/_flows/nested/namespace/"),
-                Map.of("gitPath", "to_clone/_flows/nested/namespace/nested_flow.yaml", "syncState", "ADDED", "kestraPath", "/_flows/nested/namespace/nested_flow.yaml"),
-                Map.of("gitPath", "to_clone/_flows/first-flow.yml", "syncState", "ADDED", "kestraPath", "/_flows/first-flow.yml"),
-                Map.of("gitPath", "to_clone/_flows/unchanged-flow.yaml", "syncState", "ADDED", "kestraPath", "/_flows/unchanged-flow.yaml"),
-                Map.of("gitPath", "to_clone/_flows/.kestraignore", "syncState", "ADDED", "kestraPath", "/_flows/.kestraignore"),
-                Map.of("gitPath", "to_clone/_flows/kestra-ignored-flow.yml", "syncState", "ADDED", "kestraPath", "/_flows/kestra-ignored-flow.yml"),
-                Map.of("gitPath", "to_clone/_flows/second-flow.yml", "syncState", "ADDED", "kestraPath", "/_flows/second-flow.yml"),
-                Map.of("gitPath", "to_clone/cloned.json", "syncState", "OVERWRITTEN", "kestraPath", "/cloned.json")
+                Map.of("gitPath", "to_clone/_flows/", "syncState", "ADDED", "kestraPath", "/kestra/my/namespace/_files/_flows/"),
+                Map.of("gitPath", "to_clone/_flows/nested/", "syncState", "ADDED", "kestraPath", "/kestra/my/namespace/_files/_flows/nested/"),
+                Map.of("gitPath", "to_clone/_flows/nested/namespace/", "syncState", "ADDED", "kestraPath", "/kestra/my/namespace/_files/_flows/nested/namespace/"),
+                Map.of("gitPath", "to_clone/_flows/nested/namespace/nested_flow.yaml", "syncState", "ADDED", "kestraPath", "/kestra/my/namespace/_files/_flows/nested/namespace/nested_flow.yaml"),
+                Map.of("gitPath", "to_clone/_flows/first-flow.yml", "syncState", "ADDED", "kestraPath", "/kestra/my/namespace/_files/_flows/first-flow.yml"),
+                Map.of("gitPath", "to_clone/_flows/unchanged-flow.yaml", "syncState", "ADDED", "kestraPath", "/kestra/my/namespace/_files/_flows/unchanged-flow.yaml"),
+                Map.of("gitPath", "to_clone/_flows/.kestraignore", "syncState", "ADDED", "kestraPath", "/kestra/my/namespace/_files/_flows/.kestraignore"),
+                Map.of("gitPath", "to_clone/_flows/kestra-ignored-flow.yml", "syncState", "ADDED", "kestraPath", "/kestra/my/namespace/_files/_flows/kestra-ignored-flow.yml"),
+                Map.of("gitPath", "to_clone/_flows/second-flow.yml", "syncState", "ADDED", "kestraPath", "/kestra/my/namespace/_files/_flows/second-flow.yml"),
+                Map.of("gitPath", "to_clone/cloned.json", "syncState", "OVERWRITTEN", "kestraPath", "/kestra/my/namespace/_files/cloned.json")
         ));
 
         if (withDeleted) {
             diffs.addAll(List.of(
                     new HashMap<>() {{
-                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/file_to_delete.txt"));
+                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/kestra/my/namespace/_files/file_to_delete.txt"));
                         this.put("gitPath", null);
                     }},
                     new HashMap<>() {{
-                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/dir_to_delete/file_to_delete.txt"));
+                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/kestra/my/namespace/_files/dir_to_delete/file_to_delete.txt"));
                         this.put("gitPath", null);
                     }},
                     new HashMap<>() {{
-                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/dir_to_delete/"));
+                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/kestra/my/namespace/_files/dir_to_delete/"));
                         this.put("gitPath", null);
                     }},
                     new HashMap<>() {{
-                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/README.md"));
+                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/kestra/my/namespace/_files/README.md"));
                         this.put("gitPath", null);
                     }}
             ));

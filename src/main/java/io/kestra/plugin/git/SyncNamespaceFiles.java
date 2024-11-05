@@ -97,7 +97,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
 
     @Override
     protected void deleteResource(RunContext runContext, String renderedNamespace, URI instanceUri) throws IOException {
-        runContext.storage().namespace(renderedNamespace).delete(Path.of(instanceUri.getPath()));
+        runContext.storage().namespace(renderedNamespace).delete(Path.of(instanceUri.getPath().replace("\\","/")));
     }
 
     @Override
@@ -131,7 +131,6 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
         }
 
         String kestraPath = Optional.ofNullable(this.toUri(
-            runContext,
             renderedNamespace,
             resourceAfterUpdate == null ? resourceBeforeUpdate : resourceAfterUpdate
         )).map(URI::getPath).orElse(null);
@@ -150,12 +149,12 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     protected List<URI> fetchResources(RunContext runContext, String renderedNamespace) throws IOException {
         return runContext.storage().namespace(renderedNamespace).all(true)
             .stream()
-            .map(namespaceFile -> toUri(runContext, renderedNamespace, namespaceFile.uri()))
+            .map(namespaceFile -> namespaceFile.uri())
             .toList();
     }
 
     @Override
-    protected URI toUri(RunContext runContext, String renderedNamespace, URI resource) {
+    protected URI toUri(String renderedNamespace, URI resource) {
         if (resource == null) {
             return null;
         }
