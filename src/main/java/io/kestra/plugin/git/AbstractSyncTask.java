@@ -3,7 +3,6 @@ package io.kestra.plugin.git;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.RunnableTask;
-import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.utils.KestraIgnore;
@@ -16,10 +15,8 @@ import lombok.experimental.SuperBuilder;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.eclipse.jgit.api.Git;
-import org.slf4j.Logger;
 
 import java.io.*;
-import java.lang.reflect.ParameterizedType;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.file.Files;
@@ -110,7 +107,7 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
                         runContext,
                         renderedGitDirectory,
                         renderedNamespace,
-                        gitUriByResourceUri.get(this.toUri(runContext, renderedNamespace, deletedResource)),
+                        gitUriByResourceUri.get(this.toUri(renderedNamespace, deletedResource)),
                         deletedResource,
                         null
                     ))).forEach(syncResults::add);
@@ -164,7 +161,7 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
         Map<URI, T> beforeUpdateResourcesByUri = this.fetchResources(runContext, renderedNamespace)
             .stream()
             .collect(Collectors.toMap(
-            resource -> this.toUri(runContext, renderedNamespace, resource),
+            resource -> this.toUri(renderedNamespace, resource),
             Function.identity()
         ));
         Map<URI, URI> gitUriByResourceUri = new HashMap<>();
@@ -186,7 +183,7 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
                 (map, pair) -> {
                     URI uri = pair.getLeft();
                     T resource = pair.getRight();
-                    URI resourceUri = this.toUri(runContext, renderedNamespace, resource);
+                    URI resourceUri = this.toUri(renderedNamespace, resource);
                     map.put(resourceUri, resource);
                     gitUriByResourceUri.put(resourceUri, uri);
                 },
@@ -220,7 +217,7 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
 
     protected abstract List<T> fetchResources(RunContext runContext, String renderedNamespace) throws IOException;
 
-    protected abstract URI toUri(RunContext runContext, String renderedNamespace, T resource);
+    protected abstract URI toUri(String renderedNamespace, T resource);
 
     protected abstract O output(URI diffFileStorageUri);
 
