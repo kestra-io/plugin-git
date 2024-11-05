@@ -9,7 +9,7 @@ import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
-import io.kestra.core.serializers.YamlFlowParser;
+import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.utils.Rethrow;
 import io.kestra.core.junit.annotations.KestraTest;
 import jakarta.inject.Inject;
@@ -47,7 +47,7 @@ public class SyncFlowsTest extends AbstractGitTest {
     private RunContextFactory runContextFactory;
 
     @Inject
-    private YamlFlowParser yamlFlowParser;
+    private YamlParser yamlFlowParser;
 
     @Inject
     private FlowRepositoryInterface flowRepositoryInterface;

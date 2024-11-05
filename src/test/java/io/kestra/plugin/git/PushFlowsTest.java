@@ -7,7 +7,7 @@ import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
-import io.kestra.core.serializers.YamlFlowParser;
+import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.Rethrow;
 import io.kestra.plugin.git.services.GitService;
@@ -45,7 +45,7 @@ public class PushFlowsTest extends AbstractGitTest {
     private RunContextFactory runContextFactory;
 
     @Inject
-    private YamlFlowParser yamlFlowParser;
+    private YamlParser yamlFlowParser;
 
     @Inject
     private FlowRepositoryInterface flowRepositoryInterface;

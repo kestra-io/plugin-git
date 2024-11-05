@@ -7,7 +7,7 @@ import io.kestra.core.queues.QueueInterface;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
-import io.kestra.core.serializers.YamlFlowParser;
+import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.KestraIgnore;
@@ -52,7 +52,7 @@ class SyncTest extends AbstractGitTest {
     private FlowRepositoryInterface flowRepositoryInterface;
 
     @Inject
-    private YamlFlowParser yamlFlowParser;
+    private YamlParser yamlFlowParser;
 
     @Inject
     private StorageInterface storageInterface;
