@@ -232,7 +232,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     }
 
     @Override
-    protected URI toUri(RunContext runContext, String renderedNamespace, Flow resource) {
+    protected URI toUri(String renderedNamespace, Flow resource) {
         if (resource == null) {
             return null;
         }
