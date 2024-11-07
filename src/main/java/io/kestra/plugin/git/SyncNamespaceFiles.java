@@ -37,7 +37,7 @@ import java.util.Optional;
             full = true,
             code = """
                 id: sync_from_git
-                namespace: company.team
+                namespace: system
                 
                 tasks:
                   - id: git
