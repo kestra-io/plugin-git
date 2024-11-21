@@ -4,7 +4,6 @@ import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.tasks.NamespaceFiles;
 import io.kestra.core.repositories.FlowRepositoryInterface;
-import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.runners.RunContextInitializer;
@@ -12,7 +11,6 @@ import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.IdUtils;
-import io.micronaut.context.annotation.Value;
 import io.kestra.core.junit.annotations.KestraTest;
 import jakarta.inject.Inject;
 import org.apache.commons.io.FileUtils;
@@ -177,6 +175,7 @@ class PushTest extends AbstractGitTest {
         try(ByteArrayInputStream is = new ByteArrayInputStream(expectedNamespaceFileContent.getBytes())) {
             storageInterface.put(
                 tenantId,
+                namespace,
                 URI.create(Path.of(StorageContext.namespaceFilePrefix(namespace), namespaceFileName).toString()),
                 is
             );
@@ -570,7 +569,7 @@ class PushTest extends AbstractGitTest {
         String flowSource = """
             id: some-flow
             namespace:\s""" + namespace + """
-                        
+
             tasks:
               - id: my-task
                 type: io.kestra.core.tasks.log.Log
