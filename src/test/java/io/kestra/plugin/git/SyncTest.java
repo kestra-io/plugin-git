@@ -64,8 +64,8 @@ class SyncTest extends AbstractGitTest {
     @BeforeEach
     void init() throws IOException {
         flowRepositoryInterface.findAllForAllTenants().forEach(flow -> flowRepositoryInterface.delete(flow.withSource("")));
-        storageInterface.deleteByPrefix(null, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE)));
-        storageInterface.deleteByPrefix(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE)));
+        storageInterface.deleteByPrefix(null, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE)));
+        storageInterface.deleteByPrefix(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE)));
     }
 
     @Test
@@ -115,6 +115,7 @@ class SyncTest extends AbstractGitTest {
         String readmeContent = "README content";
         storageInterface.put(
             TENANT_ID,
+            NAMESPACE,
             URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/README.md"),
             new ByteArrayInputStream(readmeContent.getBytes())
         );
@@ -122,17 +123,20 @@ class SyncTest extends AbstractGitTest {
         String deletedFilePath = "/sync_directory/file_to_delete.txt";
         storageInterface.put(
             TENANT_ID,
+            NAMESPACE,
             URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + deletedFilePath),
             new ByteArrayInputStream(new byte[0])
         );
         String deletedDirPath = "/sync_directory/dir_to_delete";
         storageInterface.createDirectory(
             TENANT_ID,
+            NAMESPACE,
             URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + deletedDirPath)
         );
         String deletedDirSubFilePath = "/sync_directory/dir_to_delete/file_to_delete.txt";
         storageInterface.put(
             TENANT_ID,
+            NAMESPACE,
             URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + deletedDirSubFilePath),
             new ByteArrayInputStream(new byte[0])
         );
@@ -140,6 +144,7 @@ class SyncTest extends AbstractGitTest {
         String clonedFilePath = "/sync_directory/cloned.json";
         storageInterface.put(
             TENANT_ID,
+            NAMESPACE,
             URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + clonedFilePath),
             new ByteArrayInputStream("{\"old-field\": \"old-value\"}".getBytes())
         );
@@ -148,6 +153,7 @@ class SyncTest extends AbstractGitTest {
         String fileToDirPath = "/sync_directory/file_to_dir";
         storageInterface.put(
             TENANT_ID,
+            NAMESPACE,
             URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + fileToDirPath),
             new ByteArrayInputStream("some content".getBytes())
         );
@@ -155,6 +161,7 @@ class SyncTest extends AbstractGitTest {
         String dirToFilePath = "/sync_directory/dir_to_file";
         storageInterface.put(
             TENANT_ID,
+            NAMESPACE,
             URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + dirToFilePath + "/file.txt"),
             new ByteArrayInputStream("nested file content".getBytes())
         );
@@ -196,19 +203,19 @@ class SyncTest extends AbstractGitTest {
         // endregion
 
         // region namespace files
-        assertThat(storageInterface.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/" + KestraIgnore.KESTRA_IGNORE_FILE_NAME)), is(false));
-        assertThat(storageInterface.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/file_to_ignore.txt")), is(false));
-        assertThat(storageInterface.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/dir_to_ignore/file.txt")), is(false));
-        assertThat(storageInterface.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/dir_to_ignore")), is(false));
-        assertThat(storageInterface.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/_flows")), is(false));
+        assertThat(storageInterface.exists(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/" + KestraIgnore.KESTRA_IGNORE_FILE_NAME)), is(false));
+        assertThat(storageInterface.exists(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/file_to_ignore.txt")), is(false));
+        assertThat(storageInterface.exists(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/dir_to_ignore/file.txt")), is(false));
+        assertThat(storageInterface.exists(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/dir_to_ignore")), is(false));
+        assertThat(storageInterface.exists(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/_flows")), is(false));
         assertNamespaceFileContent(TENANT_ID, "/README.md", readmeContent);
-        assertThat(storageInterface.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + deletedFilePath)), is(false));
-        assertThat(storageInterface.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + deletedDirPath)), is(false));
-        assertThat(storageInterface.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + deletedDirSubFilePath)), is(false));
+        assertThat(storageInterface.exists(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + deletedFilePath)), is(false));
+        assertThat(storageInterface.exists(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + deletedDirPath)), is(false));
+        assertThat(storageInterface.exists(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + deletedDirSubFilePath)), is(false));
         assertNamespaceFileContent(TENANT_ID, clonedFilePath, "{\"my-field\": \"my-value\"}");
-        assertThat(storageInterface.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + fileToDirPath)), is(true));
+        assertThat(storageInterface.exists(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + fileToDirPath)), is(true));
         assertNamespaceFileContent(TENANT_ID, fileToDirPath + "/file.txt", "directory replacing file");
-        assertThat(storageInterface.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + dirToFilePath + "/file.txt")), is(false));
+        assertThat(storageInterface.exists(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + dirToFilePath + "/file.txt")), is(false));
         assertNamespaceFileContent(TENANT_ID, dirToFilePath, "file replacing a directory");
         // endregion
         // endregion
@@ -225,7 +232,7 @@ class SyncTest extends AbstractGitTest {
         String flowSource = """
             id: flow-to-delete
             namespace:\s""" + NAMESPACE + """
-                        
+
             tasks:
               - id: old-task
                 type: io.kestra.core.tasks.log.Log
@@ -256,12 +263,14 @@ class SyncTest extends AbstractGitTest {
         String toDeleteFilePath = "/to_delete.txt";
         storageInterface.put(
             TENANT_ID,
+            NAMESPACE,
             URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + toDeleteFilePath),
             new ByteArrayInputStream("File to delete".getBytes())
         );
         // in git but with another content, should be updated
         storageInterface.put(
             TENANT_ID,
+            NAMESPACE,
             URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/README.md"),
             new ByteArrayInputStream("README content".getBytes())
         );
@@ -298,7 +307,7 @@ class SyncTest extends AbstractGitTest {
         // endregion
 
         // region namespace files
-        assertThat(storageInterface.exists(TENANT_ID, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + toDeleteFilePath)), is(false));
+        assertThat(storageInterface.exists(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + toDeleteFilePath)), is(false));
         assertNamespaceFileContent(TENANT_ID, "/README.md", "This repository is used for unit testing Git integration");
         assertNamespaceFileContent(TENANT_ID, "/ignored.json", "{\"ignored\": true}");
         // endregion
@@ -315,7 +324,7 @@ class SyncTest extends AbstractGitTest {
         String flowSource = """
             id: some-flow
             namespace:\s""" + namespace + """
-                        
+
             tasks:
               - id: old-task
                 type: io.kestra.core.tasks.log.Log
@@ -348,6 +357,7 @@ class SyncTest extends AbstractGitTest {
         String keptContent = "kept content since dry run";
         storageInterface.put(
             null,
+            null,
             URI.create(StorageContext.namespaceFilePrefix(namespace) + toUpdateFilePath),
             new ByteArrayInputStream(keptContent.getBytes())
         );
@@ -355,6 +365,7 @@ class SyncTest extends AbstractGitTest {
         String someFilePath = "/file.txt";
         String someFileContent = "hello";
         storageInterface.put(
+            null,
             null,
             URI.create(StorageContext.namespaceFilePrefix(namespace) + someFilePath),
             new ByteArrayInputStream(someFileContent.getBytes())
@@ -377,7 +388,7 @@ class SyncTest extends AbstractGitTest {
 
         assertNamespaceFileContent(null, namespace, toUpdateFilePath, keptContent);
         assertNamespaceFileContent(null, namespace, someFilePath, someFileContent);
-        assertThat(storageInterface.exists(null, URI.create(StorageContext.namespaceFilePrefix(namespace) + "/cloned.json")), is(false));
+        assertThat(storageInterface.exists(null, namespace, URI.create(StorageContext.namespaceFilePrefix(namespace) + "/cloned.json")), is(false));
 
         assertHasInfoLog(logs, "Dry run is enabled, not performing following actions (- for deletions, + for creations, ~ for update or no modification):");
         assertHasInfoLog(logs, "~ /_flows/first-flow.yml");
@@ -437,7 +448,7 @@ class SyncTest extends AbstractGitTest {
     }
 
     private void assertNamespaceFileContent(String tenantId, String namespace, String namespaceFileUri, String expectedFileContent) throws IOException {
-        try (InputStream is = storageInterface.get(tenantId, URI.create(StorageContext.namespaceFilePrefix(namespace) + namespaceFileUri))) {
+        try (InputStream is = storageInterface.get(tenantId, namespace, URI.create(StorageContext.namespaceFilePrefix(namespace) + namespaceFileUri))) {
             assertThat(new BufferedReader(new InputStreamReader(is)).lines().collect(Collectors.joining("\n")), is(expectedFileContent));
         }
     }

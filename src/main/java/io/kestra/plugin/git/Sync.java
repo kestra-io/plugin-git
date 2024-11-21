@@ -184,7 +184,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
                 .filter(flow -> !flowIdsImported.contains(flow.getId()))
                 .forEach(flow -> {
                     if (!dryRun) {
-                        flowRepository.delete(flow);
+                        flowRepository.delete(flow.withSource(null));
                     }
                     logDeletion(logger, "/_flows/" + flow.getId() + ".yml");
                 });
@@ -221,7 +221,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
             namespaceFilePrefix = namespaceFilePrefix.resolve(renderedNamespaceFilesDirectory);
         }
         URI finalNamespaceFilePrefix = namespaceFilePrefix;
-        List<URI> namespaceFilesUris = storage.allByPrefix(tenantId, namespaceFilePrefix, true);
+        List<URI> namespaceFilesUris = storage.allByPrefix(tenantId, namespace, namespaceFilePrefix, true);
 
         Map<String, URI> fullUriByRelativeNsFilesPath = namespaceFilesUris.stream()
             .collect(Collectors.toMap(
@@ -235,7 +235,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
             if (!gitContentByFilePath.containsKey(relativeNsFilePath)) {
                 logDeletion(logger, relativeNsFilePath);
                 if (!dryRun) {
-                    storage.delete(tenantId, uri);
+                    storage.delete(tenantId, namespace, uri);
                 }
             }
         }));
@@ -254,10 +254,11 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
                 if (!dryRun) {
                     URI fileUri = finalNamespaceFilePrefix.resolve(path.replace("\\","/").substring(1));
                     if (contentByFilePath.getValue() == null) {
-                        storage.createDirectory(tenantId, fileUri);
+                        storage.createDirectory(tenantId, namespace, fileUri);
                     } else {
                         storage.put(
                             tenantId,
+                            namespace,
                             fileUri,
                             new ByteArrayInputStream(contentByFilePath.getValue().getBytes())
                         );
