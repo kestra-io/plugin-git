@@ -46,7 +46,7 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
                   - id: commit_and_push
                     type: io.kestra.plugin.git.PushNamespaceFiles
                     namespace: dev
-                    files: "*"  # optional list of glob patterns; by default, all files are pushed
+                    files: "**"  # optional list of glob patterns; by default, all files are pushed
                     gitDirectory: _files # optional path in Git where Namespace Files should be pushed
                     url: https://github.com/kestra-io/scripts # required string
                     username: git_username # required string needed for Auth with Git
