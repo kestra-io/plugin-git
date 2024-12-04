@@ -3,6 +3,7 @@ package io.kestra.plugin.git;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.storages.Namespace;
 import io.kestra.core.storages.NamespaceFile;
@@ -38,7 +39,7 @@ import java.util.Optional;
             code = """
                 id: sync_from_git
                 namespace: system
-                
+
                 tasks:
                   - id: git
                     type: io.kestra.plugin.git.SyncNamespaceFiles
@@ -50,7 +51,7 @@ import java.util.Optional;
                     username: git_username
                     password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
                     dryRun: true  # if true, the task will only log which flows from Git will be added/modified or deleted in kestra without making any changes in kestra backend yet
-                
+
                 triggers:
                   - id: every_minute
                     type: io.kestra.plugin.core.trigger.Schedule
@@ -63,16 +64,14 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     @Schema(
         title = "The branch from which Namespace Files will be synced to Kestra."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String branch = "kestra";
+    private Property<String> branch = Property.of("kestra");
 
     @Schema(
         title = "The namespace from which files should be synced from the `gitDirectory` to Kestra."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String namespace = "{{ flow.namespace }}";
+    private Property<String> namespace = new Property<>("{{ flow.namespace }}");
 
     @Schema(
         title = "Directory from which Namespace Files should be synced.",
@@ -80,7 +79,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     )
     @PluginProperty(dynamic = true)
     @Builder.Default
-    private String gitDirectory = "_files";
+    private Property<String> gitDirectory = Property.of("_files");
 
     @Schema(
         title = "Whether you want to delete Namespace Files present in kestra but not present in Git.",
@@ -91,7 +90,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     private boolean delete = false;
 
     @Override
-    public String fetchedNamespace() {
+    public Property<String> fetchedNamespace() {
         return this.namespace;
     }
 
