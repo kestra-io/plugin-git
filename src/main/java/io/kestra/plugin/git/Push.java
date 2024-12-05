@@ -6,6 +6,7 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.InputFilesInterface;
 import io.kestra.core.models.tasks.NamespaceFiles;
 import io.kestra.core.models.tasks.NamespaceFilesInterface;
@@ -58,7 +59,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
             code = """
                 id: push_to_git
                 namespace: company.team
-                
+
                 tasks:
                   - id: commit_and_push
                     type: io.kestra.plugin.git.Push
@@ -71,7 +72,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
                     username: git_username
                     password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
                     commitMessage: "add flows and scripts {{ now() }}"
-                
+
                 triggers:
                   - id: schedule_push
                     type: io.kestra.plugin.core.trigger.Schedule
@@ -86,12 +87,12 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
             code = """
                 id: push_new_file_to_git
                 namespace: company.team
-                
+
                 inputs:
                   - id: commit_message
                     type: STRING
                     defaults: add a new file to Git
-                
+
                 tasks:
                   - id: wdir
                     type: io.kestra.plugin.core.flow.WorkingDirectory
@@ -133,14 +134,13 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         description = "If the branch doesn't exist yet, it will be created."
     )
     @NotNull
-    private String branch;
+    private Property<String> branch;
 
     @Schema(
         title = "Commit message."
     )
-    @PluginProperty(dynamic = true)
     @NotNull
-    private String commitMessage;
+    private Property<String> commitMessage;
 
     private NamespaceFiles namespaceFiles;
 
@@ -173,7 +173,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
             }
         }
 
-        return authentified(Git.lsRemoteRepository().setRemote(runContext.render(url)), runContext)
+        return authentified(Git.lsRemoteRepository().setRemote(runContext.render(url).as(String.class).orElseThrow()), runContext)
             .callAsMap()
             .containsKey(R_HEADS + branch);
     }
@@ -187,7 +187,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
             basePath = runContext.workingDir().resolve(Path.of(runContext.render(this.directory)));
         }
 
-        String branch = runContext.render(this.branch);
+        String branch = runContext.render(this.branch).as(String.class).orElseThrow();
         if (this.url != null) {
             boolean branchExists = branchExists(runContext, branch);
 
@@ -204,7 +204,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
 
             if (branchExists) {
                 cloneHead.toBuilder()
-                    .branch(branch)
+                    .branch(Property.of(branch))
                     .build()
                     .run(runContext);
             } else {
@@ -295,7 +295,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         try {
             commitId = git.commit()
                 .setAllowEmpty(false)
-                .setMessage(runContext.render(this.commitMessage))
+                .setMessage(runContext.render(this.commitMessage).as(String.class).orElse(null))
                 .setAuthor(author(runContext))
                 .call()
                 .getId();
@@ -322,7 +322,9 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
             return new PersonIdent(runContext.render(this.author.name), runContext.render(this.author.email));
         }
         if (this.author.email != null && this.username != null) {
-            return new PersonIdent(runContext.render(this.username), runContext.render(this.author.email));
+            return new PersonIdent(runContext.render(this.username).as(String.class).orElseThrow(),
+            runContext.render(this.author.email)
+        );
         }
 
         return null;

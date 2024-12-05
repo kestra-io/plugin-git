@@ -4,6 +4,7 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.models.tasks.VoidOutput;
 import io.kestra.core.repositories.FlowRepositoryInterface;
@@ -59,7 +60,7 @@ import static io.kestra.core.utils.Rethrow.*;
             code = """
                 id: sync_from_git
                 namespace: company.team
-                
+
                 tasks:
                   - id: git
                     type: io.kestra.plugin.git.Sync
@@ -70,7 +71,7 @@ import static io.kestra.core.utils.Rethrow.*;
                     gitDirectory: your_git_dir # optional, otherwise all files
                     namespaceFilesDirectory: your_namespace_files_location # optional, otherwise the namespace root directory
                     dryRun: true  # if true, print the output of what files will be added/modified or deleted without overwriting the files yet
-                
+
                 triggers:
                   - id: every_minute
                     type: io.kestra.plugin.core.trigger.Schedule
@@ -96,13 +97,13 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
     @PluginProperty(dynamic = true)
     private String namespaceFilesDirectory;
 
-    private String branch;
+    private Property<String> branch;
 
     @Schema(
         title = "If true, the task will only display modifications without syncing any files yet. If false (default), all namespace files and flows will be overwritten based on the state in Git."
     )
     @PluginProperty
-    private Boolean dryRun;
+    private Property<Boolean> dryRun;
 
     @Override
     public VoidOutput run(RunContext runContext) throws Exception {
@@ -110,7 +111,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
         Map<String, String> flowProps = (Map<String, String>) runContext.getVariables().get("flow");
         String namespace = flowProps.get("namespace");
         String tenantId = flowProps.get("tenantId");
-        boolean dryRun = this.dryRun != null && this.dryRun;
+        boolean dryRun = runContext.render(this.dryRun).as(Boolean.class).orElse(false);
 
         Clone clone = Clone.builder()
             .depth(1)
@@ -284,7 +285,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
 
     @Override
     @NotNull
-    public String getUrl() {
+    public Property<String> getUrl() {
         return super.getUrl();
     }
 }

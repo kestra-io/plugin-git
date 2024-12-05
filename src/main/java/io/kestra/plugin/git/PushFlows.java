@@ -6,6 +6,7 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
@@ -46,7 +47,7 @@ import static io.kestra.core.utils.Rethrow.*;
             code = """
                 id: push_to_git
                 namespace: system
-                
+
                 tasks:
                   - id: commit_and_push
                     type: io.kestra.plugin.git.PushFlows
@@ -61,7 +62,7 @@ import static io.kestra.core.utils.Rethrow.*;
                     branch: kestra # optional, uses "kestra" by default
                     commitMessage: "add flows {{ now() }}" # optional string
                     dryRun: true  # if true, you'll see what files will be added, modified or deleted based on the state in Git without overwriting the files yet
-                
+
                 triggers:
                   - id: schedule_push
                     type: io.kestra.plugin.core.trigger.Schedule
@@ -74,12 +75,12 @@ import static io.kestra.core.utils.Rethrow.*;
             code = """
                 id: myflow
                 namespace: prod
-                
+
                 inputs:
                   - id: push
                     type: BOOLEAN
                     defaults: false
-                
+
                 tasks:
                   - id: if
                     type: io.kestra.plugin.core.flow.If
@@ -104,9 +105,8 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         title = "The branch to which files should be committed and pushed.",
         description = "If the branch doesn't exist yet, it will be created."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String branch = "kestra";
+    private Property<String> branch = Property.of("kestra");
 
     @Schema(
         title = "Directory to which flows should be pushed.",
@@ -116,16 +116,15 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
             If the `includeChildNamespaces` property is set to true, this task will also push all flows from child namespaces into their corresponding nested directories, e.g., flows from the child namespace called prod.marketing will be added to the marketing folder within the _flows folder.
             Note that the targetNamespace (here prod) is specified in the flow code; therefore, kestra will not create the prod directory within _flows. You can use the PushFlows task to push flows from the sourceNamespace, and use SyncFlows to then sync PR-approved flows to the targetNamespace, including all child namespaces."""
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String gitDirectory = "_flows";
+    private Property<String> gitDirectory = Property.of("_flows");
 
     @Schema(
         title = "The source namespace from which flows should be synced to the `gitDirectory`."
     )
     @PluginProperty(dynamic = true)
     @Builder.Default
-    private String sourceNamespace = "{{ flow.namespace }}";
+    private Property<String> sourceNamespace = new Property<>("{{ flow.namespace }}");
 
     @Schema(
         title = "The target namespace, intended as the production namespace.",
@@ -151,7 +150,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         title = "Whether you want to push flows from child namespaces as well.",
         description = """
             By default, it’s `false`, so the task will push only flows from the explicitly declared namespace without pushing flows from child namespaces. If set to `true`, flows from child namespaces will be pushed to child directories in Git. See the example below for a practical explanation:
-            
+
             | Source namespace in the flow code |       Git directory path       |  Synced to target namespace   |
             | --------------------------------- | ------------------------------ | ----------------------------- |
             | namespace: dev                    | _flows/flow1.yml               | namespace: prod               |
@@ -170,8 +169,9 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         defaultValue = "Add flows from sourceNamespace"
     )
     @Override
-    public String getCommitMessage() {
-        return Optional.ofNullable(this.commitMessage).orElse("Add flows from " + this.sourceNamespace + " namespace");
+    public String renderCommitMessage(RunContext runContext) throws IllegalVariableEvaluationException {
+        return runContext.render(this.commitMessage).as(String.class)
+            .orElse("Add flows from " + runContext.render(this.sourceNamespace).as(String.class).orElse(runContext.render("{{flow.namespace}}")) + " namespace");
     }
 
     @Override
@@ -180,7 +180,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     }
 
     @Override
-    public String fetchedNamespace() {
+    public Property<String> fetchedNamespace() {
         return this.sourceNamespace;
     }
 
@@ -190,7 +190,8 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         Map<String, String> flowProps = Optional.ofNullable((Map<String, String>) runContext.getVariables().get("flow")).orElse(Collections.emptyMap());
         String tenantId = flowProps.get("tenantId");
         List<FlowWithSource> flowsToPush;
-        String renderedSourceNamespace = runContext.render(this.sourceNamespace);
+        String renderedSourceNamespace = runContext.render(this.sourceNamespace).as(String.class)
+            .orElse(runContext.render("{{flow.namespace}}"));
         if (Boolean.TRUE.equals(this.includeChildNamespaces)) {
             flowsToPush = flowRepository.findWithSource(null, tenantId, null, renderedSourceNamespace, null);
         } else {

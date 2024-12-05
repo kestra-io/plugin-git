@@ -4,6 +4,7 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.Flow;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.services.FlowService;
@@ -68,9 +69,8 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     @Schema(
         title = "The branch from which flows will be synced to Kestra."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String branch = "main";
+    private Property<String> branch = Property.of("main");
 
     @Schema(
         title = "The target namespace to which flows from the `gitDirectory` should be synced.",
@@ -78,11 +78,11 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             If the top-level namespace specified in the flow source code is different than the `targetNamespace`, it will be overwritten by this target namespace. This facilitates moving between environments and projects. If `includeChildNamespaces` property is set to true, the top-level namespace in the source code will also be overwritten by the `targetNamespace` in children namespaces.
 
             For example, if the `targetNamespace` is set to `prod` and `includeChildNamespaces` property is set to `true`, then:
-            - `namespace: dev` in flow source code will be overwritten by `namespace: prod`, 
+            - `namespace: dev` in flow source code will be overwritten by `namespace: prod`,
             - `namespace: dev.marketing.crm` will be overwritten by `namespace: prod.marketing.crm`.
 
             See the table below for a practical explanation:
-                
+
             | Source namespace in the flow code |       Git directory path       |  Synced to target namespace   |
             | --------------------------------- | ------------------------------ | ----------------------------- |
             | namespace: dev                    | _flows/flow1.yml               | namespace: prod               |
@@ -93,9 +93,8 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             | namespace: dev.marketing.crm      | _flows/marketing/crm/flow6.yml | namespace: prod.marketing.crm |
             """
     )
-    @PluginProperty(dynamic = true)
     @NotNull
-    private String targetNamespace;
+    private Property<String> targetNamespace;
 
     @Schema(
         title = "Directory from which flows should be synced.",
@@ -104,13 +103,13 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
             If `includeChildNamespaces` property is set to `true`, this task will push all flows from nested subdirectories into their corresponding child namespaces, e.g. if `targetNamespace` is set to `prod`, then:
 
-            - flows from the `_flows` directory will be synced to the `prod` namespace, 
-            - flows from the `_flows/marketing` subdirectory in Git will be synced to the `prod.marketing` namespace, 
+            - flows from the `_flows` directory will be synced to the `prod` namespace,
+            - flows from the `_flows/marketing` subdirectory in Git will be synced to the `prod.marketing` namespace,
             - flows from the `_flows/marketing/crm` subdirectory will be synced to the `prod.marketing.crm` namespace."""
     )
     @PluginProperty(dynamic = true)
     @Builder.Default
-    private String gitDirectory = "_flows";
+    private Property<String> gitDirectory = Property.of("_flows");
 
     @Schema(
         title = "Whether you want to sync flows from child namespaces as well.",
@@ -140,7 +139,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
 
     @Override
-    public String fetchedNamespace() {
+    public Property<String> fetchedNamespace() {
         return this.targetNamespace;
     }
 
@@ -155,7 +154,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             return null;
         }
 
-        return flowService(runContext).importFlow(runContext.tenantId(), SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream), true);
+        return flowService(runContext).importFlow(runContext.flowInfo().tenantId(), SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream), true);
     }
 
     @Override
@@ -179,7 +178,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
         String flowSource = SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream);
 
-        return flowService(runContext).importFlow(runContext.tenantId(), flowSource);
+        return flowService(runContext).importFlow(runContext.flowInfo().tenantId(), flowSource);
     }
 
     private static String replaceNamespace(String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
@@ -225,10 +224,10 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     @Override
     protected List<Flow> fetchResources(RunContext runContext, String renderedNamespace) {
         if (this.includeChildNamespaces) {
-            return flowService(runContext).findByNamespacePrefix(runContext.tenantId(), renderedNamespace);
+            return flowService(runContext).findByNamespacePrefix(runContext.flowInfo().tenantId(), renderedNamespace);
         }
 
-        return flowService(runContext).findByNamespace(runContext.tenantId(), renderedNamespace);
+        return flowService(runContext).findByNamespace(runContext.flowInfo().tenantId(), renderedNamespace);
     }
 
     @Override

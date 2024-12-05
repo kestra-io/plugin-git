@@ -1,7 +1,7 @@
 package io.kestra.plugin.git;
 
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
-import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
@@ -46,41 +46,39 @@ import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 @NoArgsConstructor
 @Getter
 public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extends AbstractCloningTask implements RunnableTask<O> {
-    @PluginProperty(dynamic = true)
-    protected String commitMessage;
+    protected Property<String> commitMessage;
 
     @Schema(
         title = "If `true`, the task will only output modifications without pushing any file to Git yet. If `false` (default), all listed files will be pushed to Git immediately."
     )
-    @PluginProperty
     @Builder.Default
-    private boolean dryRun = false;
+    private Property<Boolean> dryRun = Property.of(false);
 
     @Schema(
         title = "The commit author email.",
         description = "If null, no author will be set on this commit."
     )
-    @PluginProperty(dynamic = true)
-    private String authorEmail;
+    private Property<String> authorEmail;
 
     @Schema(
         title = "The commit author name.",
         description = "If null, the username will be used instead.",
         defaultValue = "`username`"
     )
-    @PluginProperty(dynamic = true)
-    private String authorName;
+    private Property<String> authorName;
 
-    public abstract String getCommitMessage();
+    public String renderCommitMessage(RunContext runContext) throws IllegalVariableEvaluationException {
+        return runContext.render(this.getCommitMessage()).as(String.class).orElseThrow();
+    }
 
-    public abstract String getGitDirectory();
+    public abstract Property<String> getGitDirectory();
 
     public abstract Object globs();
 
-    public abstract String fetchedNamespace();
+    public abstract Property<String> fetchedNamespace();
 
     private Path createGitDirectory(RunContext runContext) throws IllegalVariableEvaluationException {
-        Path flowDirectory = runContext.workingDir().resolve(Path.of(runContext.render(this.getGitDirectory())));
+        Path flowDirectory = runContext.workingDir().resolve(Path.of(runContext.render(this.getGitDirectory()).as(String.class).orElseThrow()));
         flowDirectory.toFile().mkdirs();
         return flowDirectory;
     }
@@ -130,14 +128,14 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         Files.copy(inputStream, path, REPLACE_EXISTING);
     }
 
-    private URI createDiffFile(RunContext runContext, Git git) throws IOException, GitAPIException {
+    private URI createDiffFile(RunContext runContext, Git git) throws IOException, GitAPIException, IllegalVariableEvaluationException {
         File diffFile = runContext.workingDir().createTempFile(".ion").toFile();
         try (DiffFormatter diffFormatter = new DiffFormatter(null);
              BufferedWriter diffWriter = new BufferedWriter(new FileWriter(diffFile))) {
             diffFormatter.setRepository(git.getRepository());
 
             DiffCommand diff = git.diff();
-            if (this.dryRun) {
+            if (runContext.render(this.dryRun).as(Boolean.class).orElse(false)) {
                 diff = diff.setCached(true);
             } else {
                 diff = diff.setOldTree(treeIterator(git, "HEAD~1"))
@@ -204,21 +202,21 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         String commitId = null;
         ObjectId commit;
         try {
-            String httpUrl = gitService.getHttpUrl(runContext.render(this.url));
-            if (this.isDryRun()) {
+            String httpUrl = gitService.getHttpUrl(runContext.render(this.url).as(String.class).orElse(null));
+            if (runContext.render(dryRun).as(Boolean.class).orElse(false)) {
                 logger.info(
                     "Dry run — no changes will be pushed to {} for now until you set the `dryRun` parameter to false",
                     httpUrl
                 );
             } else {
-                String renderedBranch = runContext.render(this.getBranch());
+                String renderedBranch = runContext.render(this.getBranch()).as(String.class).orElse(null);
                 logger.info(
                     "Pushing to {} on branch {}",
                     httpUrl,
                     renderedBranch
                 );
 
-                String message = runContext.render(this.getCommitMessage());
+                String message = this.renderCommitMessage(runContext);
                 ObjectId head = git.getRepository().resolve(Constants.HEAD);
                 commit = git.commit()
                     .setAllowEmpty(false)
@@ -247,8 +245,9 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
     }
 
     private PersonIdent author(RunContext runContext) throws IllegalVariableEvaluationException {
-        String name = Optional.ofNullable(this.authorName).orElse(runContext.render(this.username));
-        String authorEmail = this.authorEmail;
+        String name = runContext.render(this.authorName).as(String.class)
+            .orElse(runContext.render(this.username).as(String.class).orElse(null));
+        String authorEmail = runContext.render(this.authorEmail).as(String.class).orElse(null);
         if (authorEmail == null || name == null) {
             return null;
         }
@@ -274,9 +273,10 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         GitService gitService = new GitService(this);
 
         gitService.namespaceAccessGuard(runContext, this.fetchedNamespace());
-        this.detectPasswordLeaks();
 
-        Git git = gitService.cloneBranch(runContext, runContext.render(this.getBranch()), this.cloneSubmodules);
+        Git git = gitService.cloneBranch(runContext,
+            runContext.render(this.getBranch()).as(String.class).orElse(null),
+            runContext.render(this.cloneSubmodules).as(Boolean.class).orElse(false));
 
         Path localGitDirectory = this.createGitDirectory(runContext);
 
@@ -291,7 +291,7 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         this.writeResourceFiles(contentByPath);
 
         AddCommand add = git.add();
-        add.addFilepattern(runContext.render(this.getGitDirectory()));
+        add.addFilepattern(runContext.render(this.getGitDirectory()).as(String.class).orElse(null));
         add.call();
 
         Output pushOutput = this.push(git, runContext, gitService);
