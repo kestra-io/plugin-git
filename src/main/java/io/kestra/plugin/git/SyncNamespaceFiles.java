@@ -33,6 +33,44 @@ import java.util.Optional;
 @Plugin(
     examples = {
         @Example(
+            title = "Sync all flows and scripts for selected namespaces from Git to Kestra every full hour. Note that this is a [System Flow](https://kestra.io/docs/concepts/system-flows), so make sure to adjust the Scope to SYSTEM in the UI filter to see this flow or its executions.",
+            full = true,
+            code = """
+                id: git_sync
+                namespace: system
+
+                tasks:
+                  - id: sync
+                    type: io.kestra.plugin.core.flow.ForEach
+                    values: ["company", "company.team", "company.analytics"]
+                    tasks:
+                      - id: flows
+                        type: io.kestra.plugin.git.SyncFlows
+                        targetNamespace: "{{ taskrun.value }}"
+                        gitDirectory: "{{'flows/' ~ taskrun.value}}"
+                        includeChildNamespaces: false      
+
+                      - id: scripts
+                        type: io.kestra.plugin.git.SyncNamespaceFiles
+                        namespace: "{{ taskrun.value }}"
+                        gitDirectory: "{{'scripts/' ~ taskrun.value}}"
+
+                pluginDefaults:
+                  - type: io.kestra.plugin.git
+                    values:
+                      username: anna-geller
+                      url: https://github.com/anna-geller/product
+                      password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                      branch: main
+                      dryRun: false
+
+                triggers:
+                  - id: every_full_hour
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "0 * * * *"
+                """
+        ),                
+        @Example(
             title = "Sync Namespace Files from a Git repository. This flow can run either on a schedule (using the Schedule trigger) or anytime you push a change to a given Git branch (using the Webhook trigger).",
             full = true,
             code = """

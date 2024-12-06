@@ -36,10 +36,48 @@ import static io.kestra.core.utils.Rethrow.*;
     description = """
         Using this task, you can push one or more flows from a given namespace (and optionally also child namespaces) to Git.
         Check the examples below to see how you can push all flows or only specific ones.
-        You can also learn about Git integration in the Version Control with [Git documentation](https://kestra.io/docs/developer-guide/git)."""
+        To learn more, check the [Version Control with Git](https://kestra.io/docs/developer-guide/git) guide."""
 )
 @Plugin(
     examples = {
+        @Example(
+            title = "Release all flows and scripts from selected namespaces to a Git repository every Thursday at 11:00 AM. Adjust the `values` list to include the namespaces for which you want to push your code to Git. This [System Flow](https://kestra.io/docs/concepts/system-flows) will create two commits per namespace: one for the flows and one for the scripts.",
+            full = true,
+            code = """
+                id: git_push
+                namespace: system
+
+                tasks:
+                  - id: push
+                    type: io.kestra.plugin.core.flow.ForEach
+                    values: ["company", "company.team", "company.analytics"]
+                    tasks:
+                      - id: flows
+                        type: io.kestra.plugin.git.PushFlows
+                        sourceNamespace: "{{ taskrun.value }}"
+                        gitDirectory: "{{'flows/' ~ taskrun.value}}"
+                        includeChildNamespaces: false      
+
+                      - id: scripts
+                        type: io.kestra.plugin.git.PushNamespaceFiles
+                        namespace: "{{ taskrun.value }}"
+                        gitDirectory: "{{'scripts/' ~ taskrun.value}}"
+
+                pluginDefaults:
+                  - type: io.kestra.plugin.git
+                    values:
+                      username: anna-geller
+                      url: https://github.com/anna-geller/product
+                      password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                      branch: main
+                      dryRun: false
+                
+                triggers:
+                  - id: schedule_push_to_git
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "0 11 * * 4"
+                """
+        ),                
         @Example(
             title = "Automatically push all saved flows from the dev namespace and all child namespaces to a Git repository every day at 5 p.m. Before pushing to Git, the task will adjust the flow's source code to match the targetNamespace to prepare the Git branch for merging to the production namespace. Note that the automatic conversion of `sourceNamespace` to `targetNamespace` is optional and should only be considered as a helper for facilitating the Git workflow for simple use cases — only the `namespace` property within the flow will be adjusted and if you specify namespace names within e.g. Flow triggers, those may need to be manually adjusted. **We recommend using separate Kestra instances for development and production with the same namespace names across instances.**",
             full = true,

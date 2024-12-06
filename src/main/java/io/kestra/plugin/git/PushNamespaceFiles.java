@@ -31,10 +31,48 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
 @Schema(
     title = "Commit and push Namespace Files created from kestra UI to Git.",
     description = """
-        Using this task, you can push one or more Namespace Files from a given kestra namespace to Git. Check the [Version Control with Git](https://kestra.io/docs/developer-guide/git) documentation for more details."""
+        Using this task, you can push one or more Namespace Files from a given kestra namespace to Git. Note that in contrast to `PushFlows`, this task requires pushing code for each namespace separately. You can use the `ForEach` task as shown below to loop over multiple namespaces. Check the [Version Control with Git](https://kestra.io/docs/developer-guide/git) guide for more examples."""
 )
 @Plugin(
     examples = {
+        @Example(
+            title = "Release all flows and scripts from selected namespaces to a Git repository every Thursday at 11:00 AM. Adjust the `values` list to include the namespaces for which you want to push your code to Git. This [System Flow](https://kestra.io/docs/concepts/system-flows) will create two commits per namespace: one for the flows and one for the scripts.",
+            full = true,
+            code = """
+                id: git_push
+                namespace: system
+
+                tasks:
+                  - id: push
+                    type: io.kestra.plugin.core.flow.ForEach
+                    values: ["company", "company.team", "company.analytics"]
+                    tasks:
+                      - id: flows
+                        type: io.kestra.plugin.git.PushFlows
+                        sourceNamespace: "{{ taskrun.value }}"
+                        gitDirectory: "{{'flows/' ~ taskrun.value}}"
+                        includeChildNamespaces: false      
+
+                      - id: scripts
+                        type: io.kestra.plugin.git.PushNamespaceFiles
+                        namespace: "{{ taskrun.value }}"
+                        gitDirectory: "{{'scripts/' ~ taskrun.value}}"
+
+                pluginDefaults:
+                  - type: io.kestra.plugin.git
+                    values:
+                      username: anna-geller
+                      url: https://github.com/anna-geller/product
+                      password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                      branch: main
+                      dryRun: false
+                
+                triggers:
+                  - id: schedule_push_to_git
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "0 11 * * 4"
+                """
+        ),        
         @Example(
             title = "Push all saved Namespace Files from the dev namespace to a Git repository every 15 minutes.",
             full = true,
