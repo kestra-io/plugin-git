@@ -108,7 +108,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     )
     @PluginProperty(dynamic = true)
     @Builder.Default
-    private String branch = "kestra";
+    private String branch = "main";
 
     @Schema(
         title = "The namespace from which files should be pushed to the `gitDirectory`."
