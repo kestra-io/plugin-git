@@ -116,11 +116,11 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             If the top-level namespace specified in the flow source code is different than the `targetNamespace`, it will be overwritten by this target namespace. This facilitates moving between environments and projects. If `includeChildNamespaces` property is set to true, the top-level namespace in the source code will also be overwritten by the `targetNamespace` in children namespaces.
 
             For example, if the `targetNamespace` is set to `prod` and `includeChildNamespaces` property is set to `true`, then:
-            - `namespace: dev` in flow source code will be overwritten by `namespace: prod`, 
+            - `namespace: dev` in flow source code will be overwritten by `namespace: prod`,
             - `namespace: dev.marketing.crm` will be overwritten by `namespace: prod.marketing.crm`.
 
             See the table below for a practical explanation:
-                
+
             | Source namespace in the flow code |       Git directory path       |  Synced to target namespace   |
             | --------------------------------- | ------------------------------ | ----------------------------- |
             | namespace: dev                    | _flows/flow1.yml               | namespace: prod               |
@@ -142,8 +142,8 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
             If `includeChildNamespaces` property is set to `true`, this task will push all flows from nested subdirectories into their corresponding child namespaces, e.g. if `targetNamespace` is set to `prod`, then:
 
-            - flows from the `_flows` directory will be synced to the `prod` namespace, 
-            - flows from the `_flows/marketing` subdirectory in Git will be synced to the `prod.marketing` namespace, 
+            - flows from the `_flows` directory will be synced to the `prod` namespace,
+            - flows from the `_flows/marketing` subdirectory in Git will be synced to the `prod.marketing` namespace,
             - flows from the `_flows/marketing/crm` subdirectory will be synced to the `prod.marketing.crm` namespace."""
     )
     @PluginProperty(dynamic = true)
@@ -166,6 +166,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     @Builder.Default
     private boolean delete = false;
 
+    @Getter(AccessLevel.NONE)
     private FlowService flowService;
 
 
