@@ -2,6 +2,7 @@ package io.kestra.plugin.git;
 
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.NamespaceFiles;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
@@ -198,7 +199,7 @@ class PushTest extends AbstractGitTest {
                 shouldNotBeCommitted, "should not be committed"
             ))
             .namespaceFiles(NamespaceFiles.builder()
-                .enabled(true)
+                .enabled(Property.of(true))
                 .build()
             )
             .addFilesPattern(List.of(

@@ -58,7 +58,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
             code = """
                 id: push_to_git
                 namespace: company.team
-                
+
                 tasks:
                   - id: commit_and_push
                     type: io.kestra.plugin.git.Push
@@ -71,7 +71,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
                     username: git_username
                     password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
                     commitMessage: "add flows and scripts {{ now() }}"
-                
+
                 triggers:
                   - id: schedule_push
                     type: io.kestra.plugin.core.trigger.Schedule
@@ -86,12 +86,12 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
             code = """
                 id: push_new_file_to_git
                 namespace: company.team
-                
+
                 inputs:
                   - id: commit_message
                     type: STRING
                     defaults: add a new file to Git
-                
+
                 tasks:
                   - id: wdir
                     type: io.kestra.plugin.core.flow.WorkingDirectory
@@ -242,10 +242,13 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
             FilesService.inputFiles(runContext, this.inputFiles);
         }
 
-        if (this.namespaceFiles != null && this.namespaceFiles.getEnabled()) {
+        if (this.namespaceFiles != null && runContext.render(this.namespaceFiles.getEnabled()).as(Boolean.class).orElse(true)) {
             runContext.storage()
                 .namespace()
-                .findAllFilesMatching(this.namespaceFiles.getInclude(), this.namespaceFiles.getExclude())
+                .findAllFilesMatching(
+                    runContext.render(this.namespaceFiles.getInclude()).asList(String.class),
+                    runContext.render(this.namespaceFiles.getExclude()).asList(String.class)
+                )
                 .forEach(Rethrow.throwConsumer(namespaceFile -> {
                     InputStream content = runContext.storage().getFile(namespaceFile.uri());
                     runContext.workingDir().putFile(Path.of(namespaceFile.path()), content);
