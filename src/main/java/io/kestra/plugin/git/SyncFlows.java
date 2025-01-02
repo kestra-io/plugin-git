@@ -50,7 +50,7 @@ import java.util.regex.Pattern;
                         type: io.kestra.plugin.git.SyncFlows
                         targetNamespace: "{{ taskrun.value }}"
                         gitDirectory: "{{'flows/' ~ taskrun.value}}"
-                        includeChildNamespaces: false      
+                        includeChildNamespaces: false
 
                       - id: scripts
                         type: io.kestra.plugin.git.SyncNamespaceFiles
@@ -71,7 +71,7 @@ import java.util.regex.Pattern;
                     type: io.kestra.plugin.core.trigger.Schedule
                     cron: "0 * * * *"
                 """
-        ),        
+        ),
         @Example(
             title = "Sync flows from a Git repository. This flow can run either on a schedule (using the [Schedule](https://kestra.io/docs/workflow-components/triggers#schedule-trigger) trigger) or anytime you push a change to a given Git branch (using the [Webhook](https://kestra.io/docs/workflow-components/triggers#webhook-trigger) trigger).",
             full = true,
@@ -194,7 +194,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             return null;
         }
 
-        return flowService(runContext).importFlow(runContext.tenantId(), SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream), true);
+        return flowService(runContext).importFlow(runContext.flowInfo().tenantId(), SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream), true);
     }
 
     @Override
@@ -218,7 +218,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
         String flowSource = SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream);
 
-        return flowService(runContext).importFlow(runContext.tenantId(), flowSource);
+        return flowService(runContext).importFlow(runContext.flowInfo().tenantId(), flowSource);
     }
 
     private static String replaceNamespace(String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
@@ -264,10 +264,10 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     @Override
     protected List<Flow> fetchResources(RunContext runContext, String renderedNamespace) {
         if (this.includeChildNamespaces) {
-            return flowService(runContext).findByNamespacePrefix(runContext.tenantId(), renderedNamespace);
+            return flowService(runContext).findByNamespacePrefix(runContext.flowInfo().tenantId(), renderedNamespace);
         }
 
-        return flowService(runContext).findByNamespace(runContext.tenantId(), renderedNamespace);
+        return flowService(runContext).findByNamespace(runContext.flowInfo().tenantId(), renderedNamespace);
     }
 
     @Override
