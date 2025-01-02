@@ -85,7 +85,7 @@ public class GitService {
         FlowService flowService = ((DefaultRunContext)runContext).getApplicationContext().getBean(FlowService.class);
         RunContext.FlowInfo flowInfo = runContext.flowInfo();
         flowService.checkAllowedNamespace(
-            runContext.flowInfo().tenantId(),
+            runContext.tenantId(),
             runContext.render(namespaceToAccess),
             flowInfo.tenantId(),
             flowInfo.namespace()
