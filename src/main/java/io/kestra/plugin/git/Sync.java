@@ -59,7 +59,7 @@ import static io.kestra.core.utils.Rethrow.*;
             code = """
                 id: sync_from_git
                 namespace: company.team
-                
+
                 tasks:
                   - id: git
                     type: io.kestra.plugin.git.Sync
@@ -70,7 +70,7 @@ import static io.kestra.core.utils.Rethrow.*;
                     gitDirectory: your_git_dir # optional, otherwise all files
                     namespaceFilesDirectory: your_namespace_files_location # optional, otherwise the namespace root directory
                     dryRun: true  # if true, print the output of what files will be added/modified or deleted without overwriting the files yet
-                
+
                 triggers:
                   - id: every_minute
                     type: io.kestra.plugin.core.trigger.Schedule
@@ -184,7 +184,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
                 .filter(flow -> !flowIdsImported.contains(flow.getId()))
                 .forEach(flow -> {
                     if (!dryRun) {
-                        flowRepository.delete(flow.withSource(null));
+                        flowRepository.delete(flow);
                     }
                     logDeletion(logger, "/_flows/" + flow.getId() + ".yml");
                 });
