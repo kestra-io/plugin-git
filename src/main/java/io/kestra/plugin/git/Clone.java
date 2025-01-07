@@ -103,8 +103,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         title = "The optional directory associated with the clone operation.",
         description = "If the directory isn't set, the current directory will be used."
     )
-    @PluginProperty(dynamic = true)
-    private String directory;
+    private Property<String> directory;
 
     private Property<String> branch;
 
@@ -123,7 +122,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
         Path path = runContext.workingDir().path();
         if (this.directory != null) {
-            String directory = runContext.render(this.directory);
+            String directory = runContext.render(this.directory).as(String.class).orElseThrow();
             path = runContext.workingDir().resolve(Path.of(directory));
         }
 
