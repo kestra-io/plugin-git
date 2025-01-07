@@ -140,7 +140,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         }
 
         if (this.cloneSubmodules != null) {
-            cloneCommand.setCloneSubmodules(this.cloneSubmodules);
+            cloneCommand.setCloneSubmodules(runContext.render(this.cloneSubmodules).as(Boolean.class).orElseThrow());
         }
 
         cloneCommand = authentified(cloneCommand, runContext);

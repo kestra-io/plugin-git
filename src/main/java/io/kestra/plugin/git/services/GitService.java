@@ -22,7 +22,7 @@ public class GitService {
 
     private AbstractGitTask gitTask;
 
-    public Git cloneBranch(RunContext runContext, String branch, Boolean withSubmodules) throws Exception {
+    public Git cloneBranch(RunContext runContext, String branch, Property<Boolean> withSubmodules) throws Exception {
         Clone cloneHead = Clone.builder()
             .url(gitTask.getUrl())
             .username(gitTask.getUsername())
