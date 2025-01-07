@@ -204,14 +204,14 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         String commitId = null;
         ObjectId commit;
         try {
-            String httpUrl = gitService.getHttpUrl(runContext.render(this.url));
+            String httpUrl = gitService.getHttpUrl(runContext.render(this.url).as(String.class).orElse(null));
             if (this.isDryRun()) {
                 logger.info(
                     "Dry run — no changes will be pushed to {} for now until you set the `dryRun` parameter to false",
                     httpUrl
                 );
             } else {
-                String renderedBranch = runContext.render(this.getBranch());
+                String renderedBranch = runContext.render(this.getBranch()).as(String.class).orElse(null);
                 logger.info(
                     "Pushing to {} on branch {}",
                     httpUrl,
@@ -247,7 +247,7 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
     }
 
     private PersonIdent author(RunContext runContext) throws IllegalVariableEvaluationException {
-        String name = Optional.ofNullable(this.authorName).orElse(runContext.render(this.username));
+        String name = Optional.ofNullable(this.authorName).orElse(runContext.render(this.username).as(String.class).orElse(null));
         String authorEmail = this.authorEmail;
         if (authorEmail == null || name == null) {
             return null;
@@ -274,9 +274,8 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         GitService gitService = new GitService(this);
 
         gitService.namespaceAccessGuard(runContext, this.fetchedNamespace());
-        this.detectPasswordLeaks();
 
-        Git git = gitService.cloneBranch(runContext, runContext.render(this.getBranch()), this.cloneSubmodules);
+        Git git = gitService.cloneBranch(runContext, runContext.render(this.getBranch()).as(String.class).orElse(null), this.cloneSubmodules);
 
         Path localGitDirectory = this.createGitDirectory(runContext);
 

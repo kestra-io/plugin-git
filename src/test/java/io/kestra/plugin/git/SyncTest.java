@@ -2,6 +2,7 @@ package io.kestra.plugin.git;
 
 import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.models.flows.Flow;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.queues.QueueFactoryInterface;
 import io.kestra.core.queues.QueueInterface;
 import io.kestra.core.repositories.FlowRepositoryInterface;
@@ -172,10 +173,10 @@ class SyncTest extends AbstractGitTest {
         String clonedGitDirectory = "to_clone";
         String destinationDirectory = "sync_directory";
         Sync task = Sync.builder()
-            .url(repositoryUrl)
-            .username(pat)
-            .password(pat)
-            .branch(BRANCH)
+            .url(new Property<>(repositoryUrl))
+            .username(new Property<>(pat))
+            .password(new Property<>(pat))
+            .branch(new Property<>(BRANCH))
             .gitDirectory(clonedGitDirectory)
             .namespaceFilesDirectory(destinationDirectory)
             .build();
@@ -193,10 +194,10 @@ class SyncTest extends AbstractGitTest {
 
         RunContext runContext = runContextFactory.of();
         Clone.builder()
-            .url(repositoryUrl)
-            .username(pat)
-            .password(pat)
-            .branch(BRANCH)
+            .url(new Property<>(repositoryUrl))
+            .username(new Property<>(pat))
+            .password(new Property<>(pat))
+            .branch(new Property<>(BRANCH))
             .build()
             .run(runContext);
         assertFlows(TENANT_ID, runContext.workingDir().path().resolve(Path.of(clonedGitDirectory, "_flows")).toFile(), selfFlowSource);
@@ -277,10 +278,10 @@ class SyncTest extends AbstractGitTest {
 
         // region WHEN
         Sync task = Sync.builder()
-            .url(repositoryUrl)
-            .username(pat)
-            .password(pat)
-            .branch(BRANCH)
+            .url(new Property<>(repositoryUrl))
+            .username(new Property<>(pat))
+            .password(new Property<>(pat))
+            .branch(new Property<>(BRANCH))
             .build();
 
         task.run(runContextFactory.of(Map.of("flow", Map.of(
@@ -297,10 +298,10 @@ class SyncTest extends AbstractGitTest {
 
         RunContext runContext = runContextFactory.of();
         Clone.builder()
-            .url(repositoryUrl)
-            .username(pat)
-            .password(pat)
-            .branch(BRANCH)
+            .url(new Property<>(repositoryUrl))
+            .username(new Property<>(pat))
+            .password(new Property<>(pat))
+            .branch(new Property<>(BRANCH))
             .build()
             .run(runContext);
         assertFlows(TENANT_ID, runContext.workingDir().path().resolve("_flows").toFile(), selfFlowSource);
@@ -374,10 +375,10 @@ class SyncTest extends AbstractGitTest {
         Sync task = Sync.builder()
             .id("reconcile")
             .type(Sync.class.getName())
-            .url(repositoryUrl)
-            .username(pat)
-            .password(pat)
-            .branch(BRANCH)
+            .url(new Property<>(repositoryUrl))
+            .username(new Property<>(pat))
+            .password(new Property<>(pat))
+            .branch(new Property<>(BRANCH))
             .gitDirectory("to_clone")
             .dryRun(true)
             .build();

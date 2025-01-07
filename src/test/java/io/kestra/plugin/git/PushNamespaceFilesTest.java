@@ -1,6 +1,7 @@
 package io.kestra.plugin.git;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
@@ -46,24 +47,6 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
     private StorageInterface storage;
 
     @Test
-    void hardcodedPassword() {
-        PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
-            .id("pushNamespaceFiles")
-            .type(PushNamespaceFiles.class.getName())
-            .url(repositoryUrl)
-            .password("my-password")
-            .build();
-
-        IllegalArgumentException illegalArgumentException = assertThrows(IllegalArgumentException.class, () -> pushNamespaceFiles.run(runContextFactory.of(Map.of(
-            "flow", Map.of(
-                "tenantId", "tenantId",
-                "namespace", "system"
-            ))))
-        );
-        assertThat(illegalArgumentException.getMessage(), is("It looks like you have hard-coded Git credentials. Make sure to pass the credential securely using a Pebble expression (e.g. using secrets or environment variables)."));
-    }
-
-    @Test
     void defaultCase_SingleRegex() throws Exception {
         String tenantId = "my-tenant";
         String namespace = IdUtils.create().toLowerCase();
@@ -81,11 +64,11 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
             .type(PushNamespaceFiles.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
             .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
             .authorEmail("{{email}}")
             .authorName("{{name}}")
             .namespace("{{namespace}}")
@@ -101,10 +84,10 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(repositoryUrl)
-                .username(pat)
-                .password(pat)
-                .branch(branch)
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
                 .build();
 
             RunContext cloneRunContext = runContextFactory.of();
@@ -154,11 +137,11 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
             .type(PushNamespaceFiles.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
             .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
             .authorEmail("{{email}}")
             .authorName("{{name}}")
             .namespace("{{namespace}}")
@@ -205,11 +188,11 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
             .type(PushFlows.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
             .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
             .authorEmail("{{email}}")
             .authorName("{{name}}")
             .namespace("{{namespace}}")
@@ -222,10 +205,10 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(repositoryUrl)
-                .username(pat)
-                .password(pat)
-                .branch(branch)
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
                 .build();
 
             Clone.Output cloneOutput = clone.run(runContextFactory.of());
@@ -306,11 +289,11 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
             .type(PushNamespaceFiles.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
             .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
             .authorEmail("{{email}}")
             .authorName("{{name}}")
             .namespace("{{namespace}}")
@@ -323,10 +306,10 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(repositoryUrl)
-                .username(pat)
-                .password(pat)
-                .branch(branch)
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
                 .build();
 
             RunContext cloneRunContext = runContextFactory.of();
@@ -385,11 +368,11 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
             .type(PushNamespaceFiles.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
             .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
             .authorEmail("{{email}}")
             .authorName("{{name}}")
             .namespace("{{namespace}}")
@@ -403,10 +386,10 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(repositoryUrl)
-                .username(pat)
-                .password(pat)
-                .branch(branch)
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
                 .build();
 
             RunContext cloneRunContext = runContextFactory.of();
@@ -458,11 +441,11 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
             .type(PushNamespaceFiles.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
             .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
             .namespace("{{namespace}}")
             .gitDirectory("{{gitDirectory}}")
             .build();
@@ -473,10 +456,10 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(repositoryUrl)
-                .username(pat)
-                .password(pat)
-                .branch(branch)
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
                 .build();
 
             RunContext cloneRunContext = runContextFactory.of();

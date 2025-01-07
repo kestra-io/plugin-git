@@ -1,5 +1,6 @@
 package io.kestra.plugin.git;
 
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.micronaut.context.annotation.Value;
@@ -25,7 +26,7 @@ class CloneTest extends AbstractGitTest {
         RunContext runContext = runContextFactory.of();
 
         Clone task = Clone.builder()
-            .url("https://github.com/kestra-io/plugin-template")
+            .url(Property.of("https://github.com/kestra-io/plugin-template"))
             .build();
 
         Clone.Output runOutput = task.run(runContext);
@@ -42,9 +43,9 @@ class CloneTest extends AbstractGitTest {
         RunContext runContext = runContextFactory.of();
 
         Clone task = Clone.builder()
-            .url(repositoryUrl)
-            .username(pat)
-            .password(pat)
+            .url(new Property<>(repositoryUrl))
+            .username(new Property<>(pat))
+            .password(new Property<>(pat))
             .build();
 
         Clone.Output runOutput = task.run(runContext);

@@ -4,6 +4,7 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.Flow;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.services.FlowService;
@@ -106,9 +107,8 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     @Schema(
         title = "The branch from which flows will be synced to Kestra."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String branch = "main";
+    private Property<String> branch = Property.of("main");
 
     @Schema(
         title = "The target namespace to which flows from the `gitDirectory` should be synced.",

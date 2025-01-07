@@ -81,7 +81,7 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
     protected boolean traverseDirectories() {
         return true;
     }
-    
+
     protected boolean mustKeep(RunContext runContext, T instanceResource) {
         return false;
     }
@@ -146,12 +146,11 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
     }
 
     public O run(RunContext runContext) throws Exception {
-        this.detectPasswordLeaks();
         GitService gitService = new GitService(this);
 
         gitService.namespaceAccessGuard(runContext, this.fetchedNamespace());
 
-        Git git = gitService.cloneBranch(runContext, runContext.render(this.getBranch()), this.cloneSubmodules);
+        Git git = gitService.cloneBranch(runContext, runContext.render(this.getBranch()).as(String.class).orElse(null), this.cloneSubmodules);
 
         Path localGitDirectory = this.createGitDirectory(runContext);
         Map<URI, Supplier<InputStream>> gitContentByUri = this.gitResourcesContentByUri(localGitDirectory);

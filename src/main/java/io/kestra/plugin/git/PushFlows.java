@@ -6,6 +6,7 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
@@ -56,7 +57,7 @@ import static io.kestra.core.utils.Rethrow.*;
                         type: io.kestra.plugin.git.PushFlows
                         sourceNamespace: "{{ taskrun.value }}"
                         gitDirectory: "{{'flows/' ~ taskrun.value}}"
-                        includeChildNamespaces: false      
+                        includeChildNamespaces: false
 
                       - id: scripts
                         type: io.kestra.plugin.git.PushNamespaceFiles
@@ -71,20 +72,20 @@ import static io.kestra.core.utils.Rethrow.*;
                       password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
                       branch: main
                       dryRun: false
-                
+
                 triggers:
                   - id: schedule_push_to_git
                     type: io.kestra.plugin.core.trigger.Schedule
                     cron: "0 11 * * 4"
                 """
-        ),                
+        ),
         @Example(
             title = "Automatically push all saved flows from the dev namespace and all child namespaces to a Git repository every day at 5 p.m. Before pushing to Git, the task will adjust the flow's source code to match the targetNamespace to prepare the Git branch for merging to the production namespace. Note that the automatic conversion of `sourceNamespace` to `targetNamespace` is optional and should only be considered as a helper for facilitating the Git workflow for simple use cases — only the `namespace` property within the flow will be adjusted and if you specify namespace names within e.g. Flow triggers, those may need to be manually adjusted. **We recommend using separate Kestra instances for development and production with the same namespace names across instances.**",
             full = true,
             code = """
                 id: push_to_git
                 namespace: system
-                
+
                 tasks:
                   - id: commit_and_push
                     type: io.kestra.plugin.git.PushFlows
@@ -99,7 +100,7 @@ import static io.kestra.core.utils.Rethrow.*;
                     branch: main
                     commitMessage: "add flows {{ now() }}" # optional string
                     dryRun: true  # if true, you'll see what files will be added, modified or deleted based on the state in Git without overwriting the files yet
-                
+
                 triggers:
                   - id: schedule_push
                     type: io.kestra.plugin.core.trigger.Schedule
@@ -112,12 +113,12 @@ import static io.kestra.core.utils.Rethrow.*;
             code = """
                 id: myflow
                 namespace: prod
-                
+
                 inputs:
                   - id: push
                     type: BOOLEAN
                     defaults: false
-                
+
                 tasks:
                   - id: if
                     type: io.kestra.plugin.core.flow.If
@@ -144,7 +145,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     )
     @PluginProperty(dynamic = true)
     @Builder.Default
-    private String branch = "main";
+    private Property<String> branch = Property.of("main");
 
     @Schema(
         title = "Directory to which flows should be pushed.",
@@ -189,7 +190,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         title = "Whether you want to push flows from child namespaces as well.",
         description = """
             By default, it’s `false`, so the task will push only flows from the explicitly declared namespace without pushing flows from child namespaces. If set to `true`, flows from child namespaces will be pushed to child directories in Git. See the example below for a practical explanation:
-            
+
             | Source namespace in the flow code |       Git directory path       |  Synced to target namespace   |
             | --------------------------------- | ------------------------------ | ----------------------------- |
             | namespace: dev                    | _flows/flow1.yml               | namespace: prod               |

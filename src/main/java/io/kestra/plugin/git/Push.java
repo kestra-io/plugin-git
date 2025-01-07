@@ -6,6 +6,7 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.InputFilesInterface;
 import io.kestra.core.models.tasks.NamespaceFiles;
 import io.kestra.core.models.tasks.NamespaceFilesInterface;
@@ -133,7 +134,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         description = "If the branch doesn't exist yet, it will be created."
     )
     @NotNull
-    private String branch;
+    private Property<String> branch;
 
     @Schema(
         title = "Commit message."
@@ -173,7 +174,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
             }
         }
 
-        return authentified(Git.lsRemoteRepository().setRemote(runContext.render(url)), runContext)
+        return authentified(Git.lsRemoteRepository().setRemote(runContext.render(url).as(String.class).orElse(null)), runContext)
             .callAsMap()
             .containsKey(R_HEADS + branch);
     }
@@ -187,7 +188,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
             basePath = runContext.workingDir().resolve(Path.of(runContext.render(this.directory)));
         }
 
-        String branch = runContext.render(this.branch);
+        String branch = runContext.render(this.branch).as(String.class).orElse(null);
         if (this.url != null) {
             boolean branchExists = branchExists(runContext, branch);
 
@@ -204,7 +205,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
 
             if (branchExists) {
                 cloneHead.toBuilder()
-                    .branch(branch)
+                    .branch(Property.of(branch))
                     .build()
                     .run(runContext);
             } else {
@@ -325,7 +326,10 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
             return new PersonIdent(runContext.render(this.author.name), runContext.render(this.author.email));
         }
         if (this.author.email != null && this.username != null) {
-            return new PersonIdent(runContext.render(this.username), runContext.render(this.author.email));
+            return new PersonIdent(
+                runContext.render(this.username).as(String.class).orElseThrow(),
+                runContext.render(this.author.email)
+            );
         }
 
         return null;
