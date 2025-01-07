@@ -153,8 +153,8 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         defaultValue = "Add files from `namespace` namespace"
     )
     @Override
-    public String getCommitMessage() {
-        return Optional.ofNullable(this.commitMessage).orElse("Add files from " + this.namespace + " namespace");
+    public Property<String> getCommitMessage() {
+        return Optional.ofNullable(this.commitMessage).orElse(new Property<>("Add files from " + this.namespace + " namespace"));
     }
 
     @Override

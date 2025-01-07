@@ -209,8 +209,8 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         defaultValue = "Add flows from sourceNamespace"
     )
     @Override
-    public String getCommitMessage() {
-        return Optional.ofNullable(this.commitMessage).orElse("Add flows from " + this.sourceNamespace + " namespace");
+    public Property<String> getCommitMessage() {
+        return Optional.ofNullable(this.commitMessage).orElse(new Property<>("Add flows from " + this.sourceNamespace + " namespace"));
     }
 
     @Override
