@@ -102,35 +102,31 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     @Schema(
         title = "The branch from which Namespace Files will be synced to Kestra."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
     private Property<String> branch = Property.of("main");
 
     @Schema(
         title = "The namespace from which files should be synced from the `gitDirectory` to Kestra."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String namespace = "{{ flow.namespace }}";
+    private Property<String> namespace = new Property<>("{{ flow.namespace }}");
 
     @Schema(
         title = "Directory from which Namespace Files should be synced.",
         description = "If not set, this task assumes your branch includes a directory named `_files`"
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String gitDirectory = "_files";
+    private Property<String> gitDirectory = Property.of("_files");
 
     @Schema(
         title = "Whether you want to delete Namespace Files present in kestra but not present in Git.",
         description = "It’s `false` by default to avoid destructive behavior. Use with caution because when set to `true`, this task will delete all Namespace Files which are not present in Git."
     )
-    @PluginProperty
     @Builder.Default
-    private boolean delete = false;
+    private Property<Boolean> delete = Property.of(false);
 
     @Override
-    public String fetchedNamespace() {
+    public Property<String> fetchedNamespace() {
         return this.namespace;
     }
 

@@ -132,10 +132,10 @@ public class SyncFlowsTest extends AbstractGitTest {
             .username(new Property<>("{{pat}}"))
             .password(new Property<>("{{pat}}"))
             .branch(new Property<>("{{branch}}"))
-            .gitDirectory("{{gitDirectory}}")
-            .targetNamespace("{{namespace}}")
-            .delete(true)
-            .includeChildNamespaces(true)
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .targetNamespace(new Property<>("{{namespace}}"))
+            .delete(Property.of(true))
+            .includeChildNamespaces(Property.of(true))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 
@@ -226,9 +226,9 @@ public class SyncFlowsTest extends AbstractGitTest {
             .username(new Property<>("{{pat}}"))
             .password(new Property<>("{{pat}}"))
             .branch(new Property<>("{{branch}}"))
-            .gitDirectory("{{gitDirectory}}")
-            .targetNamespace("{{namespace}}")
-            .includeChildNamespaces(true)
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .targetNamespace(new Property<>("{{namespace}}"))
+            .includeChildNamespaces(Property.of(true))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 
@@ -325,10 +325,10 @@ public class SyncFlowsTest extends AbstractGitTest {
             .username(new Property<>("{{pat}}"))
             .password(new Property<>("{{pat}}"))
             .branch(new Property<>("{{branch}}"))
-            .gitDirectory("{{gitDirectory}}")
-            .targetNamespace("{{namespace}}")
-            .delete(true)
-            .includeChildNamespaces(false)
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .targetNamespace(new Property<>("{{namespace}}"))
+            .delete(Property.of(true))
+            .includeChildNamespaces(Property.of(false))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 
@@ -422,11 +422,11 @@ public class SyncFlowsTest extends AbstractGitTest {
             .username(new Property<>("{{pat}}"))
             .password(new Property<>("{{pat}}"))
             .branch(new Property<>("{{branch}}"))
-            .gitDirectory("{{gitDirectory}}")
-            .targetNamespace("{{namespace}}")
-            .delete(true)
-            .includeChildNamespaces(true)
-            .dryRun(true)
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .targetNamespace(new Property<>("{{namespace}}"))
+            .delete(Property.of(true))
+            .includeChildNamespaces(Property.of(true))
+            .dryRun(Property.of(true))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 

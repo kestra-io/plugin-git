@@ -69,14 +69,14 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
 
     public abstract Property<String> getCommitMessage();
 
-    public abstract String getGitDirectory();
+    public abstract Property<String> getGitDirectory();
 
     public abstract Object globs();
 
-    public abstract String fetchedNamespace();
+    public abstract Property<String> fetchedNamespace();
 
     private Path createGitDirectory(RunContext runContext) throws IllegalVariableEvaluationException {
-        Path flowDirectory = runContext.workingDir().resolve(Path.of(runContext.render(this.getGitDirectory())));
+        Path flowDirectory = runContext.workingDir().resolve(Path.of(runContext.render(this.getGitDirectory()).as(String.class).orElse(null)));
         flowDirectory.toFile().mkdirs();
         return flowDirectory;
     }
@@ -288,7 +288,7 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         this.writeResourceFiles(contentByPath);
 
         AddCommand add = git.add();
-        add.addFilepattern(runContext.render(this.getGitDirectory()));
+        add.addFilepattern(runContext.render(this.getGitDirectory()).as(String.class).orElse(null));
         add.call();
 
         Output pushOutput = this.push(git, runContext, gitService);

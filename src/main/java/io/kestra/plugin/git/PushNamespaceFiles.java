@@ -114,9 +114,8 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     @Schema(
         title = "The namespace from which files should be pushed to the `gitDirectory`."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String namespace = "{{ flow.namespace }}";
+    private Property<String> namespace = new Property<>("{{ flow.namespace }}");
 
     @Schema(
         title = "Directory to which Namespace Files should be pushed.",
@@ -131,9 +130,8 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
             | queries/customers.sql | _files/queries/customers.sql |
             | requirements.txt      | _files/requirements.txt      |"""
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String gitDirectory = "_files";
+    private Property<String> gitDirectory = Property.of("_files");
 
     @Schema(
         title = "Which Namespace Files should be included in the commit.",
@@ -154,7 +152,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     )
     @Override
     public Property<String> getCommitMessage() {
-        return Optional.ofNullable(this.commitMessage).orElse(new Property<>("Add files from " + this.namespace + " namespace"));
+        return Optional.ofNullable(this.commitMessage).orElse(new Property<>("Add files from " + this.namespace.toString() + " namespace"));
     }
 
     @Override
@@ -163,14 +161,14 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     }
 
     @Override
-    public String fetchedNamespace() {
+    public Property<String> fetchedNamespace() {
         return this.namespace;
     }
 
     @Override
     protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path baseDirectory, List<String> globs) throws Exception {
 
-        Namespace storage = runContext.storage().namespace(runContext.render(this.namespace));
+        Namespace storage = runContext.storage().namespace(runContext.render(this.namespace).as(String.class).orElse(null));
         Predicate<Path> matcher = (globs != null) ? PathMatcherPredicate.matches(globs) : (path -> true);
 
         return storage

@@ -71,9 +71,9 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             .password(new Property<>("{{pat}}"))
             .authorEmail(new Property<>("{{email}}"))
             .authorName(new Property<>("{{name}}"))
-            .namespace("{{namespace}}")
+            .namespace(new Property<>("{{namespace}}"))
             .files("nested/*")
-            .gitDirectory("{{gitDirectory}}")
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
         try {
@@ -144,9 +144,9 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             .password(new Property<>("{{pat}}"))
             .authorEmail(new Property<>("{{email}}"))
             .authorName(new Property<>("{{name}}"))
-            .namespace("{{namespace}}")
+            .namespace(new Property<>("{{namespace}}"))
             .files("second*")
-            .gitDirectory("{{gitDirectory}}")
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
             .dryRun(Property.of(true))
             .build();
 
@@ -195,8 +195,8 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             .password(new Property<>("{{pat}}"))
             .authorEmail(new Property<>("{{email}}"))
             .authorName(new Property<>("{{name}}"))
-            .namespace("{{namespace}}")
-            .gitDirectory("{{gitDirectory}}")
+            .namespace(new Property<>("{{namespace}}"))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
         try {
@@ -296,8 +296,8 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             .password(new Property<>("{{pat}}"))
             .authorEmail(new Property<>("{{email}}"))
             .authorName(new Property<>("{{name}}"))
-            .namespace("{{namespace}}")
-            .gitDirectory("{{gitDirectory}}")
+            .namespace(new Property<>("{{namespace}}"))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
         try {
@@ -375,9 +375,9 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             .password(new Property<>("{{pat}}"))
             .authorEmail(new Property<>("{{email}}"))
             .authorName(new Property<>("{{name}}"))
-            .namespace("{{namespace}}")
+            .namespace(new Property<>("{{namespace}}"))
             .files(List.of("first*", "second*"))
-            .gitDirectory("{{gitDirectory}}")
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
         try {
@@ -446,8 +446,8 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             .commitMessage(new Property<>("Push from CI - {{description}}"))
             .username(new Property<>("{{pat}}"))
             .password(new Property<>("{{pat}}"))
-            .namespace("{{namespace}}")
-            .gitDirectory("{{gitDirectory}}")
+            .namespace(new Property<>("{{namespace}}"))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
         try {

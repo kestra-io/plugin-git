@@ -155,23 +155,20 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
             If the `includeChildNamespaces` property is set to true, this task will also push all flows from child namespaces into their corresponding nested directories, e.g., flows from the child namespace called prod.marketing will be added to the marketing folder within the _flows folder.
             Note that the targetNamespace (here prod) is specified in the flow code; therefore, kestra will not create the prod directory within _flows. You can use the PushFlows task to push flows from the sourceNamespace, and use SyncFlows to then sync PR-approved flows to the targetNamespace, including all child namespaces."""
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String gitDirectory = "_flows";
+    private Property<String> gitDirectory = Property.of("_flows");
 
     @Schema(
         title = "The source namespace from which flows should be synced to the `gitDirectory`."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String sourceNamespace = "{{ flow.namespace }}";
+    private Property<String> sourceNamespace = new Property<>("{{ flow.namespace }}");
 
     @Schema(
         title = "The target namespace, intended as the production namespace.",
         description = "If set, the `sourceNamespace` will be overwritten to the `targetNamespace` in the flow source code to prepare your branch for merging into the production namespace."
     )
-    @PluginProperty(dynamic = true)
-    private String targetNamespace;
+    private Property<String> targetNamespace;
 
     @Schema(
         title = "List of glob patterns or a single one that declare which flows should be included in the Git commit.",
@@ -200,9 +197,8 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
             | namespace: dev.marketing.crm      | _flows/marketing/crm/flow5.yml | namespace: prod.marketing.crm |
             | namespace: dev.marketing.crm      | _flows/marketing/crm/flow6.yml | namespace: prod.marketing.crm |"""
     )
-    @PluginProperty
     @Builder.Default
-    private boolean includeChildNamespaces = false;
+    private Property<Boolean> includeChildNamespaces = Property.of(false);
 
     @Schema(
         title = "Git commit message.",
@@ -210,7 +206,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     )
     @Override
     public Property<String> getCommitMessage() {
-        return Optional.ofNullable(this.commitMessage).orElse(new Property<>("Add flows from " + this.sourceNamespace + " namespace"));
+        return Optional.ofNullable(this.commitMessage).orElse(new Property<>("Add flows from " + this.sourceNamespace.toString() + " namespace"));
     }
 
     @Override
@@ -219,7 +215,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     }
 
     @Override
-    public String fetchedNamespace() {
+    public Property<String> fetchedNamespace() {
         return this.sourceNamespace;
     }
 
@@ -229,8 +225,8 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         Map<String, String> flowProps = Optional.ofNullable((Map<String, String>) runContext.getVariables().get("flow")).orElse(Collections.emptyMap());
         String tenantId = flowProps.get("tenantId");
         List<FlowWithSource> flowsToPush;
-        String renderedSourceNamespace = runContext.render(this.sourceNamespace);
-        if (Boolean.TRUE.equals(this.includeChildNamespaces)) {
+        String renderedSourceNamespace = runContext.render(this.sourceNamespace).as(String.class).orElse(null);
+        if (Boolean.TRUE.equals(runContext.render(this.includeChildNamespaces).as(Boolean.class).orElseThrow())) {
             flowsToPush = flowRepository.findWithSource(null, tenantId, null, renderedSourceNamespace, null);
         } else {
             flowsToPush = flowRepository.findByNamespaceWithSource(tenantId, renderedSourceNamespace);
@@ -245,7 +241,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
             });
         }
 
-        Map<Path, Supplier<InputStream>> flowSourceByPath = filteredFlowsToPush.collect(Collectors.toMap(flowWithSource -> {
+        return filteredFlowsToPush.collect(Collectors.toMap(flowWithSource -> {
             Path path = flowDirectory;
             if (flowWithSource.getNamespace().length() > renderedSourceNamespace.length()) {
                 path = path.resolve(flowWithSource.getNamespace().substring(renderedSourceNamespace.length() + 1).replace(".", "/"));
@@ -253,10 +249,11 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
 
             return path.resolve(flowWithSource.getId() + ".yml");
         }, throwFunction(flowWithSource -> (throwSupplier(() -> {
-            String modifiedSource = flowWithSource.getSource().replaceAll("(?m)^(\\s*namespace:\\s*)" + runContext.render(sourceNamespace), "$1" + runContext.render(targetNamespace));
+            String modifiedSource = flowWithSource.getSource().replaceAll(
+                "(?m)^(\\s*namespace:\\s*)" + runContext.render(sourceNamespace).as(String.class).orElse(null),
+                "$1" + runContext.render(targetNamespace).as(String.class).orElse(null));
             return new ByteArrayInputStream(modifiedSource.getBytes());
         })))));
-        return flowSourceByPath;
     }
 
     @Override
