@@ -4,6 +4,7 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.models.tasks.VoidOutput;
 import io.kestra.core.repositories.FlowRepositoryInterface;
@@ -96,7 +97,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
     @PluginProperty(dynamic = true)
     private String namespaceFilesDirectory;
 
-    private String branch;
+    private Property<String> branch;
 
     @Schema(
         title = "If true, the task will only display modifications without syncing any files yet. If false (default), all namespace files and flows will be overwritten based on the state in Git."
@@ -284,7 +285,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
 
     @Override
     @NotNull
-    public String getUrl() {
+    public Property<String> getUrl() {
         return super.getUrl();
     }
 }

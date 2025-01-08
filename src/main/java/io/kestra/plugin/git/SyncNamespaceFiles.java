@@ -3,6 +3,7 @@ package io.kestra.plugin.git;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.storages.Namespace;
 import io.kestra.core.storages.NamespaceFile;
@@ -48,7 +49,7 @@ import java.util.Optional;
                         type: io.kestra.plugin.git.SyncFlows
                         targetNamespace: "{{ taskrun.value }}"
                         gitDirectory: "{{'flows/' ~ taskrun.value}}"
-                        includeChildNamespaces: false      
+                        includeChildNamespaces: false
 
                       - id: scripts
                         type: io.kestra.plugin.git.SyncNamespaceFiles
@@ -69,14 +70,14 @@ import java.util.Optional;
                     type: io.kestra.plugin.core.trigger.Schedule
                     cron: "0 * * * *"
                 """
-        ),                
+        ),
         @Example(
             title = "Sync Namespace Files from a Git repository. This flow can run either on a schedule (using the Schedule trigger) or anytime you push a change to a given Git branch (using the Webhook trigger).",
             full = true,
             code = """
                 id: sync_from_git
                 namespace: system
-                
+
                 tasks:
                   - id: git
                     type: io.kestra.plugin.git.SyncNamespaceFiles
@@ -88,7 +89,7 @@ import java.util.Optional;
                     username: git_username
                     password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
                     dryRun: true  # if true, the task will only log which flows from Git will be added/modified or deleted in kestra without making any changes in kestra backend yet
-                
+
                 triggers:
                   - id: every_minute
                     type: io.kestra.plugin.core.trigger.Schedule
@@ -101,35 +102,31 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     @Schema(
         title = "The branch from which Namespace Files will be synced to Kestra."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String branch = "main";
+    private Property<String> branch = Property.of("main");
 
     @Schema(
         title = "The namespace from which files should be synced from the `gitDirectory` to Kestra."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String namespace = "{{ flow.namespace }}";
+    private Property<String> namespace = new Property<>("{{ flow.namespace }}");
 
     @Schema(
         title = "Directory from which Namespace Files should be synced.",
         description = "If not set, this task assumes your branch includes a directory named `_files`"
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String gitDirectory = "_files";
+    private Property<String> gitDirectory = Property.of("_files");
 
     @Schema(
         title = "Whether you want to delete Namespace Files present in kestra but not present in Git.",
         description = "It’s `false` by default to avoid destructive behavior. Use with caution because when set to `true`, this task will delete all Namespace Files which are not present in Git."
     )
-    @PluginProperty
     @Builder.Default
-    private boolean delete = false;
+    private Property<Boolean> delete = Property.of(false);
 
     @Override
-    public String fetchedNamespace() {
+    public Property<String> fetchedNamespace() {
         return this.namespace;
     }
 

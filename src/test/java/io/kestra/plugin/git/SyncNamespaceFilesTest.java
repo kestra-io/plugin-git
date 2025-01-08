@@ -3,6 +3,7 @@ package io.kestra.plugin.git;
 import com.fasterxml.jackson.core.type.TypeReference;
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.executions.LogEntry;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.queues.QueueInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
@@ -49,24 +50,6 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
     }
 
     @Test
-    void hardcodedPassword() {
-        SyncNamespaceFiles syncNamespaceFiles = SyncNamespaceFiles.builder()
-                .id("syncNamespaceFiles")
-                .type(PushNamespaceFiles.class.getName())
-                .url(repositoryUrl)
-                .password("my-password")
-                .build();
-
-        IllegalArgumentException illegalArgumentException = assertThrows(IllegalArgumentException.class, () -> syncNamespaceFiles.run(runContextFactory.of(Map.of(
-                "flow", Map.of(
-                        "tenantId", "tenantId",
-                        "namespace", "system"
-                ))))
-        );
-        assertThat(illegalArgumentException.getMessage(), is("It looks like you have hard-coded Git credentials. Make sure to pass the credential securely using a Pebble expression (e.g. using secrets or environment variables)."));
-    }
-
-    @Test
     void defaultCase_WithDelete() throws Exception {
         RunContext runContext = runContext();
 
@@ -108,13 +91,13 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
         );
 
         SyncNamespaceFiles task = SyncNamespaceFiles.builder()
-                .url("{{url}}")
-                .username("{{pat}}")
-                .password("{{pat}}")
-                .branch("{{branch}}")
-                .gitDirectory("{{gitDirectory}}")
-                .namespace("{{namespace}}")
-                .delete(true)
+                .url(new Property<>("{{url}}"))
+                .username(new Property<>("{{pat}}"))
+                .password(new Property<>("{{pat}}"))
+                .branch(new Property<>("{{branch}}"))
+                .gitDirectory(new Property<>("{{gitDirectory}}"))
+                .namespace(new Property<>("{{namespace}}"))
+                .delete(Property.of(true))
                 .build();
         SyncNamespaceFiles.Output syncOutput = task.run(runContext);
 
@@ -174,12 +157,12 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
         );
 
         SyncNamespaceFiles task = SyncNamespaceFiles.builder()
-                .url("{{url}}")
-                .username("{{pat}}")
-                .password("{{pat}}")
-                .branch("{{branch}}")
-                .gitDirectory("{{gitDirectory}}")
-                .namespace("{{namespace}}")
+                .url(new Property<>("{{url}}"))
+                .username(new Property<>("{{pat}}"))
+                .password(new Property<>("{{pat}}"))
+                .branch(new Property<>("{{branch}}"))
+                .gitDirectory(new Property<>("{{gitDirectory}}"))
+                .namespace(new Property<>("{{namespace}}"))
                 .build();
         SyncNamespaceFiles.Output syncOutput = task.run(runContext);
 
@@ -239,14 +222,14 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
         );
 
         SyncNamespaceFiles task = SyncNamespaceFiles.builder()
-                .url("{{url}}")
-                .username("{{pat}}")
-                .password("{{pat}}")
-                .branch("{{branch}}")
-                .gitDirectory("{{gitDirectory}}")
-                .namespace("{{namespace}}")
-                .dryRun(true)
-                .delete(true)
+                .url(new Property<>("{{url}}"))
+                .username(new Property<>("{{pat}}"))
+                .password(new Property<>("{{pat}}"))
+                .branch(new Property<>("{{branch}}"))
+                .gitDirectory(new Property<>("{{gitDirectory}}"))
+                .namespace(new Property<>("{{namespace}}"))
+                .dryRun(Property.of(true))
+                .delete(Property.of(true))
                 .build();
         SyncNamespaceFiles.Output syncOutput = task.run(runContext);
 

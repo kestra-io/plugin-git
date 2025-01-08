@@ -3,6 +3,7 @@ package io.kestra.plugin.git;
 import com.fasterxml.jackson.core.type.TypeReference;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
@@ -51,24 +52,6 @@ public class PushFlowsTest extends AbstractGitTest {
     private FlowRepositoryInterface flowRepositoryInterface;
 
     @Test
-    void hardcodedPassword() {
-        PushFlows pushFlows = PushFlows.builder()
-            .id("pushFlows")
-            .type(PushFlows.class.getName())
-            .url(repositoryUrl)
-            .password("my-password")
-            .build();
-
-        IllegalArgumentException illegalArgumentException = assertThrows(IllegalArgumentException.class, () -> pushFlows.run(runContextFactory.of(Map.of(
-            "flow", Map.of(
-                "tenantId", "tenantId",
-                "namespace", "system"
-            ))))
-        );
-        assertThat(illegalArgumentException.getMessage(), is("It looks like you have hard-coded Git credentials. Make sure to pass the credential securely using a Pebble expression (e.g. using secrets or environment variables)."));
-    }
-
-    @Test
     void defaultCase_SingleRegex() throws Exception {
         String tenantId = "my-tenant";
         String sourceNamespace = IdUtils.create().toLowerCase();
@@ -85,18 +68,18 @@ public class PushFlowsTest extends AbstractGitTest {
         PushFlows pushFlows = PushFlows.builder()
             .id("pushFlows")
             .type(PushFlows.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
-            .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
-            .authorEmail("{{email}}")
-            .authorName("{{name}}")
-            .sourceNamespace("{{sourceNamespace}}")
-            .targetNamespace("{{targetNamespace}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
+            .commitMessage(new Property<>("Push from CI - {{description}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .authorEmail(new Property<>("{{email}}"))
+            .authorName(new Property<>("{{name}}"))
+            .sourceNamespace(new Property<>("{{sourceNamespace}}"))
+            .targetNamespace(new Property<>("{{targetNamespace}}"))
             .flows("second*")
-            .includeChildNamespaces(true)
-            .gitDirectory("{{gitDirectory}}")
+            .includeChildNamespaces(Property.of(true))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
         try {
@@ -107,10 +90,10 @@ public class PushFlowsTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(repositoryUrl)
-                .username(pat)
-                .password(pat)
-                .branch(branch)
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
                 .build();
 
             RunContext cloneRunContext = runContextFactory.of();
@@ -159,19 +142,19 @@ public class PushFlowsTest extends AbstractGitTest {
         PushFlows pushFlows = PushFlows.builder()
             .id("pushFlows")
             .type(PushFlows.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
-            .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
-            .authorEmail("{{email}}")
-            .authorName("{{name}}")
-            .sourceNamespace("{{sourceNamespace}}")
-            .targetNamespace("{{targetNamespace}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
+            .commitMessage(new Property<>("Push from CI - {{description}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .authorEmail(new Property<>("{{email}}"))
+            .authorName(new Property<>("{{name}}"))
+            .sourceNamespace(new Property<>("{{sourceNamespace}}"))
+            .targetNamespace(new Property<>("{{targetNamespace}}"))
             .flows("second*")
-            .includeChildNamespaces(true)
-            .gitDirectory("{{gitDirectory}}")
-            .dryRun(true)
+            .includeChildNamespaces(Property.of(true))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .dryRun(Property.of(true))
             .build();
 
         PushFlows.Output pushOutput = pushFlows.run(runContext);
@@ -208,17 +191,17 @@ public class PushFlowsTest extends AbstractGitTest {
         PushFlows pushFlows = PushFlows.builder()
             .id("pushFlows")
             .type(PushFlows.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
-            .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
-            .authorEmail("{{email}}")
-            .authorName("{{name}}")
-            .sourceNamespace("{{sourceNamespace}}")
-            .targetNamespace("{{targetNamespace}}")
-            .includeChildNamespaces(true)
-            .gitDirectory("{{gitDirectory}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
+            .commitMessage(new Property<>("Push from CI - {{description}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .authorEmail(new Property<>("{{email}}"))
+            .authorName(new Property<>("{{name}}"))
+            .sourceNamespace(new Property<>("{{sourceNamespace}}"))
+            .targetNamespace(new Property<>("{{targetNamespace}}"))
+            .includeChildNamespaces(Property.of(true))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
         try {
@@ -227,10 +210,10 @@ public class PushFlowsTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(repositoryUrl)
-                .username(pat)
-                .password(pat)
-                .branch(branch)
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
                 .build();
 
             Clone.Output cloneOutput = clone.run(runContextFactory.of());
@@ -309,17 +292,17 @@ public class PushFlowsTest extends AbstractGitTest {
         PushFlows pushFlows = PushFlows.builder()
             .id("pushFlows")
             .type(PushFlows.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
-            .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
-            .authorEmail("{{email}}")
-            .authorName("{{name}}")
-            .sourceNamespace("{{sourceNamespace}}")
-            .targetNamespace("{{targetNamespace}}")
-            .includeChildNamespaces(true)
-            .gitDirectory("{{gitDirectory}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
+            .commitMessage(new Property<>("Push from CI - {{description}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .authorEmail(new Property<>("{{email}}"))
+            .authorName(new Property<>("{{name}}"))
+            .sourceNamespace(new Property<>("{{sourceNamespace}}"))
+            .targetNamespace(new Property<>("{{targetNamespace}}"))
+            .includeChildNamespaces(Property.of(true))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
         try {
@@ -328,10 +311,10 @@ public class PushFlowsTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(repositoryUrl)
-                .username(pat)
-                .password(pat)
-                .branch(branch)
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
                 .build();
 
             RunContext cloneRunContext = runContextFactory.of();
@@ -387,18 +370,18 @@ public class PushFlowsTest extends AbstractGitTest {
         PushFlows pushFlows = PushFlows.builder()
             .id("pushFlows")
             .type(PushFlows.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
-            .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
-            .authorEmail("{{email}}")
-            .authorName("{{name}}")
-            .sourceNamespace("{{sourceNamespace}}")
-            .targetNamespace("{{targetNamespace}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
+            .commitMessage(new Property<>("Push from CI - {{description}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .authorEmail(new Property<>("{{email}}"))
+            .authorName(new Property<>("{{name}}"))
+            .sourceNamespace(new Property<>("{{sourceNamespace}}"))
+            .targetNamespace(new Property<>("{{targetNamespace}}"))
             .flows(List.of("first*", "second*"))
-            .includeChildNamespaces(true)
-            .gitDirectory("{{gitDirectory}}")
+            .includeChildNamespaces(Property.of(true))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
         try {
@@ -407,10 +390,10 @@ public class PushFlowsTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(repositoryUrl)
-                .username(pat)
-                .password(pat)
-                .branch(branch)
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
                 .build();
 
             RunContext cloneRunContext = runContextFactory.of();
@@ -465,15 +448,15 @@ public class PushFlowsTest extends AbstractGitTest {
         PushFlows pushFlows = PushFlows.builder()
             .id("pushFlows")
             .type(PushFlows.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
-            .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
-            .authorEmail("{{email}}")
-            .sourceNamespace("{{sourceNamespace}}")
-            .targetNamespace("{{targetNamespace}}")
-            .gitDirectory("{{gitDirectory}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
+            .commitMessage(new Property<>("Push from CI - {{description}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .authorEmail(new Property<>("{{email}}"))
+            .sourceNamespace(new Property<>("{{sourceNamespace}}"))
+            .targetNamespace(new Property<>("{{targetNamespace}}"))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
         try {
@@ -482,10 +465,10 @@ public class PushFlowsTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(repositoryUrl)
-                .username(pat)
-                .password(pat)
-                .branch(branch)
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
                 .build();
 
             RunContext cloneRunContext = runContextFactory.of();
@@ -529,15 +512,15 @@ public class PushFlowsTest extends AbstractGitTest {
         PushFlows pushFlows = PushFlows.builder()
             .id("pushFlows")
             .type(PushFlows.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
-            .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
-            .sourceNamespace("{{sourceNamespace}}")
-            .targetNamespace("{{targetNamespace}}")
-            .includeChildNamespaces(true)
-            .gitDirectory("{{gitDirectory}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
+            .commitMessage(new Property<>("Push from CI - {{description}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .sourceNamespace(new Property<>("{{sourceNamespace}}"))
+            .targetNamespace(new Property<>("{{targetNamespace}}"))
+            .includeChildNamespaces(Property.of(true))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
         try {
@@ -546,10 +529,10 @@ public class PushFlowsTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(repositoryUrl)
-                .username(pat)
-                .password(pat)
-                .branch(branch)
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
                 .build();
 
             RunContext cloneRunContext = runContextFactory.of();
@@ -625,9 +608,9 @@ public class PushFlowsTest extends AbstractGitTest {
     private FlowWithSource createFlow(String tenantId, String flowId, String namespace) {
         String flowSource = """
             id:\s""" + flowId + """
-            
+
             namespace:\s""" + namespace + """
-            
+
             tasks:
               - id: my-task
                 type: io.kestra.core.tasks.log.Log

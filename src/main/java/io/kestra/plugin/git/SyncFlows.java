@@ -1,9 +1,11 @@
 package io.kestra.plugin.git;
 
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.Flow;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.services.FlowService;
@@ -106,9 +108,8 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     @Schema(
         title = "The branch from which flows will be synced to Kestra."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String branch = "main";
+    private Property<String> branch = Property.of("main");
 
     @Schema(
         title = "The target namespace to which flows from the `gitDirectory` should be synced.",
@@ -131,9 +132,8 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             | namespace: dev.marketing.crm      | _flows/marketing/crm/flow6.yml | namespace: prod.marketing.crm |
             """
     )
-    @PluginProperty(dynamic = true)
     @NotNull
-    private String targetNamespace;
+    private Property<String> targetNamespace;
 
     @Schema(
         title = "Directory from which flows should be synced.",
@@ -146,25 +146,22 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             - flows from the `_flows/marketing` subdirectory in Git will be synced to the `prod.marketing` namespace,
             - flows from the `_flows/marketing/crm` subdirectory will be synced to the `prod.marketing.crm` namespace."""
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String gitDirectory = "_flows";
+    private Property<String> gitDirectory = Property.of("_flows");
 
     @Schema(
         title = "Whether you want to sync flows from child namespaces as well.",
         description = "It’s `false` by default so that we sync only flows from the explicitly declared `gitDirectory` without traversing child directories. If set to `true`, flows from subdirectories in Git will be synced to child namespace in Kestra using the dot notation `.` for each subdirectory in the folder structure."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private boolean includeChildNamespaces = false;
+    private Property<Boolean> includeChildNamespaces = Property.of(false);
 
     @Schema(
         title = "Whether you want to delete flows present in kestra but not present in Git.",
         description = "It’s `false` by default to avoid destructive behavior. Use this property with caution because when set to `true` and `includeChildNamespaces` is also set to `true`, this task will delete all flows from the `targetNamespace` and all its child namespaces that are not present in Git rather than only overwriting the changes."
     )
-    @PluginProperty
     @Builder.Default
-    private boolean delete = false;
+    private Property<Boolean> delete = Property.of(false);
 
     @Getter(AccessLevel.NONE)
     private FlowService flowService;
@@ -179,7 +176,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
 
     @Override
-    public String fetchedNamespace() {
+    public Property<String> fetchedNamespace() {
         return this.targetNamespace;
     }
 
@@ -206,7 +203,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     }
 
     @Override
-    protected boolean traverseDirectories() {
+    protected Property<Boolean> traverseDirectories() {
         return this.includeChildNamespaces;
     }
 
@@ -262,8 +259,8 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     }
 
     @Override
-    protected List<Flow> fetchResources(RunContext runContext, String renderedNamespace) {
-        if (this.includeChildNamespaces) {
+    protected List<Flow> fetchResources(RunContext runContext, String renderedNamespace) throws IllegalVariableEvaluationException {
+        if (runContext.render(this.includeChildNamespaces).as(Boolean.class).orElseThrow()) {
             return flowService(runContext).findByNamespacePrefix(runContext.flowInfo().tenantId(), renderedNamespace);
         }
 

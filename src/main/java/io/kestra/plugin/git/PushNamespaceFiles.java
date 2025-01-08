@@ -3,6 +3,7 @@ package io.kestra.plugin.git;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.storages.Namespace;
 import io.kestra.core.utils.PathMatcherPredicate;
@@ -51,7 +52,7 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
                         type: io.kestra.plugin.git.PushFlows
                         sourceNamespace: "{{ taskrun.value }}"
                         gitDirectory: "{{'flows/' ~ taskrun.value}}"
-                        includeChildNamespaces: false      
+                        includeChildNamespaces: false
 
                       - id: scripts
                         type: io.kestra.plugin.git.PushNamespaceFiles
@@ -66,20 +67,20 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
                       password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
                       branch: main
                       dryRun: false
-                
+
                 triggers:
                   - id: schedule_push_to_git
                     type: io.kestra.plugin.core.trigger.Schedule
                     cron: "0 11 * * 4"
                 """
-        ),        
+        ),
         @Example(
             title = "Push all saved Namespace Files from the dev namespace to a Git repository every 15 minutes.",
             full = true,
             code = """
                 id: push_to_git
                 namespace: system
-                
+
                 tasks:
                   - id: commit_and_push
                     type: io.kestra.plugin.git.PushNamespaceFiles
@@ -92,7 +93,7 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
                     branch: dev # optional, uses "kestra" by default
                     commitMessage: "add namespace files" # optional string
                     dryRun: true  # if true, you'll see what files will be added, modified or deleted based on the state in Git without overwriting the files yet
-                
+
                 triggers:
                   - id: schedule_push_to_git
                     type: io.kestra.plugin.core.trigger.Schedule
@@ -108,20 +109,19 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     )
     @PluginProperty(dynamic = true)
     @Builder.Default
-    private String branch = "main";
+    private Property<String> branch = Property.of("main");
 
     @Schema(
         title = "The namespace from which files should be pushed to the `gitDirectory`."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String namespace = "{{ flow.namespace }}";
+    private Property<String> namespace = new Property<>("{{ flow.namespace }}");
 
     @Schema(
         title = "Directory to which Namespace Files should be pushed.",
         description = """
             If not set, files will be pushed to a Git directory named _files. See the table below for an example mapping of Namespace Files to Git paths:
-            
+
             |  Namespace File Path  |      Git directory path      |
             | --------------------- | ---------------------------- |
             | scripts/app.py        | _files/scripts/app.py        |
@@ -130,9 +130,8 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
             | queries/customers.sql | _files/queries/customers.sql |
             | requirements.txt      | _files/requirements.txt      |"""
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String gitDirectory = "_files";
+    private Property<String> gitDirectory = Property.of("_files");
 
     @Schema(
         title = "Which Namespace Files should be included in the commit.",
@@ -152,8 +151,8 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         defaultValue = "Add files from `namespace` namespace"
     )
     @Override
-    public String getCommitMessage() {
-        return Optional.ofNullable(this.commitMessage).orElse("Add files from " + this.namespace + " namespace");
+    public Property<String> getCommitMessage() {
+        return Optional.ofNullable(this.commitMessage).orElse(new Property<>("Add files from " + this.namespace.toString() + " namespace"));
     }
 
     @Override
@@ -162,14 +161,14 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     }
 
     @Override
-    public String fetchedNamespace() {
+    public Property<String> fetchedNamespace() {
         return this.namespace;
     }
 
     @Override
     protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path baseDirectory, List<String> globs) throws Exception {
 
-        Namespace storage = runContext.storage().namespace(runContext.render(this.namespace));
+        Namespace storage = runContext.storage().namespace(runContext.render(this.namespace).as(String.class).orElse(null));
         Predicate<Path> matcher = (globs != null) ? PathMatcherPredicate.matches(globs) : (path -> true);
 
         return storage
