@@ -32,7 +32,7 @@ import java.util.regex.Pattern;
 @Schema(
     title = "Sync flows from Git to Kestra.",
     description = """
-        This task syncs flows from a given Git branch to a Kestra `namespace`. If the `delete` property is set to true, any flow available in kestra but not present in the `gitDirectory` will be deleted, considering Git as a single source of truth for your flows. Check the [Version Control with Git](https://kestra.io/docs/developer-guide/git) documentation for more details."""
+        This task syncs flows from a given Git branch to a Kestra `namespace`. If the `delete` property is set to true, any flow available in kestra but not present in the `gitDirectory` will be deleted, considering Git as a single source of truth for your flows. Check the [Version Control with Git](https://kestra.io/docs/version-control-cicd/git) documentation for more details."""
 )
 @Plugin(
     examples = {
@@ -75,7 +75,7 @@ import java.util.regex.Pattern;
                 """
         ),
         @Example(
-            title = "Sync flows from a Git repository. This flow can run either on a schedule (using the [Schedule](https://kestra.io/docs/workflow-components/triggers#schedule-trigger) trigger) or anytime you push a change to a given Git branch (using the [Webhook](https://kestra.io/docs/workflow-components/triggers#webhook-trigger) trigger).",
+            title = "Sync flows from a Git repository. This flow can run either on a schedule (using the [Schedule](https://kestra.io/docs/workflow-components/triggers/schedule-trigger) trigger) or anytime you push a change to a given Git branch (using the [Webhook](https://kestra.io/docs/workflow-components/triggers/webhook-trigger) trigger).",
             full = true,
             code = """
                 id: sync_flows_from_git
