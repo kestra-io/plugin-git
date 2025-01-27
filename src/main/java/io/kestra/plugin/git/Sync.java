@@ -88,22 +88,19 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
     @Schema(
         title = "Git directory to sync code from. If not specified, all files from a Git repository will be synchronized."
     )
-    @PluginProperty(dynamic = true)
-    private String gitDirectory;
+    private Property<String> gitDirectory;
 
     @Schema(
         title = "Namespace files directory to which files from Git should be synced. It defaults to the root directory of the namespace."
     )
-    @PluginProperty(dynamic = true)
-    private String namespaceFilesDirectory;
+    private Property<String> namespaceFilesDirectory;
 
     private Property<String> branch;
 
     @Schema(
         title = "If true, the task will only display modifications without syncing any files yet. If false (default), all namespace files and flows will be overwritten based on the state in Git."
     )
-    @PluginProperty
-    private Boolean dryRun;
+    private Property<Boolean> dryRun;
 
     @Override
     public VoidOutput run(RunContext runContext) throws Exception {
@@ -111,7 +108,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
         Map<String, String> flowProps = (Map<String, String>) runContext.getVariables().get("flow");
         String namespace = flowProps.get("namespace");
         String tenantId = flowProps.get("tenantId");
-        boolean dryRun = this.dryRun != null && this.dryRun;
+        boolean dryRun = this.dryRun != null && runContext.render(this.dryRun).as(Boolean.class).orElse(false);
 
         Clone clone = Clone.builder()
             .depth(1)
@@ -127,7 +124,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
         clone.run(runContext);
 
         // we should synchronize git flows with current namespace flows
-        Path absoluteGitDirPath = runContext.workingDir().resolve(Optional.ofNullable(runContext.render(this.gitDirectory)).map(Path::of).orElse(null));
+        Path absoluteGitDirPath = runContext.workingDir().resolve(runContext.render(this.gitDirectory).as(String.class).map(Path::of).orElse(null));
         Path flowsDirectoryBasePath = absoluteGitDirPath.resolve(FLOWS_DIRECTORY);
         KestraIgnore kestraIgnore = new KestraIgnore(absoluteGitDirPath);
 
@@ -216,7 +213,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
         StorageInterface storage = ((DefaultRunContext)runContext).getApplicationContext().getBean(StorageInterface.class);
         URI namespaceFilePrefix = URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/");
         if (this.namespaceFilesDirectory != null) {
-            String renderedNamespaceFilesDirectory = runContext.render(this.namespaceFilesDirectory);
+            String renderedNamespaceFilesDirectory = runContext.render(this.namespaceFilesDirectory).as(String.class).orElseThrow();
             renderedNamespaceFilesDirectory = renderedNamespaceFilesDirectory.startsWith("/") ? renderedNamespaceFilesDirectory.substring(1) : renderedNamespaceFilesDirectory;
             renderedNamespaceFilesDirectory = renderedNamespaceFilesDirectory.endsWith("/") ? renderedNamespaceFilesDirectory : renderedNamespaceFilesDirectory + "/";
             namespaceFilePrefix = namespaceFilePrefix.resolve(renderedNamespaceFilesDirectory);
