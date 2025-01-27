@@ -107,7 +107,6 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         title = "The branch to which Namespace Files should be committed and pushed.",
         description = "If the branch doesn’t exist yet, it will be created. If not set, the task will push the files to the `kestra` branch."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
     private Property<String> branch = Property.of("main");
 

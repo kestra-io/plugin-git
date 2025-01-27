@@ -143,7 +143,6 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         title = "The branch to which files should be committed and pushed.",
         description = "If the branch doesn't exist yet, it will be created."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
     private Property<String> branch = Property.of("main");
 
