@@ -1,6 +1,7 @@
 package io.kestra.plugin.git;
 
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
@@ -26,6 +27,8 @@ import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.transport.PushResult;
+import org.eclipse.jgit.transport.RemoteRefUpdate;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.slf4j.Logger;
 
@@ -41,11 +44,19 @@ import java.util.stream.Stream;
 
 import static io.kestra.core.utils.Rethrow.*;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
+import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
 
 @SuperBuilder(toBuilder = true)
 @NoArgsConstructor
 @Getter
 public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extends AbstractCloningTask implements RunnableTask<O> {
+    private static List<RemoteRefUpdate.Status> REJECTION_STATUS = Arrays.asList(
+        REJECTED_NONFASTFORWARD,
+        REJECTED_NODELETE,
+        REJECTED_REMOTE_CHANGED,
+        REJECTED_OTHER_REASON
+    );
+
     protected Property<String> commitMessage;
 
     @Schema(
@@ -227,7 +238,18 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
                 if (head == null) {
                     git.branchRename().setNewName(renderedBranch).call();
                 }
-                authentified(git.push(), runContext).call();
+                Iterable<PushResult> pushResults = authentified(git.push(), runContext).call();
+
+                for (PushResult pushResult : pushResults) {
+                    Optional<RemoteRefUpdate.Status> pushStatus = pushResult.getRemoteUpdates().stream()
+                        .map(RemoteRefUpdate::getStatus)
+                        .filter(status -> REJECTION_STATUS.contains(status))
+                        .findFirst();
+
+                    if (pushStatus.isPresent()) {
+                        throw new KestraRuntimeException(pushResult.getMessages());
+                    }
+                }
 
                 commitId = commit.getName();
                 commitURL = buildCommitUrl(httpUrl, renderedBranch, commitId);
