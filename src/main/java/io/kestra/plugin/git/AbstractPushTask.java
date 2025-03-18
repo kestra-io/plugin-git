@@ -1,8 +1,12 @@
 package io.kestra.plugin.git;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.property.Property;
+import io.kestra.core.models.tasks.Output;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
@@ -50,12 +54,15 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
 @NoArgsConstructor
 @Getter
 public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extends AbstractCloningTask implements RunnableTask<O> {
-    private static List<RemoteRefUpdate.Status> REJECTION_STATUS = Arrays.asList(
+    private static final List<RemoteRefUpdate.Status> REJECTION_STATUS = Arrays.asList(
         REJECTED_NONFASTFORWARD,
         REJECTED_NODELETE,
         REJECTED_REMOTE_CHANGED,
         REJECTED_OTHER_REASON
     );
+
+    private static final TypeReference<List<String>> TYPE_REFERENCE = new TypeReference<>() {};
+    public static final ObjectMapper MAPPER = JacksonMapper.ofJson();
 
     protected Property<String> commitMessage;
 
@@ -193,13 +200,14 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
     }
 
     private static CanonicalTreeParser treeIterator(Git git, String ref) throws IOException {
-        ObjectReader reader = git.getRepository().newObjectReader();
-        CanonicalTreeParser treeIter = new CanonicalTreeParser();
-        ObjectId oldTree = git.getRepository().resolve(ref + "^{tree}");
-        if (oldTree != null) {
-            treeIter.reset(reader, oldTree);
+        try (ObjectReader reader = git.getRepository().newObjectReader()) {
+            CanonicalTreeParser treeIter = new CanonicalTreeParser();
+            ObjectId oldTree = git.getRepository().resolve(ref + "^{tree}");
+            if (oldTree != null) {
+                treeIter.reset(reader, oldTree);
+            }
+            return treeIter;
         }
-        return treeIter;
     }
 
     private static String getPath(DiffEntry diffEntry) {
@@ -268,12 +276,12 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
 
     private PersonIdent author(RunContext runContext) throws IllegalVariableEvaluationException {
         String name = runContext.render(this.authorName).as(String.class).orElse(runContext.render(this.username).as(String.class).orElse(null));
-        String authorEmail = runContext.render(this.authorEmail).as(String.class).orElse(null);
-        if (authorEmail == null || name == null) {
+        String email = runContext.render(this.authorEmail).as(String.class).orElse(null);
+        if (email == null || name == null) {
             return null;
         }
 
-        return new PersonIdent(name, authorEmail);
+        return new PersonIdent(name, email);
     }
 
     private String buildCommitUrl(String httpUrl, String branch, String commitId) {
@@ -299,10 +307,19 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
 
         Path localGitDirectory = this.createGitDirectory(runContext);
 
-        List<String> globs = Optional.ofNullable(this.globs())
-            .map(globObject -> globObject instanceof List<?> ? (List<String>) globObject : Collections.singletonList((String) globObject))
-            .map(throwFunction(runContext::render))
-            .orElse(null);
+        List<String> globs = switch (this.globs()) {
+            case List<?> globList -> ((List<String>) globList).stream().map(throwFunction(runContext::render)).toList();
+            case String globString -> {
+                String renderedValue =  runContext.render(globString);
+                try {
+                    yield MAPPER.readValue(renderedValue, TYPE_REFERENCE);
+                } catch (JsonProcessingException e) {
+                    yield  Collections.singletonList(renderedValue);
+                }
+            }
+            default -> null;
+        };
+
         Map<Path, Supplier<InputStream>> contentByPath = this.instanceResourcesContentByPath(runContext, localGitDirectory, globs);
 
         this.deleteOutdatedResources(git, localGitDirectory, contentByPath, globs);
