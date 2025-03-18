@@ -317,7 +317,7 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
                     yield  Collections.singletonList(renderedValue);
                 }
             }
-            default -> null;
+            case null, default -> null;
         };
 
         Map<Path, Supplier<InputStream>> contentByPath = this.instanceResourcesContentByPath(runContext, localGitDirectory, globs);
