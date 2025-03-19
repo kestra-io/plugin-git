@@ -60,7 +60,7 @@ public class PushFlowsTest extends AbstractGitTest {
         String branch = IdUtils.create();
         String gitDirectory = "my-flows";
 
-        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, "", "", gitDirectory);
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
 
         FlowWithSource createdFlow = this.createFlow(tenantId, "first-flow", sourceNamespace);
         String subNamespace = "sub-namespace";
