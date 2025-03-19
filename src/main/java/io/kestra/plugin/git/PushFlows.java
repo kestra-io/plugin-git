@@ -248,9 +248,11 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
 
             return path.resolve(flowWithSource.getId() + ".yml");
         }, throwFunction(flowWithSource -> (throwSupplier(() -> {
-            String modifiedSource = flowWithSource.getSource().replaceAll(
-                "(?m)^(\\s*namespace:\\s*)" + runContext.render(sourceNamespace).as(String.class).orElse(null),
-                "$1" + runContext.render(targetNamespace).as(String.class).orElse(null));
+            String renderedTargetNamespace = runContext.render(targetNamespace).as(String.class).orElse(renderedSourceNamespace);
+            String modifiedSource = flowWithSource.getSource()
+                .replaceAll(
+                "(?m)^(\\s*namespace:\\s*)" + renderedSourceNamespace,
+                "$1" + renderedTargetNamespace);
             return new ByteArrayInputStream(modifiedSource.getBytes());
         })))));
     }
