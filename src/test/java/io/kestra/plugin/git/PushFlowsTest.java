@@ -127,6 +127,70 @@ public class PushFlowsTest extends AbstractGitTest {
     }
 
     @Test
+    void defaultCase_SingleRegex_noTargetNamespace_noSourceNamespace() throws Exception {
+        final String systemNamespace = "system";
+        final String subNamespace = "sub-namespace";
+        final String tenantId = "my-tenant";
+        final String branch = IdUtils.create();
+        final String gitDirectory = "my-flows";
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, "", "", gitDirectory);
+
+        //Create flows under the `system` namespace which is the default one for PushFlows when using unit tests
+        FlowWithSource createdFlow = this.createFlow(tenantId, "first-flow", systemNamespace);
+        FlowWithSource createdSubNsFlow = this.createFlow(tenantId, "second-flow", systemNamespace + "." + subNamespace);
+
+        //PushFlows for `system` namespace, don't specify target and source
+        PushFlows pushFlows = PushFlows.builder()
+            .id("pushFlows")
+            .type(PushFlows.class.getName())
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
+            .commitMessage(new Property<>("Push from CI - {{description}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .authorEmail(new Property<>("{{email}}"))
+            .authorName(new Property<>("{{name}}"))
+            .flows("second*")
+            .includeChildNamespaces(Property.of(true))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .build();
+
+        try {
+            PushFlows.Output pushOutput = pushFlows.run(runContext);
+            GitService gitService = new GitService(pushFlows);
+            assertThat(gitService.branchExists(runContext, branch), is(true));
+
+            Clone clone = Clone.builder()
+                .id("clone")
+                .type(Clone.class.getName())
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
+                .build();
+
+            RunContext cloneRunContext = runContextFactory.of();
+            Clone.Output cloneOutput = clone.run(cloneRunContext);
+
+            File flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), createdFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(false));
+
+            flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, subNamespace).toString(), createdSubNsFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(true));
+            String fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
+            assertThat(fileContent, is(createdSubNsFlow.getSource()));
+            assertThat(fileContent, containsString("namespace: " + systemNamespace + "." + subNamespace));
+
+            RevCommit revCommit = assertIsLastCommit(cloneRunContext, pushOutput);
+            assertThat(revCommit.getFullMessage(), is("Push from CI - " + DESCRIPTION));
+            assertAuthor(revCommit, gitUserEmail, gitUserName);
+        } finally {
+            this.deleteRemoteBranch(runContext.workingDir().path(), branch);
+        }
+    }
+
+    @Test
     void defaultCase_SingleRegexDryRun() throws Exception {
         String tenantId = "my-tenant";
         String sourceNamespace = IdUtils.create().toLowerCase();

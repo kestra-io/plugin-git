@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.property.Property;
-import io.kestra.core.models.tasks.Output;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
@@ -251,7 +250,7 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
                 for (PushResult pushResult : pushResults) {
                     Optional<RemoteRefUpdate.Status> pushStatus = pushResult.getRemoteUpdates().stream()
                         .map(RemoteRefUpdate::getStatus)
-                        .filter(status -> REJECTION_STATUS.contains(status))
+                        .filter(REJECTION_STATUS::contains)
                         .findFirst();
 
                     if (pushStatus.isPresent()) {
