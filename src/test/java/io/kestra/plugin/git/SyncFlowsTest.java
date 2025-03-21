@@ -1,11 +1,10 @@
 package io.kestra.plugin.git;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
-import io.kestra.core.queues.QueueInterface;
+import io.kestra.core.models.tasks.Task;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
@@ -31,7 +30,6 @@ import java.util.stream.Stream;
 import static io.kestra.core.utils.Rethrow.throwFunction;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @KestraTest
 public class SyncFlowsTest extends AbstractGitTest {
@@ -53,9 +51,6 @@ public class SyncFlowsTest extends AbstractGitTest {
     @Inject
     private FlowRepositoryInterface flowRepositoryInterface;
 
-    @Inject
-    private QueueInterface<LogEntry> logQueue;
-
     @BeforeEach
     void init() {
         flowRepositoryInterface.findAllForAllTenants().forEach(f -> {
@@ -67,6 +62,39 @@ public class SyncFlowsTest extends AbstractGitTest {
     @Test
     void defaultCase_WithDelete() throws Exception {
         RunContext runContext = runContext();
+
+        String invalidFlowSource = """
+            id: first-flow
+            namespace:\s""" + NAMESPACE + """
+
+            tasks:
+              - id: old-task
+                type: io.kestra.core.tasks.log.Log
+                toto: "unused"
+                message: Hello from old-task""";
+        Flow invalidFlow = Flow.builder()
+            .id("validation-failed-flow")
+            .namespace(NAMESPACE)
+            .tenantId(TENANT_ID)
+            .tasks(List.of(new Task() {
+                protected String id = "validation-failure";
+
+                protected String type = "unknown.type";
+
+                public String getId(){
+                    return this.id;
+                }
+
+                public String getType(){
+                    return this.type;
+                }
+            }))
+            .build();
+        flowRepositoryInterface.create(
+            invalidFlow,
+            invalidFlowSource,
+            invalidFlow
+        );
 
         String flowSource = """
             id: first-flow
@@ -124,7 +152,7 @@ public class SyncFlowsTest extends AbstractGitTest {
         );
 
         List<Flow> flows = flowRepositoryInterface.findAllForAllTenants();
-        assertThat(flows, hasSize(5));
+        assertThat(flows, hasSize(6));
         flows.forEach(f -> previousRevisionByUid.put(f.uidWithoutRevision(), f.getRevision()));
 
         SyncFlows task = SyncFlows.builder()
@@ -136,6 +164,7 @@ public class SyncFlowsTest extends AbstractGitTest {
             .targetNamespace(new Property<>("{{namespace}}"))
             .delete(Property.of(true))
             .includeChildNamespaces(Property.of(true))
+            .ignoreInvalidFlows(Property.of(true))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 

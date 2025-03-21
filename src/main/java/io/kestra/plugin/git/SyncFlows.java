@@ -5,6 +5,7 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.Flow;
+import io.kestra.core.models.flows.FlowWithException;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
@@ -163,6 +164,13 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     @Builder.Default
     private Property<Boolean> delete = Property.of(false);
 
+    @Schema(
+        title = "Ignore flows when they have validation failure",
+        description = "Due to breaking changes, some flows may not be valid anymore by the time of the synchronisation. To avoid synchronizing flows that are no longer valid, set this property to true."
+    )
+    @Builder.Default
+    private Property<Boolean> ignoreInvalidFlows = Property.of(false);
+
     @Getter(AccessLevel.NONE)
     private FlowService flowService;
 
@@ -260,11 +268,24 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
     @Override
     protected List<Flow> fetchResources(RunContext runContext, String renderedNamespace) throws IllegalVariableEvaluationException {
+        List<Flow> flows;
         if (runContext.render(this.includeChildNamespaces).as(Boolean.class).orElseThrow()) {
-            return flowService(runContext).findByNamespacePrefix(runContext.flowInfo().tenantId(), renderedNamespace);
+            flows=  flowService(runContext).findByNamespacePrefix(runContext.flowInfo().tenantId(), renderedNamespace);
+        } else {
+            flows = flowService(runContext).findByNamespace(runContext.flowInfo().tenantId(), renderedNamespace);
         }
-
-        return flowService(runContext).findByNamespace(runContext.flowInfo().tenantId(), renderedNamespace);
+        if (runContext.render(this.ignoreInvalidFlows).as(Boolean.class).orElse(false)) {
+            flows= flows.stream()
+                .filter(flow -> {
+                    if (flow instanceof FlowWithException flowWithException) {
+                        runContext.logger().warn("Flow {} is not valid: {}", flowWithException.getId(), flowWithException.getException());
+                        return false;
+                    }
+                    return true;
+                })
+                .toList();
+        }
+        return flows;
     }
 
     @Override
