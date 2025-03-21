@@ -61,41 +61,6 @@ public class SyncFlowsTest extends AbstractGitTest {
 
     @Test
     void defaultCase_WithDelete() throws Exception {
-        RunContext runContext = runContext();
-
-        String invalidFlowSource = """
-            id: first-flow
-            namespace:\s""" + NAMESPACE + """
-
-            tasks:
-              - id: old-task
-                type: io.kestra.core.tasks.log.Log
-                toto: "unused"
-                message: Hello from old-task""";
-        Flow invalidFlow = Flow.builder()
-            .id("validation-failed-flow")
-            .namespace(NAMESPACE)
-            .tenantId(TENANT_ID)
-            .tasks(List.of(new Task() {
-                protected String id = "validation-failure";
-
-                protected String type = "unknown.type";
-
-                public String getId(){
-                    return this.id;
-                }
-
-                public String getType(){
-                    return this.type;
-                }
-            }))
-            .build();
-        flowRepositoryInterface.create(
-            invalidFlow,
-            invalidFlowSource,
-            invalidFlow
-        );
-
         String flowSource = """
             id: first-flow
             namespace:\s""" + NAMESPACE + """
@@ -151,6 +116,41 @@ public class SyncFlowsTest extends AbstractGitTest {
             flow
         );
 
+        RunContext runContext = runContext();
+
+        String invalidFlowSource = """
+            id: first-flow
+            namespace:\s""" + NAMESPACE + """
+
+            tasks:
+              - id: old-task
+                type: io.kestra.core.tasks.log.Log
+                message: Hello from old-task""";
+        Flow invalidFlow = Flow.builder()
+            .id("validation-failed-flow")
+            .namespace(NAMESPACE)
+            .tenantId(TENANT_ID)
+            .revision(1)
+            .tasks(List.of(new Task() {
+                protected String id = "validation-failure";
+
+                protected String type = "unknown.type";
+
+                public String getId(){
+                    return this.id;
+                }
+
+                public String getType(){
+                    return this.type;
+                }
+            }))
+            .build();
+        flowRepositoryInterface.create(
+            invalidFlow,
+            invalidFlowSource,
+            invalidFlow
+        );
+
         List<Flow> flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(6));
         flows.forEach(f -> previousRevisionByUid.put(f.uidWithoutRevision(), f.getRevision()));
@@ -167,6 +167,8 @@ public class SyncFlowsTest extends AbstractGitTest {
             .ignoreInvalidFlows(Property.of(true))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
+
+        flowRepositoryInterface.delete(invalidFlow.withSource(""));
 
         flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(6));
