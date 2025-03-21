@@ -169,7 +169,7 @@ public class SyncFlowsTest extends AbstractGitTest {
         SyncFlows.Output syncOutput = task.run(runContext);
 
         flows = flowRepositoryInterface.findAllForAllTenants();
-        assertThat(flows, hasSize(6));
+        assertThat(flows, hasSize(7));
 
         RunContext cloneRunContext = runContextFactory.of();
         Clone.builder()
