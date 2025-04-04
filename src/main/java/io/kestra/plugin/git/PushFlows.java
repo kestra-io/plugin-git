@@ -120,20 +120,17 @@ import static io.kestra.core.utils.Rethrow.*;
                     defaults: false
 
                 tasks:
-                  - id: if
-                    type: io.kestra.plugin.core.flow.If
-                    condition: "{{ inputs.push == true}}"
-                    then:
-                      - id: commit_and_push
-                        type: io.kestra.plugin.git.PushFlows
-                        sourceNamespace: prod # optional; if you prefer templating, you can use "{{ flow.namespace }}"
-                        targetNamespace: prod # optional; by default, set to the same namespace as defined in sourceNamespace
-                        flows: myflow # if you prefer templating, you can use "{{ flow.id }}"
-                        url: https://github.com/kestra-io/scripts
-                        username: git_username
-                        password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
-                        branch: main
-                        commitMessage: "add flow {{ flow.namespace ~ '.' ~ flow.id }}"
+                  - id: commit_and_push
+                    type: io.kestra.plugin.git.PushFlows
+                    runIf: "{{ inputs.push == true }}"
+                    sourceNamespace: prod # optional; if you prefer templating, you can use "{{ flow.namespace }}"
+                    targetNamespace: prod # optional; by default, set to the same namespace as defined in sourceNamespace
+                    flows: myflow # if you prefer templating, you can use "{{ flow.id }}"
+                    url: https://github.com/kestra-io/scripts
+                    username: git_username
+                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                    branch: main
+                    commitMessage: "add flow {{ flow.namespace ~ '.' ~ flow.id }}"
                 """
         )
     }
