@@ -56,8 +56,8 @@ public class PushDahboardsTest extends AbstractGitTest {
 
         RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, gitDirectory);
 
-        Dashboard createdDashboard1 = this.createDashboard(tenantId, title1, dashboardId1);
-        Dashboard createdDashboard2 = this.createDashboard(tenantId, title2, dashboardId2);
+        Dashboard createdDashboard1 = DashboardUtils.createDashboard(dashboardRepositoryInterface, yamlFlowParser, tenantId, title1, dashboardId1);
+        Dashboard createdDashboard2 = DashboardUtils.createDashboard(dashboardRepositoryInterface, yamlFlowParser, tenantId, title2, dashboardId2);
 
         try {
             PushDashboards pushDashboards = PushDashboards.builder()
@@ -128,8 +128,8 @@ public class PushDahboardsTest extends AbstractGitTest {
 
         RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, gitDirectory);
 
-        Dashboard createdDashboard1 = this.createDashboard(tenantId, title1, dashboardId1);
-        Dashboard createdDashboard2 = this.createDashboard(tenantId, title2, dashboardId2);
+        Dashboard createdDashboard1 = DashboardUtils.createDashboard(dashboardRepositoryInterface, yamlFlowParser, tenantId, title1, dashboardId1);
+        Dashboard createdDashboard2 = DashboardUtils.createDashboard(dashboardRepositoryInterface, yamlFlowParser, tenantId, title2, dashboardId2);
 
         try {
             PushDashboards pushDashboards = PushDashboards.builder()
@@ -146,7 +146,7 @@ public class PushDahboardsTest extends AbstractGitTest {
                 .authorName(new Property<>("{{name}}"))
                 .build();
 
-            PushDashboards.Output pushDashboardsOutput = pushDashboards.run(runContext);
+            pushDashboards.run(runContext);
             GitService gitService = new GitService(pushDashboards);
             assertThat(gitService.branchExists(runContext, branch), is(true));
 
@@ -229,51 +229,5 @@ public class PushDahboardsTest extends AbstractGitTest {
                 .setDestination(R_HEADS + branchName);
             git.push().setCredentialsProvider(new UsernamePasswordCredentialsProvider(pat, pat)).setRefSpecs(refSpec).setRemote("origin").call();
         }
-    }
-
-    private Dashboard createDashboard(String tenantId, String title, String id) {
-        String dashboardSource = """
-            id:\s""" + id + """
-
-            title:\s""" + title + """
-
-            description: TEST DASHBOARD
-            timeWindow:
-              default: P30D # P30DT30H
-              max: P365D
-
-            charts:
-              - id: executions_timeseries
-                type: io.kestra.plugin.core.dashboard.chart.TimeSeries
-                chartOptions:
-                  displayName: Executions
-                  description: Executions duration and count per date
-                  legend:
-                    enabled: true
-                  column: date
-                  colorByColumn: state
-                data:
-                  type: io.kestra.plugin.core.dashboard.data.Executions
-                  columns:
-                    date:
-                      field: START_DATE
-                      displayName: Date
-                    state:
-                      field: STATE
-                    total:
-                      displayName: Executions
-                      agg: COUNT
-                      graphStyle: BARS
-                    duration:
-                      displayName: Duration
-                      field: DURATION
-                      agg: SUM
-                      graphStyle: LINES
-            """;
-        Dashboard dashboard = yamlFlowParser.parse(dashboardSource, Dashboard.class).toBuilder()
-            .tenantId(tenantId)
-            .build();
-
-        return dashboardRepositoryInterface.save(dashboard, dashboardSource);
     }
 }
