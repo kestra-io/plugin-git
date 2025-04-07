@@ -30,15 +30,43 @@ import java.util.regex.Pattern;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Sync dashboards from Git to Kestra."
+    title = "Sync dashboards from Git to Kestra.",
+    description = """
+        This task syncs dashboards from a given Git branch to Kestra.
+        If the `delete` property is set to true, any dashboard available in kestra but not present in the `gitDirectory` will be deleted, considering Git as a single source of truth for your dashboards.
+        Check the [Version Control with Git](https://kestra.io/docs/version-control-cicd/git) documentation for more details.
+        """
 )
 @Plugin(
     examples = {
         @Example(
-            title = "",
+            title = "Sync all dashboards from Git to Kestra every full hour.",
             full = true,
-            code = ""
-        )
+            code = """
+                id: git_sync
+                namespace: company
+
+                tasks:
+                  - id: sync_dashboards
+                    type: io.kestra.plugin.git.SyncDashboards
+                    gitDirectory: _dashboards
+                    branch: dashboards
+
+                pluginDefaults:
+                  - type: io.kestra.plugin.git
+                    values:
+                      username: kestra-git-user
+                      url: https://github.com/my-company/my-repo
+                      password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                      branch: main
+                      dryRun: false
+
+                triggers:
+                  - id: every_full_hour
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "0 * * * *"
+                """
+        ),
     }
 )
 public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.Output> {
@@ -83,32 +111,18 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
 
     @Override
     protected Dashboard simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
-        if (inputStream == null) {
-            return null;
-        }
-
-        String dashboardSource = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
-        Dashboard dashboardWithTenant = yamlFlowParser(runContext).parse(dashboardSource, Dashboard.class).toBuilder()
-            .tenantId(runContext.flowInfo().tenantId())
-            .sourceCode(dashboardSource)
-            .build();
-        DashboardRepositoryInterface dashboardRepositoryInterface = repository(runContext);
-
-        Optional<Dashboard> prevDashboard = dashboardRepositoryInterface.get(dashboardWithTenant.getTenantId(), dashboardWithTenant.getId());
-        return prevDashboard.map(previous -> {
-            if (previous.equals(dashboardWithTenant) && !previous.isDeleted()) {
-                return previous;
-            }
-            return dashboardWithTenant.toBuilder().id(previous.getId()).created(previous.getCreated()).updated(Instant.now()).build();
-        }).orElseGet(() -> dashboardWithTenant.toBuilder().created(Instant.now()).updated(Instant.now()).build());
+        return fetchDashboard(runContext, inputStream, true);
     }
 
     @Override
     protected Dashboard writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+        return fetchDashboard(runContext, inputStream, false);
+    }
+
+    protected Dashboard fetchDashboard(RunContext runContext, InputStream inputStream, boolean dryRun) throws IOException {
         if (inputStream == null) {
             return null;
         }
-
         String dashboardSource = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
         Dashboard dashboardWithTenant = yamlFlowParser(runContext).parse(dashboardSource, Dashboard.class).toBuilder()
             .tenantId(runContext.flowInfo().tenantId())
@@ -117,7 +131,16 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
         DashboardRepositoryInterface dashboardRepositoryInterface = repository(runContext);
 
         Optional<Dashboard> prevDashboard = dashboardRepositoryInterface.get(dashboardWithTenant.getTenantId(), dashboardWithTenant.getId());
-        return dashboardRepositoryInterface.save(prevDashboard.orElse(null), dashboardWithTenant, dashboardSource);
+        if (dryRun) {
+            return prevDashboard.map(previous -> {
+                if (previous.equals(dashboardWithTenant) && !previous.isDeleted()) {
+                    return previous;
+                }
+                return dashboardWithTenant.toBuilder().id(previous.getId()).created(previous.getCreated()).updated(Instant.now()).build();
+            }).orElseGet(() -> dashboardWithTenant.toBuilder().created(Instant.now()).updated(Instant.now()).build());
+        } else {
+            return dashboardRepositoryInterface.save(prevDashboard.orElse(null), dashboardWithTenant, dashboardSource);
+        }
     }
 
     @Override
