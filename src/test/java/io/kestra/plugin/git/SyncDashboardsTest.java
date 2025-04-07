@@ -29,7 +29,7 @@ import static org.hamcrest.Matchers.*;
 
 @KestraTest
 public class SyncDashboardsTest extends AbstractGitTest {
-    public static final String BRANCH = "sync";
+    public static final String BRANCH = "sync-dashboards";
     public static final String GIT_DIRECTORY = "to_clone/_dashboards";
     public static final String TENANT_ID = "my-tenant";
     public static final String FLOW_ID = "self_flow";
