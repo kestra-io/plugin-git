@@ -56,7 +56,7 @@ public class SyncDashboardsTest extends AbstractGitTest {
 
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
-    void syncDashboards(boolean delete) throws Exception {
+    void syncDashboards_noDryRun(boolean delete) throws Exception {
 
         /*
             1. First dashboard - exists locally and on the Git server, title should be updated
@@ -95,6 +95,63 @@ public class SyncDashboardsTest extends AbstractGitTest {
             assertThat(dashboards, hasSize(4));
             assertThat(dashboards.stream().map(Dashboard::getId).toList(), containsInAnyOrder("first-dashboard", "same-dashboard", "new-dashboard", "local-dashboard"));
         }
+
+
+        List<DashboardDiffOutput> expectedDiffs = new ArrayList<>(
+            List.of(
+                DashboardDiffOutput.builder().gitPath("to_clone/_dashboards/first-dashboard.yml").syncState("UPDATED").dashboardId("first-dashboard").build(),
+                DashboardDiffOutput.builder().gitPath("to_clone/_dashboards/new-dashboard.yml").syncState("ADDED").dashboardId("new-dashboard").build(),
+                DashboardDiffOutput.builder().gitPath("to_clone/_dashboards/same-dashboard.yml").syncState("UNCHANGED").dashboardId("same-dashboard").build()
+            )
+        );
+
+        if (delete) {
+            //If delete is true `local-dashboard` should be deleted
+            expectedDiffs.add(DashboardDiffOutput.builder().gitPath(null).syncState("DELETED").dashboardId("local-dashboard").build());
+        }
+
+        assertDiffs(runContext, syncOutput.diffFileUri(), expectedDiffs);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    void syncDashboards_dryRunSetToTrue(boolean delete) throws Exception {
+
+        /*
+        Dry run is set to true
+            1. First dashboard - exists locally and on the Git server, title should be updated
+            2. Second dashboard - local dashboard only, should be deleted if `delete` property is set to true
+            3. Third dashboard - exists only on the Git server, should be added
+            4. Fourth dashboard - same on local and sever, should be unchanged
+        */
+        DashboardUtils.createDashboard(dashboardRepositoryInterface, yamlFlowParser, TENANT_ID, "First Dashboard - local ", "first-dashboard"); //1
+        DashboardUtils.createDashboard(dashboardRepositoryInterface, yamlFlowParser, TENANT_ID, "Local Dashboard - local", "local-dashboard"); //2
+        DashboardUtils.createDashboard(dashboardRepositoryInterface, yamlFlowParser, TENANT_ID, "Same Dashboard - local and server", "same-dashboard"); //4
+
+        RunContext runContext = runContext();
+
+        List<Dashboard> dashboards = dashboardRepositoryInterface.findAll(TENANT_ID);
+
+        assertThat(dashboards, hasSize(3));
+        dashboards.forEach(d -> previousRevisionByUid.put(d.uid(), d.getUpdated()));
+
+        SyncDashboards task = SyncDashboards.builder()
+            .url(new Property<>("{{url}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .branch(new Property<>("{{branch}}"))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .delete(Property.of(delete))
+            .dryRun(Property.of(true))
+            .build();
+
+        SyncDashboards.Output syncOutput = task.run(runContext);
+
+        dashboards = dashboardRepositoryInterface.findAll(TENANT_ID);
+
+        //No changes to local files
+        assertThat(dashboards, hasSize(3));
+        assertThat(dashboards.stream().map(Dashboard::getId).toList(), containsInAnyOrder("first-dashboard", "local-dashboard", "same-dashboard"));
 
 
         List<DashboardDiffOutput> expectedDiffs = new ArrayList<>(
