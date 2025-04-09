@@ -6,6 +6,7 @@ import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.FlowWithException;
+import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
@@ -190,7 +191,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
     @Override
     protected void deleteResource(RunContext runContext, String renderedNamespace, Flow flow) {
-        flowService(runContext).delete(flow.withSource(""));
+        flowService(runContext).delete(FlowWithSource.of(flow, ""));
     }
 
     @Override

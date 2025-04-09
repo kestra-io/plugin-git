@@ -94,11 +94,6 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
         return ((DefaultRunContext) runContext).getApplicationContext().getBean(DashboardRepositoryInterface.class);
     }
 
-    private YamlParser yamlFlowParser(RunContext runContext) {
-        return ((DefaultRunContext) runContext).getApplicationContext().getBean(YamlParser.class);
-    }
-
-
     @Override
     public Property<String> fetchedNamespace() {
         return null;
@@ -124,7 +119,7 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
             return null;
         }
         String dashboardSource = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
-        Dashboard dashboardWithTenant = yamlFlowParser(runContext).parse(dashboardSource, Dashboard.class).toBuilder()
+        Dashboard dashboardWithTenant = YamlParser.parse(dashboardSource, Dashboard.class).toBuilder()
             .tenantId(runContext.flowInfo().tenantId())
             .sourceCode(dashboardSource)
             .build();

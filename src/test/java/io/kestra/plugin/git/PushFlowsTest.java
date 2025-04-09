@@ -3,12 +3,12 @@ package io.kestra.plugin.git;
 import com.fasterxml.jackson.core.type.TypeReference;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.flows.GenericFlow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
-import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.Rethrow;
 import io.kestra.plugin.git.services.GitService;
@@ -45,9 +45,6 @@ public class PushFlowsTest extends AbstractGitTest {
 
     @Inject
     private RunContextFactory runContextFactory;
-
-    @Inject
-    private YamlParser yamlFlowParser;
 
     @Inject
     private FlowRepositoryInterface flowRepositoryInterface;
@@ -702,13 +699,7 @@ public class PushFlowsTest extends AbstractGitTest {
             .sub-namespace
                 flowId: another-flow
             """;
-        Flow flow = yamlFlowParser.parse(flowSource, Flow.class).toBuilder()
-            .tenantId(tenantId)
-            .build();
-        return flowRepositoryInterface.create(
-            flow,
-            flowSource,
-            flow
-        );
+
+        return flowRepositoryInterface.create(GenericFlow.fromYaml(tenantId, flowSource));
     }
 }

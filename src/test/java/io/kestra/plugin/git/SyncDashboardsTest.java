@@ -8,7 +8,6 @@ import io.kestra.core.repositories.DashboardRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
-import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.utils.Rethrow;
 import jakarta.inject.Inject;
 import lombok.Builder;
@@ -41,9 +40,6 @@ public class SyncDashboardsTest extends AbstractGitTest {
     private RunContextFactory runContextFactory;
 
     @Inject
-    private YamlParser yamlFlowParser;
-
-    @Inject
     private DashboardRepositoryInterface dashboardRepositoryInterface;
 
     @BeforeEach
@@ -64,9 +60,9 @@ public class SyncDashboardsTest extends AbstractGitTest {
             3. Third dashboard - exists only on the Git server, should be added
             4. Fourth dashboard - same on local and sever, should be unchanged
         */
-        DashboardUtils.createDashboard(dashboardRepositoryInterface, yamlFlowParser, TENANT_ID, "First Dashboard - local ", "first-dashboard"); //1
-        DashboardUtils.createDashboard(dashboardRepositoryInterface, yamlFlowParser, TENANT_ID, "Local Dashboard - local", "local-dashboard"); //2
-        DashboardUtils.createDashboard(dashboardRepositoryInterface, yamlFlowParser, TENANT_ID, "Same Dashboard - local and server", "same-dashboard"); //4
+        DashboardUtils.createDashboard(dashboardRepositoryInterface, TENANT_ID, "First Dashboard - local ", "first-dashboard"); //1
+        DashboardUtils.createDashboard(dashboardRepositoryInterface, TENANT_ID, "Local Dashboard - local", "local-dashboard"); //2
+        DashboardUtils.createDashboard(dashboardRepositoryInterface, TENANT_ID, "Same Dashboard - local and server", "same-dashboard"); //4
 
         RunContext runContext = runContext();
 
@@ -124,9 +120,9 @@ public class SyncDashboardsTest extends AbstractGitTest {
             3. Third dashboard - exists only on the Git server, should be added
             4. Fourth dashboard - same on local and sever, should be unchanged
         */
-        DashboardUtils.createDashboard(dashboardRepositoryInterface, yamlFlowParser, TENANT_ID, "First Dashboard - local ", "first-dashboard"); //1
-        DashboardUtils.createDashboard(dashboardRepositoryInterface, yamlFlowParser, TENANT_ID, "Local Dashboard - local", "local-dashboard"); //2
-        DashboardUtils.createDashboard(dashboardRepositoryInterface, yamlFlowParser, TENANT_ID, "Same Dashboard - local and server", "same-dashboard"); //4
+        DashboardUtils.createDashboard(dashboardRepositoryInterface, TENANT_ID, "First Dashboard - local ", "first-dashboard"); //1
+        DashboardUtils.createDashboard(dashboardRepositoryInterface, TENANT_ID, "Local Dashboard - local", "local-dashboard"); //2
+        DashboardUtils.createDashboard(dashboardRepositoryInterface, TENANT_ID, "Same Dashboard - local and server", "same-dashboard"); //4
 
         RunContext runContext = runContext();
 
