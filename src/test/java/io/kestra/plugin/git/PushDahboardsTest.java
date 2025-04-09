@@ -6,7 +6,6 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.repositories.DashboardRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
-import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.plugin.git.services.GitService;
 import jakarta.inject.Inject;
@@ -38,9 +37,6 @@ public class PushDahboardsTest extends AbstractGitTest {
     private RunContextFactory runContextFactory;
 
     @Inject
-    private YamlParser yamlFlowParser;
-
-    @Inject
     private DashboardRepositoryInterface dashboardRepositoryInterface;
 
     @Test
@@ -56,8 +52,8 @@ public class PushDahboardsTest extends AbstractGitTest {
 
         RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, gitDirectory);
 
-        Dashboard createdDashboard1 = DashboardUtils.createDashboard(dashboardRepositoryInterface, yamlFlowParser, tenantId, title1, dashboardId1);
-        Dashboard createdDashboard2 = DashboardUtils.createDashboard(dashboardRepositoryInterface, yamlFlowParser, tenantId, title2, dashboardId2);
+        Dashboard createdDashboard1 = DashboardUtils.createDashboard(dashboardRepositoryInterface, tenantId, title1, dashboardId1);
+        Dashboard createdDashboard2 = DashboardUtils.createDashboard(dashboardRepositoryInterface, tenantId, title2, dashboardId2);
 
         try {
             PushDashboards pushDashboards = PushDashboards.builder()
@@ -128,8 +124,8 @@ public class PushDahboardsTest extends AbstractGitTest {
 
         RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, gitDirectory);
 
-        Dashboard createdDashboard1 = DashboardUtils.createDashboard(dashboardRepositoryInterface, yamlFlowParser, tenantId, title1, dashboardId1);
-        Dashboard createdDashboard2 = DashboardUtils.createDashboard(dashboardRepositoryInterface, yamlFlowParser, tenantId, title2, dashboardId2);
+        Dashboard createdDashboard1 = DashboardUtils.createDashboard(dashboardRepositoryInterface, tenantId, title1, dashboardId1);
+        Dashboard createdDashboard2 = DashboardUtils.createDashboard(dashboardRepositoryInterface, tenantId, title2, dashboardId2);
 
         try {
             PushDashboards pushDashboards = PushDashboards.builder()
