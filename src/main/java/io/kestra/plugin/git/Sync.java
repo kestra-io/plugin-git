@@ -149,7 +149,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
 
                     return Map.entry(namespace, matcher.replaceFirst("namespace: " + namespace));
                 })
-                .map(flowSourceByNamespace -> {
+                .map(throwFunction(flowSourceByNamespace -> {
                     boolean isAddition;
                     FlowWithSource flowWithSource;
                     String flowSource = flowSourceByNamespace.getValue();
@@ -171,7 +171,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
                     }
 
                     return flowWithSource;
-                })
+                }))
                 .map(FlowWithSource::getId)
                 .collect(Collectors.toSet());
 

@@ -2,6 +2,7 @@ package io.kestra.plugin.git;
 
 import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.models.flows.Flow;
+import io.kestra.core.models.flows.GenericFlow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.queues.QueueFactoryInterface;
 import io.kestra.core.queues.QueueInterface;
@@ -53,9 +54,6 @@ class SyncTest extends AbstractGitTest {
     private FlowRepositoryInterface flowRepositoryInterface;
 
     @Inject
-    private YamlParser yamlFlowParser;
-
-    @Inject
     private StorageInterface storageInterface;
 
     @Inject
@@ -64,7 +62,7 @@ class SyncTest extends AbstractGitTest {
 
     @BeforeEach
     void init() throws IOException {
-        flowRepositoryInterface.findAllForAllTenants().forEach(flow -> flowRepositoryInterface.delete(flow.withSource("")));
+        flowRepositoryInterface.findAllForAllTenants().forEach(flow -> flowRepositoryInterface.delete(flow));
         storageInterface.deleteByPrefix(null, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE)));
         storageInterface.deleteByPrefix(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE)));
     }
@@ -82,29 +80,19 @@ class SyncTest extends AbstractGitTest {
               - id: old-task
                 type: io.kestra.core.tasks.log.Log
                 message: Hello from old-task""";
-        Flow flow = yamlFlowParser.parse(flowSource, Flow.class).toBuilder().tenantId(TENANT_ID).build();
-        flowRepositoryInterface.create(
-            flow,
-            flowSource,
-            flow
-        );
+        GenericFlow genericFlow = GenericFlow.fromYaml(TENANT_ID, flowSource);
+        flowRepositoryInterface.create(genericFlow);
 
         // this flow is not on Git and should be deleted
-        Flow flowToDelete = flow.toBuilder().id("flow-to-delete").build();
-        flowRepositoryInterface.create(
-            flowToDelete,
-            flowSource.replace("first-flow", "flow-to-delete"),
-            flowToDelete
-        );
+        GenericFlow flowToDelete = genericFlow.toBuilder().id("flow-to-delete").build();
+        flowRepositoryInterface.create(flowToDelete.toBuilder().source(flowSource.replace("first-flow", "flow-to-delete")).build());
 
         // simulate self flow, should not be deleted as it's the flow id of the simulated execution (prevent self deletion)
         String selfFlowId = "self-flow";
-        Flow selfFlow = flow.toBuilder().id(selfFlowId).build();
+        GenericFlow selfFlow = genericFlow.toBuilder().id(selfFlowId).build();
         String selfFlowSource = flowSource.replace("first-flow", selfFlowId);
         flowRepositoryInterface.create(
-            selfFlow,
-            selfFlowSource,
-            selfFlow
+            selfFlow.toBuilder().source(selfFlowSource).build()
         );
 
         List<Flow> flows = flowRepositoryInterface.findAllForAllTenants();
@@ -238,22 +226,14 @@ class SyncTest extends AbstractGitTest {
               - id: old-task
                 type: io.kestra.core.tasks.log.Log
                 message: Hello from old-task""";
-        Flow flowToDelete = yamlFlowParser.parse(flowSource, Flow.class).toBuilder().tenantId(TENANT_ID).build();
-        flowRepositoryInterface.create(
-            flowToDelete,
-            flowSource,
-            flowToDelete
-        );
+        GenericFlow flowToDelete = GenericFlow.fromYaml(TENANT_ID, flowSource);
+        flowRepositoryInterface.create(flowToDelete);
 
         // simulate self flow, should not be deleted as it's the flow id of the simulated execution (prevent self deletion)
         String selfFlowId = "self-flow";
-        Flow selfFlow = flowToDelete.toBuilder().id(selfFlowId).build();
+        GenericFlow selfFlow = flowToDelete.toBuilder().id(selfFlowId).build();
         String selfFlowSource = flowSource.replace("flow-to-delete", selfFlowId);
-        flowRepositoryInterface.create(
-            selfFlow,
-            selfFlowSource,
-            selfFlow
-        );
+        flowRepositoryInterface.create(selfFlow.toBuilder().source(selfFlowSource).build());
 
         List<Flow> flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(2));
@@ -330,26 +310,15 @@ class SyncTest extends AbstractGitTest {
               - id: old-task
                 type: io.kestra.core.tasks.log.Log
                 message: Hello from old-task""";
-        Flow flow = yamlFlowParser.parse(flowSource, Flow.class);
-        flowRepositoryInterface.create(
-            flow,
-            flowSource,
-            flow
-        );
 
-        flow = flow.toBuilder().id("first-flow").build();
-        flowRepositoryInterface.create(
-            flow,
-            flowSource.replace("some-flow", "first-flow"),
-            flow
-        );
+        GenericFlow genericFlow = GenericFlow.of(YamlParser.parse(flowSource, Flow.class));
+        flowRepositoryInterface.create(genericFlow);
 
-        flow = flow.toBuilder().id("sub-namespace-flow").namespace(SyncTest.class.getName().toLowerCase() + ".sub").build();
-        flowRepositoryInterface.create(
-            flow,
-            flowSource.replace("some-flow", "sub-namespace-flow"),
-            flow
-        );
+        genericFlow = genericFlow.toBuilder().id("first-flow").build();
+        flowRepositoryInterface.create(genericFlow.toBuilder().source(flowSource.replace("some-flow", "first-flow")).build());
+
+        genericFlow = genericFlow.toBuilder().id("sub-namespace-flow").namespace(SyncTest.class.getName().toLowerCase() + ".sub").build();
+        flowRepositoryInterface.create(genericFlow.toBuilder().source(flowSource.replace("some-flow", "sub-namespace-flow")).build());
 
         List<Flow> flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(3));
