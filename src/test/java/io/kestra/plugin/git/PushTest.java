@@ -2,13 +2,13 @@ package io.kestra.plugin.git;
 
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.flows.GenericFlow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.NamespaceFiles;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.runners.RunContextInitializer;
-import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.IdUtils;
@@ -50,9 +50,6 @@ class PushTest extends AbstractGitTest {
 
     @Inject
     private StorageInterface storageInterface;
-
-    @Inject
-    private YamlParser yamlFlowParser;
 
     @Inject
     private FlowRepositoryInterface flowRepositoryInterface;
@@ -575,13 +572,8 @@ class PushTest extends AbstractGitTest {
               - id: my-task
                 type: io.kestra.core.tasks.log.Log
                 message: Hello from my-task""";
-        Flow flow = yamlFlowParser.parse(flowSource, Flow.class).toBuilder()
-            .tenantId(tenantId)
-            .build();
         return flowRepositoryInterface.create(
-            flow,
-            flowSource,
-            flow
+            GenericFlow.fromYaml(tenantId, flowSource)
         );
     }
 }

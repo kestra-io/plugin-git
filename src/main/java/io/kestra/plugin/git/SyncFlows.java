@@ -1,11 +1,13 @@
 package io.kestra.plugin.git;
 
+import io.kestra.core.exceptions.FlowProcessingException;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.FlowWithException;
+import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
@@ -190,11 +192,11 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
     @Override
     protected void deleteResource(RunContext runContext, String renderedNamespace, Flow flow) {
-        flowService(runContext).delete(flow.withSource(""));
+        flowService(runContext).delete(FlowWithSource.of(flow, ""));
     }
 
     @Override
-    protected Flow simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+    protected Flow simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, FlowProcessingException {
         if (inputStream == null) {
             return null;
         }
@@ -216,7 +218,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     }
 
     @Override
-    protected Flow writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+    protected Flow writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, FlowProcessingException {
         if (inputStream == null) {
             return null;
         }

@@ -6,7 +6,7 @@ import io.kestra.core.serializers.YamlParser;
 
 public class DashboardUtils {
     public static Dashboard createDashboard(DashboardRepositoryInterface dashboardRepositoryInterface ,
-        YamlParser yamlFlowParser, String tenantId, String title, String id) {
+                                            String tenantId, String title, String id) {
         String dashboardSource = """
             id:\s""" + id + """
 
@@ -45,7 +45,7 @@ public class DashboardUtils {
                       agg: SUM
                       graphStyle: LINES
             """;
-        Dashboard dashboard = yamlFlowParser.parse(dashboardSource, Dashboard.class).toBuilder()
+        Dashboard dashboard = YamlParser.parse(dashboardSource, Dashboard.class).toBuilder()
             .tenantId(tenantId)
             .build();
 
