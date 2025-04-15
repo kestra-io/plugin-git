@@ -30,7 +30,7 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Commit and push Namespace Files created from kestra UI to Git.",
+    title = "Commit and push Namespace Files created from Kestra’s UI to Git.",
     description = """
         Using this task, you can push one or more Namespace Files from a given kestra namespace to Git. Note that in contrast to `PushFlows`, this task requires pushing code for each namespace separately. You can use the `ForEach` task as shown below to loop over multiple namespaces. Check the [Version Control with Git](https://kestra.io/docs/developer-guide/git) guide for more examples.
         Git does not guarantee the order of push operations to a remote repository, which can lead to potential conflicts when multiple users or flows attempt to push changes simultaneously. 

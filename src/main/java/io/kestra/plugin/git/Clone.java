@@ -23,7 +23,7 @@ import java.nio.file.Path;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Clone a repository."
+    title = "Clone a Git repository."
 )
 @Plugin(
     examples = {
