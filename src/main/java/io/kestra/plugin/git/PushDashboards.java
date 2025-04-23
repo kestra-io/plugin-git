@@ -80,7 +80,7 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
     private Property<String> gitDirectory = Property.of("_dashboards");
 
     @Schema(
-        title = "List of glob patterns or a single one that declare which dashboards should be included in the Git commit.",
+        title = "List of glob patterns or a single one that declares which dashboards should be included in the Git commit.",
         oneOf = {String.class, String[].class},
         defaultValue = "**"
     )
@@ -146,7 +146,7 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
         @Schema(
             title = "A file containing all changes pushed (or not in case of dry run) to Git.",
             description = """
-                The output format is a ION file with one row per files, each row containing the number of added, deleted and changed lines.
+                The output format is a ION file with one row per file, each row containing the number of added, deleted, and changed lines.
                 A row looks as follows: `{changes:"3",file:"_flows/first-flow.yml",deletions:"-5",additions:"+10"}`"""
         )
         private URI flows;
