@@ -3,6 +3,7 @@ package io.kestra.plugin.git;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.storages.Namespace;
 import io.kestra.core.utils.PathMatcherPredicate;
@@ -29,24 +30,64 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Commit and push Namespace Files created from kestra UI to Git.",
+    title = "Commit and push Namespace Files created from Kestra’s UI to Git.",
     description = """
-        Using this task, you can push one or more Namespace Files from a given kestra namespace to Git. Check the [Version Control with Git](https://kestra.io/docs/developer-guide/git) documentation for more details."""
+        Using this task, you can push one or more Namespace Files from a given kestra namespace to Git. Note that in contrast to `PushFlows`, this task requires pushing code for each namespace separately. You can use the `ForEach` task as shown below to loop over multiple namespaces. Check the [Version Control with Git](https://kestra.io/docs/developer-guide/git) guide for more examples.
+        Git does not guarantee the order of push operations to a remote repository, which can lead to potential conflicts when multiple users or flows attempt to push changes simultaneously. 
+        To minimize the risk of data loss and merge conflicts, it is strongly recommended to use sequential workflows or push changes to separate branches."""
 )
 @Plugin(
     examples = {
+        @Example(
+            title = "Release all flows and scripts from selected namespaces to a Git repository every Thursday at 11:00 AM. Adjust the `values` list to include the namespaces for which you want to push your code to Git. This [System Flow](https://kestra.io/docs/concepts/system-flows) will create two commits per namespace: one for the flows and one for the scripts.",
+            full = true,
+            code = """
+                id: git_push
+                namespace: system
+
+                tasks:
+                  - id: push
+                    type: io.kestra.plugin.core.flow.ForEach
+                    values: ["company", "company.team", "company.analytics"]
+                    tasks:
+                      - id: flows
+                        type: io.kestra.plugin.git.PushFlows
+                        sourceNamespace: "{{ taskrun.value }}"
+                        gitDirectory: "{{'flows/' ~ taskrun.value}}"
+                        includeChildNamespaces: false
+
+                      - id: scripts
+                        type: io.kestra.plugin.git.PushNamespaceFiles
+                        namespace: "{{ taskrun.value }}"
+                        gitDirectory: "{{'scripts/' ~ taskrun.value}}"
+
+                pluginDefaults:
+                  - type: io.kestra.plugin.git
+                    values:
+                      username: anna-geller
+                      url: https://github.com/anna-geller/product
+                      password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                      branch: main
+                      dryRun: false
+
+                triggers:
+                  - id: schedule_push_to_git
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "0 11 * * 4"
+                """
+        ),
         @Example(
             title = "Push all saved Namespace Files from the dev namespace to a Git repository every 15 minutes.",
             full = true,
             code = """
                 id: push_to_git
-                namespace: company.team
-                
+                namespace: system
+
                 tasks:
                   - id: commit_and_push
                     type: io.kestra.plugin.git.PushNamespaceFiles
                     namespace: dev
-                    files: "*"  # optional list of glob patterns; by default, all files are pushed
+                    files: "**"  # optional list of glob patterns; by default, all files are pushed
                     gitDirectory: _files # optional path in Git where Namespace Files should be pushed
                     url: https://github.com/kestra-io/scripts # required string
                     username: git_username # required string needed for Auth with Git
@@ -54,7 +95,7 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
                     branch: dev # optional, uses "kestra" by default
                     commitMessage: "add namespace files" # optional string
                     dryRun: true  # if true, you'll see what files will be added, modified or deleted based on the state in Git without overwriting the files yet
-                
+
                 triggers:
                   - id: schedule_push_to_git
                     type: io.kestra.plugin.core.trigger.Schedule
@@ -68,22 +109,20 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         title = "The branch to which Namespace Files should be committed and pushed.",
         description = "If the branch doesn’t exist yet, it will be created. If not set, the task will push the files to the `kestra` branch."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String branch = "kestra";
+    private Property<String> branch = Property.of("main");
 
     @Schema(
         title = "The namespace from which files should be pushed to the `gitDirectory`."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String namespace = "{{ flow.namespace }}";
+    private Property<String> namespace = new Property<>("{{ flow.namespace }}");
 
     @Schema(
         title = "Directory to which Namespace Files should be pushed.",
         description = """
             If not set, files will be pushed to a Git directory named _files. See the table below for an example mapping of Namespace Files to Git paths:
-            
+
             |  Namespace File Path  |      Git directory path      |
             | --------------------- | ---------------------------- |
             | scripts/app.py        | _files/scripts/app.py        |
@@ -92,9 +131,8 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
             | queries/customers.sql | _files/queries/customers.sql |
             | requirements.txt      | _files/requirements.txt      |"""
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String gitDirectory = "_files";
+    private Property<String> gitDirectory = Property.of("_files");
 
     @Schema(
         title = "Which Namespace Files should be included in the commit.",
@@ -114,8 +152,8 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         defaultValue = "Add files from `namespace` namespace"
     )
     @Override
-    public String getCommitMessage() {
-        return Optional.ofNullable(this.commitMessage).orElse("Add files from " + this.namespace + " namespace");
+    public Property<String> getCommitMessage() {
+        return Optional.ofNullable(this.commitMessage).orElse(new Property<>("Add files from " + this.namespace.toString() + " namespace"));
     }
 
     @Override
@@ -124,14 +162,14 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     }
 
     @Override
-    public String fetchedNamespace() {
+    public Property<String> fetchedNamespace() {
         return this.namespace;
     }
 
     @Override
     protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path baseDirectory, List<String> globs) throws Exception {
 
-        Namespace storage = runContext.storage().namespace(runContext.render(this.namespace));
+        Namespace storage = runContext.storage().namespace(runContext.render(this.namespace).as(String.class).orElse(null));
         Predicate<Path> matcher = (globs != null) ? PathMatcherPredicate.matches(globs) : (path -> true);
 
         return storage

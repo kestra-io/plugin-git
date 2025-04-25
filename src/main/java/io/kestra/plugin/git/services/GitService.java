@@ -1,6 +1,7 @@
 package io.kestra.plugin.git.services;
 
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.services.FlowService;
@@ -21,7 +22,7 @@ public class GitService {
 
     private AbstractGitTask gitTask;
 
-    public Git cloneBranch(RunContext runContext, String branch, Boolean withSubmodules) throws Exception {
+    public Git cloneBranch(RunContext runContext, String branch, Property<Boolean> withSubmodules) throws Exception {
         Clone cloneHead = Clone.builder()
             .url(gitTask.getUrl())
             .username(gitTask.getUsername())
@@ -34,7 +35,7 @@ public class GitService {
         boolean branchExists = this.branchExists(runContext, branch);
         if (branchExists) {
             cloneHead.toBuilder()
-                .branch(branch)
+                .branch(Property.of(branch))
                 .build()
                 .run(runContext);
         } else {
@@ -56,7 +57,7 @@ public class GitService {
     }
 
     public boolean branchExists(RunContext runContext, String branch) throws Exception {
-        return gitTask.authentified(Git.lsRemoteRepository().setRemote(runContext.render(gitTask.getUrl())), runContext)
+        return gitTask.authentified(Git.lsRemoteRepository().setRemote(runContext.render(gitTask.getUrl()).as(String.class).orElse(null)), runContext)
             .callAsMap()
             .containsKey(R_HEADS + branch);
     }
@@ -81,12 +82,12 @@ public class GitService {
         return httpUrl;
     }
 
-    public void namespaceAccessGuard(RunContext runContext, String namespaceToAccess) throws IllegalVariableEvaluationException {
+    public void namespaceAccessGuard(RunContext runContext, Property<String> namespaceToAccess) throws IllegalVariableEvaluationException {
         FlowService flowService = ((DefaultRunContext)runContext).getApplicationContext().getBean(FlowService.class);
         RunContext.FlowInfo flowInfo = runContext.flowInfo();
         flowService.checkAllowedNamespace(
-            runContext.tenantId(),
-            runContext.render(namespaceToAccess),
+            runContext.flowInfo().tenantId(),
+            runContext.render(namespaceToAccess).as(String.class).orElse(null),
             flowInfo.tenantId(),
             flowInfo.namespace()
         );

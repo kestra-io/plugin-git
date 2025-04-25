@@ -3,6 +3,7 @@ package io.kestra.plugin.git;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -22,7 +23,7 @@ import java.nio.file.Path;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Clone a repository."
+    title = "Clone a Git repository."
 )
 @Plugin(
     examples = {
@@ -78,7 +79,7 @@ import java.nio.file.Path;
             code = """
                 id: git_python
                 namespace: company.team
-                
+
                 tasks:
                   - id: file_system
                     type: io.kestra.plugin.core.flow.WorkingDirectory
@@ -102,10 +103,9 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         title = "The optional directory associated with the clone operation.",
         description = "If the directory isn't set, the current directory will be used."
     )
-    @PluginProperty(dynamic = true)
-    private String directory;
+    private Property<String> directory;
 
-    private String branch;
+    private Property<String> branch;
 
     @Schema(
         title = "Creates a shallow clone with a history truncated to the specified number of commits."
@@ -118,11 +118,11 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     @Override
     public Clone.Output run(RunContext runContext) throws Exception {
         Logger logger = runContext.logger();
-        String url = runContext.render(this.url);
+        String url = runContext.render(this.url).as(String.class).orElse(null);
 
         Path path = runContext.workingDir().path();
         if (this.directory != null) {
-            String directory = runContext.render(this.directory);
+            String directory = runContext.render(this.directory).as(String.class).orElseThrow();
             path = runContext.workingDir().resolve(Path.of(directory));
         }
 
@@ -131,7 +131,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
             .setDirectory(path.toFile());
 
         if (this.branch != null) {
-            cloneCommand.setBranch(runContext.render(this.branch));
+            cloneCommand.setBranch(runContext.render(this.branch).as(String.class).orElse(null));
         }
 
         if (this.depth != null) {
@@ -139,7 +139,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         }
 
         if (this.cloneSubmodules != null) {
-            cloneCommand.setCloneSubmodules(this.cloneSubmodules);
+            cloneCommand.setCloneSubmodules(runContext.render(this.cloneSubmodules).as(Boolean.class).orElseThrow());
         }
 
         cloneCommand = authentified(cloneCommand, runContext);
@@ -155,7 +155,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
     @Override
     @NotNull
-    public String getUrl() {
+    public Property<String> getUrl() {
         return super.getUrl();
     }
 

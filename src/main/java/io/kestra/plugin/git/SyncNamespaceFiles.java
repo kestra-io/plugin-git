@@ -3,9 +3,11 @@ package io.kestra.plugin.git;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.storages.Namespace;
 import io.kestra.core.storages.NamespaceFile;
+import io.kestra.core.utils.WindowsUtils;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -32,12 +34,50 @@ import java.util.Optional;
 @Plugin(
     examples = {
         @Example(
+            title = "Sync all flows and scripts for selected namespaces from Git to Kestra every full hour. Note that this is a [System Flow](https://kestra.io/docs/concepts/system-flows), so make sure to adjust the Scope to SYSTEM in the UI filter to see this flow or its executions.",
+            full = true,
+            code = """
+                id: git_sync
+                namespace: system
+
+                tasks:
+                  - id: sync
+                    type: io.kestra.plugin.core.flow.ForEach
+                    values: ["company", "company.team", "company.analytics"]
+                    tasks:
+                      - id: flows
+                        type: io.kestra.plugin.git.SyncFlows
+                        targetNamespace: "{{ taskrun.value }}"
+                        gitDirectory: "{{'flows/' ~ taskrun.value}}"
+                        includeChildNamespaces: false
+
+                      - id: scripts
+                        type: io.kestra.plugin.git.SyncNamespaceFiles
+                        namespace: "{{ taskrun.value }}"
+                        gitDirectory: "{{'scripts/' ~ taskrun.value}}"
+
+                pluginDefaults:
+                  - type: io.kestra.plugin.git
+                    values:
+                      username: anna-geller
+                      url: https://github.com/anna-geller/product
+                      password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                      branch: main
+                      dryRun: false
+
+                triggers:
+                  - id: every_full_hour
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "0 * * * *"
+                """
+        ),
+        @Example(
             title = "Sync Namespace Files from a Git repository. This flow can run either on a schedule (using the Schedule trigger) or anytime you push a change to a given Git branch (using the Webhook trigger).",
             full = true,
             code = """
                 id: sync_from_git
-                namespace: company.team
-                
+                namespace: system
+
                 tasks:
                   - id: git
                     type: io.kestra.plugin.git.SyncNamespaceFiles
@@ -49,7 +89,7 @@ import java.util.Optional;
                     username: git_username
                     password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
                     dryRun: true  # if true, the task will only log which flows from Git will be added/modified or deleted in kestra without making any changes in kestra backend yet
-                
+
                 triggers:
                   - id: every_minute
                     type: io.kestra.plugin.core.trigger.Schedule
@@ -62,41 +102,37 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     @Schema(
         title = "The branch from which Namespace Files will be synced to Kestra."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String branch = "kestra";
+    private Property<String> branch = Property.of("main");
 
     @Schema(
         title = "The namespace from which files should be synced from the `gitDirectory` to Kestra."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String namespace = "{{ flow.namespace }}";
+    private Property<String> namespace = new Property<>("{{ flow.namespace }}");
 
     @Schema(
         title = "Directory from which Namespace Files should be synced.",
         description = "If not set, this task assumes your branch includes a directory named `_files`"
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String gitDirectory = "_files";
+    private Property<String> gitDirectory = Property.of("_files");
 
     @Schema(
         title = "Whether you want to delete Namespace Files present in kestra but not present in Git.",
         description = "It’s `false` by default to avoid destructive behavior. Use with caution because when set to `true`, this task will delete all Namespace Files which are not present in Git."
     )
-    @PluginProperty
     @Builder.Default
-    private boolean delete = false;
+    private Property<Boolean> delete = Property.of(false);
 
     @Override
-    public String fetchedNamespace() {
+    public Property<String> fetchedNamespace() {
         return this.namespace;
     }
 
     @Override
     protected void deleteResource(RunContext runContext, String renderedNamespace, URI instanceUri) throws IOException {
-        runContext.storage().namespace(renderedNamespace).delete(Path.of(instanceUri.getPath()));
+        runContext.storage().namespace(renderedNamespace).delete(Path.of(instanceUri.getPath().replace("\\","/")));
     }
 
     @Override
@@ -105,7 +141,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     }
 
     @Override
-    protected URI writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+    protected URI writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, URISyntaxException {
         Namespace namespace = runContext.storage().namespace(renderedNamespace);
 
         try {
@@ -130,7 +166,6 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
         }
 
         String kestraPath = Optional.ofNullable(this.toUri(
-            runContext,
             renderedNamespace,
             resourceAfterUpdate == null ? resourceBeforeUpdate : resourceAfterUpdate
         )).map(URI::getPath).orElse(null);
@@ -149,18 +184,18 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     protected List<URI> fetchResources(RunContext runContext, String renderedNamespace) throws IOException {
         return runContext.storage().namespace(renderedNamespace).all(true)
             .stream()
-            .map(namespaceFile -> toUri(runContext, renderedNamespace, namespaceFile.uri()))
+            .map(namespaceFile -> namespaceFile.uri())
             .toList();
     }
 
     @Override
-    protected URI toUri(RunContext runContext, String renderedNamespace, URI resource) {
+    protected URI toUri(String renderedNamespace, URI resource) {
         if (resource == null) {
             return null;
         }
-        NamespaceFile namespaceFile = NamespaceFile.of(renderedNamespace, resource);
+        NamespaceFile namespaceFile = NamespaceFile.of(renderedNamespace, WindowsUtils.windowsToUnixURI(resource));
         String trailingSlash = namespaceFile.isDirectory() ? "/" : "";
-        return URI.create(namespaceFile.path(true).toString() + trailingSlash);
+        return URI.create(namespaceFile.path(true).toString().replace("\\", "/") + trailingSlash);
     }
 
     @Override

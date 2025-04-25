@@ -1,9 +1,14 @@
 package io.kestra.plugin.git;
 
+import io.kestra.core.exceptions.FlowProcessingException;
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.Flow;
+import io.kestra.core.models.flows.FlowWithException;
+import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.services.FlowService;
@@ -30,16 +35,54 @@ import java.util.regex.Pattern;
 @Schema(
     title = "Sync flows from Git to Kestra.",
     description = """
-        This task syncs flows from a given Git branch to a Kestra `namespace`. If the `delete` property is set to true, any flow available in kestra but not present in the `gitDirectory` will be deleted, considering Git as a single source of truth for your flows. Check the [Version Control with Git](https://kestra.io/docs/developer-guide/git) documentation for more details."""
+        This task syncs flows from a given Git branch to a Kestra `namespace`. If the `delete` property is set to true, any flow available in kestra but not present in the `gitDirectory` will be deleted, considering Git as a single source of truth for your flows. Check the [Version Control with Git](https://kestra.io/docs/version-control-cicd/git) documentation for more details."""
 )
 @Plugin(
     examples = {
         @Example(
-            title = "Sync flows from a Git repository. This flow can run either on a schedule (using the [Schedule](https://kestra.io/docs/workflow-components/triggers#schedule-trigger) trigger) or anytime you push a change to a given Git branch (using the [Webhook](https://kestra.io/docs/workflow-components/triggers#webhook-trigger) trigger).",
+            title = "Sync all flows and scripts for selected namespaces from Git to Kestra every full hour. Note that this is a [System Flow](https://kestra.io/docs/concepts/system-flows), so make sure to adjust the Scope to SYSTEM in the UI filter to see this flow or its executions.",
+            full = true,
+            code = """
+                id: git_sync
+                namespace: system
+
+                tasks:
+                  - id: sync
+                    type: io.kestra.plugin.core.flow.ForEach
+                    values: ["company", "company.team", "company.analytics"]
+                    tasks:
+                      - id: flows
+                        type: io.kestra.plugin.git.SyncFlows
+                        targetNamespace: "{{ taskrun.value }}"
+                        gitDirectory: "{{'flows/' ~ taskrun.value}}"
+                        includeChildNamespaces: false
+
+                      - id: scripts
+                        type: io.kestra.plugin.git.SyncNamespaceFiles
+                        namespace: "{{ taskrun.value }}"
+                        gitDirectory: "{{'scripts/' ~ taskrun.value}}"
+
+                pluginDefaults:
+                  - type: io.kestra.plugin.git
+                    values:
+                      username: anna-geller
+                      url: https://github.com/anna-geller/product
+                      password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                      branch: main
+                      dryRun: false
+
+                triggers:
+                  - id: every_full_hour
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "0 * * * *"
+                """
+        ),
+        @Example(
+            title = "Sync flows from a Git repository. This flow can run either on a schedule (using the [Schedule](https://kestra.io/docs/workflow-components/triggers/schedule-trigger) trigger) or anytime you push a change to a given Git branch (using the [Webhook](https://kestra.io/docs/workflow-components/triggers/webhook-trigger) trigger).",
             full = true,
             code = """
                 id: sync_flows_from_git
-                namespace: company.team
+                namespace: system
 
                 tasks:
                   - id: git
@@ -68,9 +111,8 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     @Schema(
         title = "The branch from which flows will be synced to Kestra."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String branch = "main";
+    private Property<String> branch = Property.of("main");
 
     @Schema(
         title = "The target namespace to which flows from the `gitDirectory` should be synced.",
@@ -78,11 +120,11 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             If the top-level namespace specified in the flow source code is different than the `targetNamespace`, it will be overwritten by this target namespace. This facilitates moving between environments and projects. If `includeChildNamespaces` property is set to true, the top-level namespace in the source code will also be overwritten by the `targetNamespace` in children namespaces.
 
             For example, if the `targetNamespace` is set to `prod` and `includeChildNamespaces` property is set to `true`, then:
-            - `namespace: dev` in flow source code will be overwritten by `namespace: prod`, 
+            - `namespace: dev` in flow source code will be overwritten by `namespace: prod`,
             - `namespace: dev.marketing.crm` will be overwritten by `namespace: prod.marketing.crm`.
 
             See the table below for a practical explanation:
-                
+
             | Source namespace in the flow code |       Git directory path       |  Synced to target namespace   |
             | --------------------------------- | ------------------------------ | ----------------------------- |
             | namespace: dev                    | _flows/flow1.yml               | namespace: prod               |
@@ -93,9 +135,8 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             | namespace: dev.marketing.crm      | _flows/marketing/crm/flow6.yml | namespace: prod.marketing.crm |
             """
     )
-    @PluginProperty(dynamic = true)
     @NotNull
-    private String targetNamespace;
+    private Property<String> targetNamespace;
 
     @Schema(
         title = "Directory from which flows should be synced.",
@@ -104,30 +145,35 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
             If `includeChildNamespaces` property is set to `true`, this task will push all flows from nested subdirectories into their corresponding child namespaces, e.g. if `targetNamespace` is set to `prod`, then:
 
-            - flows from the `_flows` directory will be synced to the `prod` namespace, 
-            - flows from the `_flows/marketing` subdirectory in Git will be synced to the `prod.marketing` namespace, 
+            - flows from the `_flows` directory will be synced to the `prod` namespace,
+            - flows from the `_flows/marketing` subdirectory in Git will be synced to the `prod.marketing` namespace,
             - flows from the `_flows/marketing/crm` subdirectory will be synced to the `prod.marketing.crm` namespace."""
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String gitDirectory = "_flows";
+    private Property<String> gitDirectory = Property.of("_flows");
 
     @Schema(
         title = "Whether you want to sync flows from child namespaces as well.",
         description = "It’s `false` by default so that we sync only flows from the explicitly declared `gitDirectory` without traversing child directories. If set to `true`, flows from subdirectories in Git will be synced to child namespace in Kestra using the dot notation `.` for each subdirectory in the folder structure."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private boolean includeChildNamespaces = false;
+    private Property<Boolean> includeChildNamespaces = Property.of(false);
 
     @Schema(
         title = "Whether you want to delete flows present in kestra but not present in Git.",
         description = "It’s `false` by default to avoid destructive behavior. Use this property with caution because when set to `true` and `includeChildNamespaces` is also set to `true`, this task will delete all flows from the `targetNamespace` and all its child namespaces that are not present in Git rather than only overwriting the changes."
     )
-    @PluginProperty
     @Builder.Default
-    private boolean delete = false;
+    private Property<Boolean> delete = Property.of(false);
 
+    @Schema(
+        title = "Ignore flows when they have validation failure",
+        description = "Due to breaking changes, some flows may not be valid anymore by the time of the synchronisation. To avoid synchronizing flows that are no longer valid, set this property to true."
+    )
+    @Builder.Default
+    private Property<Boolean> ignoreInvalidFlows = Property.of(false);
+
+    @Getter(AccessLevel.NONE)
     private FlowService flowService;
 
 
@@ -140,22 +186,22 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
 
     @Override
-    public String fetchedNamespace() {
+    public Property<String> fetchedNamespace() {
         return this.targetNamespace;
     }
 
     @Override
     protected void deleteResource(RunContext runContext, String renderedNamespace, Flow flow) {
-        flowService(runContext).delete(flow);
+        flowService(runContext).delete(FlowWithSource.of(flow, ""));
     }
 
     @Override
-    protected Flow simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+    protected Flow simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, FlowProcessingException {
         if (inputStream == null) {
             return null;
         }
 
-        return flowService(runContext).importFlow(runContext.tenantId(), SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream), true);
+        return flowService(runContext).importFlow(runContext.flowInfo().tenantId(), SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream), true);
     }
 
     @Override
@@ -167,19 +213,19 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     }
 
     @Override
-    protected boolean traverseDirectories() {
+    protected Property<Boolean> traverseDirectories() {
         return this.includeChildNamespaces;
     }
 
     @Override
-    protected Flow writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+    protected Flow writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, FlowProcessingException {
         if (inputStream == null) {
             return null;
         }
 
         String flowSource = SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream);
 
-        return flowService(runContext).importFlow(runContext.tenantId(), flowSource);
+        return flowService(runContext).importFlow(runContext.flowInfo().tenantId(), flowSource);
     }
 
     private static String replaceNamespace(String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
@@ -223,16 +269,29 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     }
 
     @Override
-    protected List<Flow> fetchResources(RunContext runContext, String renderedNamespace) {
-        if (this.includeChildNamespaces) {
-            return flowService(runContext).findByNamespacePrefix(runContext.tenantId(), renderedNamespace);
+    protected List<Flow> fetchResources(RunContext runContext, String renderedNamespace) throws IllegalVariableEvaluationException {
+        List<Flow> flows;
+        if (runContext.render(this.includeChildNamespaces).as(Boolean.class).orElseThrow()) {
+            flows=  flowService(runContext).findByNamespacePrefix(runContext.flowInfo().tenantId(), renderedNamespace);
+        } else {
+            flows = flowService(runContext).findByNamespace(runContext.flowInfo().tenantId(), renderedNamespace);
         }
-
-        return flowService(runContext).findByNamespace(runContext.tenantId(), renderedNamespace);
+        if (runContext.render(this.ignoreInvalidFlows).as(Boolean.class).orElse(false)) {
+            flows= flows.stream()
+                .filter(flow -> {
+                    if (flow instanceof FlowWithException flowWithException) {
+                        runContext.logger().warn("Flow {} is not valid: {}", flowWithException.getId(), flowWithException.getException());
+                        return false;
+                    }
+                    return true;
+                })
+                .toList();
+        }
+        return flows;
     }
 
     @Override
-    protected URI toUri(RunContext runContext, String renderedNamespace, Flow resource) {
+    protected URI toUri(String renderedNamespace, Flow resource) {
         if (resource == null) {
             return null;
         }

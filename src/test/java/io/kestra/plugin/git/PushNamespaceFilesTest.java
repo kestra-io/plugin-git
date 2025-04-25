@@ -1,6 +1,7 @@
 package io.kestra.plugin.git;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
@@ -9,7 +10,6 @@ import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.Rethrow;
 import io.kestra.plugin.git.services.GitService;
-import io.micronaut.context.annotation.Value;
 import io.kestra.core.junit.annotations.KestraTest;
 import jakarta.inject.Inject;
 import org.apache.commons.io.FileUtils;
@@ -47,24 +47,6 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
     private StorageInterface storage;
 
     @Test
-    void hardcodedPassword() {
-        PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
-            .id("pushNamespaceFiles")
-            .type(PushNamespaceFiles.class.getName())
-            .url(repositoryUrl)
-            .password("my-password")
-            .build();
-
-        IllegalArgumentException illegalArgumentException = assertThrows(IllegalArgumentException.class, () -> pushNamespaceFiles.run(runContextFactory.of(Map.of(
-            "flow", Map.of(
-                "tenantId", "tenantId",
-                "namespace", "system"
-            ))))
-        );
-        assertThat(illegalArgumentException.getMessage(), is("It looks like you have hard-coded Git credentials. Make sure to pass the credential securely using a Pebble expression (e.g. using secrets or environment variables)."));
-    }
-
-    @Test
     void defaultCase_SingleRegex() throws Exception {
         String tenantId = "my-tenant";
         String namespace = IdUtils.create().toLowerCase();
@@ -74,24 +56,24 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
         RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory);
 
         String firstFilePath = "first-file.txt";
-        storage.put(tenantId, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + firstFilePath), new ByteArrayInputStream("First file".getBytes()));
+        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + firstFilePath), new ByteArrayInputStream("First file".getBytes()));
         String secondFilePath = "nested/second-file.txt";
         String secondFileContent = "Second file";
-        storage.put(tenantId, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
+        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
             .type(PushNamespaceFiles.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
-            .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
-            .authorEmail("{{email}}")
-            .authorName("{{name}}")
-            .namespace("{{namespace}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
+            .commitMessage(new Property<>("Push from CI - {{description}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .authorEmail(new Property<>("{{email}}"))
+            .authorName(new Property<>("{{name}}"))
+            .namespace(new Property<>("{{namespace}}"))
             .files("nested/*")
-            .gitDirectory("{{gitDirectory}}")
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
         try {
@@ -102,10 +84,10 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(repositoryUrl)
-                .username(pat)
-                .password(pat)
-                .branch(branch)
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
                 .build();
 
             RunContext cloneRunContext = runContextFactory.of();
@@ -147,25 +129,25 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
         RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory);
 
         String firstFilePath = "first-file.txt";
-        storage.put(tenantId, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + firstFilePath), new ByteArrayInputStream("First file".getBytes()));
+        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + firstFilePath), new ByteArrayInputStream("First file".getBytes()));
         String secondFilePath = "nested/second-file.txt";
         String secondFileContent = "Second file";
-        storage.put(tenantId, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
+        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
             .type(PushNamespaceFiles.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
-            .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
-            .authorEmail("{{email}}")
-            .authorName("{{name}}")
-            .namespace("{{namespace}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
+            .commitMessage(new Property<>("Push from CI - {{description}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .authorEmail(new Property<>("{{email}}"))
+            .authorName(new Property<>("{{name}}"))
+            .namespace(new Property<>("{{namespace}}"))
             .files("second*")
-            .gitDirectory("{{gitDirectory}}")
-            .dryRun(true)
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .dryRun(Property.of(true))
             .build();
 
         PushNamespaceFiles.Output pushOutput = pushNamespaceFiles.run(runContext);
@@ -194,27 +176,27 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
 
         String nonMatchingFilePath = "first-file.txt";
         String nonMatchingFileContent = "First file";
-        storage.put(tenantId, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + nonMatchingFilePath), new ByteArrayInputStream(nonMatchingFileContent.getBytes()));
+        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + nonMatchingFilePath), new ByteArrayInputStream(nonMatchingFileContent.getBytes()));
         String matchingFilePath = "nested/second-file.txt";
         String matchingFileContent = "Second file";
-        storage.put(tenantId, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + matchingFilePath), new ByteArrayInputStream(matchingFileContent.getBytes()));
+        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + matchingFilePath), new ByteArrayInputStream(matchingFileContent.getBytes()));
         String fileDeletedAfterSecondPushPath = "second-deleted-after-second-push.txt";
         String fileDeletedAfterSecondPushContent = "File deleted after second push";
         URI toDeleteURI = URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + fileDeletedAfterSecondPushPath);
-        storage.put(tenantId, toDeleteURI, new ByteArrayInputStream(fileDeletedAfterSecondPushContent.getBytes()));
+        storage.put(tenantId, namespace, toDeleteURI, new ByteArrayInputStream(fileDeletedAfterSecondPushContent.getBytes()));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
             .type(PushFlows.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
-            .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
-            .authorEmail("{{email}}")
-            .authorName("{{name}}")
-            .namespace("{{namespace}}")
-            .gitDirectory("{{gitDirectory}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
+            .commitMessage(new Property<>("Push from CI - {{description}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .authorEmail(new Property<>("{{email}}"))
+            .authorName(new Property<>("{{name}}"))
+            .namespace(new Property<>("{{namespace}}"))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
         try {
@@ -223,10 +205,10 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(repositoryUrl)
-                .username(pat)
-                .password(pat)
-                .branch(branch)
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
                 .build();
 
             Clone.Output cloneOutput = clone.run(runContextFactory.of());
@@ -256,7 +238,7 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
                 )
             );
 
-            storage.delete(tenantId, toDeleteURI);
+            storage.delete(tenantId, namespace, toDeleteURI);
             pushOutput = pushNamespaceFiles.toBuilder()
                 .files("second*")
                 .build().run(runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory));
@@ -299,23 +281,23 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
 
         String firstFilePath = "first-file.txt";
         String firstFileContent = "First file";
-        storage.put(tenantId, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + firstFilePath), new ByteArrayInputStream(firstFileContent.getBytes()));
+        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + firstFilePath), new ByteArrayInputStream(firstFileContent.getBytes()));
         String secondFilePath = "nested/second-file.txt";
         String secondFileContent = "Second file";
-        storage.put(tenantId, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
+        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
             .type(PushNamespaceFiles.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
-            .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
-            .authorEmail("{{email}}")
-            .authorName("{{name}}")
-            .namespace("{{namespace}}")
-            .gitDirectory("{{gitDirectory}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
+            .commitMessage(new Property<>("Push from CI - {{description}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .authorEmail(new Property<>("{{email}}"))
+            .authorName(new Property<>("{{name}}"))
+            .namespace(new Property<>("{{namespace}}"))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
         try {
@@ -324,10 +306,10 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(repositoryUrl)
-                .username(pat)
-                .password(pat)
-                .branch(branch)
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
                 .build();
 
             RunContext cloneRunContext = runContextFactory.of();
@@ -376,26 +358,26 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
 
         String firstFilePath = "first-file.txt";
         String firstFileContent = "First file";
-        storage.put(tenantId, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + firstFilePath), new ByteArrayInputStream(firstFileContent.getBytes()));
+        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + firstFilePath), new ByteArrayInputStream(firstFileContent.getBytes()));
         String secondFilePath = "nested/second-file.txt";
         String secondFileContent = "Second file";
-        storage.put(tenantId, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
+        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
         String thirdFilePath = "third-file.txt";
-        storage.put(tenantId, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + thirdFilePath), new ByteArrayInputStream("Third file".getBytes()));
+        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + thirdFilePath), new ByteArrayInputStream("Third file".getBytes()));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
             .type(PushNamespaceFiles.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
-            .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
-            .authorEmail("{{email}}")
-            .authorName("{{name}}")
-            .namespace("{{namespace}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
+            .commitMessage(new Property<>("Push from CI - {{description}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .authorEmail(new Property<>("{{email}}"))
+            .authorName(new Property<>("{{name}}"))
+            .namespace(new Property<>("{{namespace}}"))
             .files(List.of("first*", "second*"))
-            .gitDirectory("{{gitDirectory}}")
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
         try {
@@ -404,10 +386,10 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(repositoryUrl)
-                .username(pat)
-                .password(pat)
-                .branch(branch)
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
                 .build();
 
             RunContext cloneRunContext = runContextFactory.of();
@@ -454,18 +436,18 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
 
         RunContext runContext = runContext(tenantId, repositoryUrl, "", "", branch, namespace, gitDirectory);
 
-        storage.put(tenantId, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/first-file.txt"), new ByteArrayInputStream("First file".getBytes()));
+        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/first-file.txt"), new ByteArrayInputStream("First file".getBytes()));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
             .type(PushNamespaceFiles.class.getName())
-            .branch("{{branch}}")
-            .url("{{url}}")
-            .commitMessage("Push from CI - {{description}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
-            .namespace("{{namespace}}")
-            .gitDirectory("{{gitDirectory}}")
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
+            .commitMessage(new Property<>("Push from CI - {{description}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .namespace(new Property<>("{{namespace}}"))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
         try {
@@ -474,10 +456,10 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(repositoryUrl)
-                .username(pat)
-                .password(pat)
-                .branch(branch)
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
                 .build();
 
             RunContext cloneRunContext = runContextFactory.of();

@@ -6,6 +6,7 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.InputFilesInterface;
 import io.kestra.core.models.tasks.NamespaceFiles;
 import io.kestra.core.models.tasks.NamespaceFilesInterface;
@@ -47,8 +48,10 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
 @NoArgsConstructor
 @Schema(
     title = "Commit and push files to a Git repository.",
-    description = "Replaced by [PushFlows](https://kestra.io/plugins/plugin-git/tasks/io.kestra.plugin.git.pushflows) and [PushNamespaceFiles](https://kestra.io/plugins/plugin-git/tasks/io.kestra.plugin.git.pushnamespacefiles) for flow and namespace files push scenario. You can add `inputFiles` to be committed and pushed. Furthermore, you can use this task in combination with the `Clone` task so that you can first clone the repository, then add or modify files and push to Git afterwards. " +
-        "Check the examples below as well as the [Version Control with Git](https://kestra.io/docs/developer-guide/git) documentation for more information."
+    description = """
+        Replaced by [PushFlows](https://kestra.io/plugins/plugin-git/tasks/io.kestra.plugin.git.pushflows) and [PushNamespaceFiles](https://kestra.io/plugins/plugin-git/tasks/io.kestra.plugin.git.pushnamespacefiles) for flow and namespace files push scenario. You can add `inputFiles` to be committed and pushed. Furthermore, you can use this task in combination with the `Clone` task so that you can first clone the repository, then add or modify files and push to Git afterwards. " +
+        "Check the examples below as well as the [Version Control with Git](https://kestra.io/docs/developer-guide/git) documentation for more information. Git does not guarantee the order of push operations to a remote repository, which can lead to potential conflicts when multiple users or flows attempt to push changes simultaneously. 
+        To minimize the risk of data loss and merge conflicts, it is strongly recommended to use sequential workflows or push changes to separate branches."""
 )
 @Plugin(
     examples = {
@@ -58,7 +61,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
             code = """
                 id: push_to_git
                 namespace: company.team
-                
+
                 tasks:
                   - id: commit_and_push
                     type: io.kestra.plugin.git.Push
@@ -71,7 +74,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
                     username: git_username
                     password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
                     commitMessage: "add flows and scripts {{ now() }}"
-                
+
                 triggers:
                   - id: schedule_push
                     type: io.kestra.plugin.core.trigger.Schedule
@@ -86,12 +89,12 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
             code = """
                 id: push_new_file_to_git
                 namespace: company.team
-                
+
                 inputs:
                   - id: commit_message
                     type: STRING
                     defaults: add a new file to Git
-                
+
                 tasks:
                   - id: wdir
                     type: io.kestra.plugin.core.flow.WorkingDirectory
@@ -125,22 +128,20 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         title = "The optional directory associated with the clone operation.",
         description = "If the directory isn't set, the current directory will be used."
     )
-    @PluginProperty(dynamic = true)
-    private String directory;
+    private Property<String> directory;
 
     @Schema(
         title = "The branch to which files should be committed and pushed.",
         description = "If the branch doesn't exist yet, it will be created."
     )
     @NotNull
-    private String branch;
+    private Property<String> branch;
 
     @Schema(
         title = "Commit message."
     )
-    @PluginProperty(dynamic = true)
     @NotNull
-    private String commitMessage;
+    private Property<String> commitMessage;
 
     private NamespaceFiles namespaceFiles;
 
@@ -157,9 +158,8 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         title = "Patterns of files to add to the commit. Default is `.` which means all files.",
         description = "A directory name (e.g. `dir` to add `dir/file1` and `dir/file2`) can also be given to add all files in the directory, recursively. File globs (e.g. `*.py`) are not yet supported."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private List<String> addFilesPattern = List.of(".");
+    private Property<List<String>> addFilesPattern = Property.of(List.of("."));
 
     @Schema(title = "Commit author.")
     @PluginProperty
@@ -167,13 +167,13 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
 
     private boolean branchExists(RunContext runContext, String branch) throws Exception {
         if (this.url == null) {
-            try (Git git = Git.open(runContext.workingDir().resolve(Path.of(runContext.render(this.directory))).toFile())) {
+            try (Git git = Git.open(runContext.workingDir().resolve(Path.of(runContext.render(this.directory).as(String.class).orElse(null))).toFile())) {
                 return git.branchList().setListMode(ListBranchCommand.ListMode.REMOTE).call().stream()
                     .anyMatch(ref -> ref.getName().equals(R_HEADS + branch));
             }
         }
 
-        return authentified(Git.lsRemoteRepository().setRemote(runContext.render(url)), runContext)
+        return authentified(Git.lsRemoteRepository().setRemote(runContext.render(url).as(String.class).orElse(null)), runContext)
             .callAsMap()
             .containsKey(R_HEADS + branch);
     }
@@ -184,10 +184,10 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
 
         Path basePath = runContext.workingDir().path();
         if (this.directory != null) {
-            basePath = runContext.workingDir().resolve(Path.of(runContext.render(this.directory)));
+            basePath = runContext.workingDir().resolve(Path.of(runContext.render(this.directory).as(String.class).orElseThrow()));
         }
 
-        String branch = runContext.render(this.branch);
+        String branch = runContext.render(this.branch).as(String.class).orElse(null);
         if (this.url != null) {
             boolean branchExists = branchExists(runContext, branch);
 
@@ -204,7 +204,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
 
             if (branchExists) {
                 cloneHead.toBuilder()
-                    .branch(branch)
+                    .branch(Property.of(branch))
                     .build()
                     .run(runContext);
             } else {
@@ -242,17 +242,20 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
             FilesService.inputFiles(runContext, this.inputFiles);
         }
 
-        if (this.namespaceFiles != null && Boolean.TRUE.equals(this.namespaceFiles.getEnabled())) {
+        if (this.namespaceFiles != null && Boolean.TRUE.equals(runContext.render(this.namespaceFiles.getEnabled()).as(Boolean.class).orElse(true))) {
             runContext.storage()
                 .namespace()
-                .findAllFilesMatching(this.namespaceFiles.getInclude(), this.namespaceFiles.getExclude())
+                .findAllFilesMatching(
+                    runContext.render(this.namespaceFiles.getInclude()).asList(String.class),
+                    runContext.render(this.namespaceFiles.getExclude()).asList(String.class)
+                )
                 .forEach(Rethrow.throwConsumer(namespaceFile -> {
                     InputStream content = runContext.storage().getFile(namespaceFile.uri());
                     runContext.workingDir().putFile(Path.of(namespaceFile.path()), content);
                 }));
         }
 
-        if (Boolean.TRUE.equals(this.flows.enabled)) {
+        if (Boolean.TRUE.equals(runContext.render(this.flows.enabled).as(Boolean.class).orElse(true))) {
 
             Map<String, String> flowProps = Optional.ofNullable((Map<String, String>) runContext.getVariables().get("flow")).orElse(Collections.emptyMap());
             String tenantId = flowProps.get("tenantId");
@@ -261,7 +264,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
             FlowRepositoryInterface flowRepository = ((DefaultRunContext)runContext).getApplicationContext().getBean(FlowRepositoryInterface.class);
 
             List<FlowWithSource> flows;
-            if (Boolean.TRUE.equals(this.flows.childNamespaces)) {
+            if (Boolean.TRUE.equals(runContext.render(this.flows.childNamespaces).as(Boolean.class).orElse(true))) {
                 flows = flowRepository.findWithSource(null, tenantId, null, namespace, null);
             } else {
                 flows = flowRepository.findByNamespaceWithSource(tenantId, namespace);
@@ -269,7 +272,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
 
             Path flowsDirectory = this.flows.gitDirectory == null
                 ? basePath
-                : basePath.resolve(runContext.render(this.flows.gitDirectory));
+                : basePath.resolve(runContext.render(this.flows.gitDirectory).as(String.class).orElse(null));
 
             // Create flow directory if it doesn't exist
             flowsDirectory.toFile().mkdirs();
@@ -288,14 +291,14 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         );
 
         AddCommand add = git.add();
-        runContext.render(this.addFilesPattern).forEach(add::addFilepattern);
+        runContext.render(this.addFilesPattern).asList(String.class).forEach(add::addFilepattern);
         add.call();
 
         ObjectId commitId = null;
         try {
             commitId = git.commit()
                 .setAllowEmpty(false)
-                .setMessage(runContext.render(this.commitMessage))
+                .setMessage(runContext.render(this.commitMessage).as(String.class).orElse(null))
                 .setAuthor(author(runContext))
                 .call()
                 .getId();
@@ -319,10 +322,16 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
             return null;
         }
         if (this.author.email != null && this.author.name != null) {
-            return new PersonIdent(runContext.render(this.author.name), runContext.render(this.author.email));
+            return new PersonIdent(
+                runContext.render(this.author.name).as(String.class).orElseThrow(),
+                runContext.render(this.author.email).as(String.class).orElseThrow()
+            );
         }
         if (this.author.email != null && this.username != null) {
-            return new PersonIdent(runContext.render(this.username), runContext.render(this.author.email));
+            return new PersonIdent(
+                runContext.render(this.username).as(String.class).orElseThrow(),
+                runContext.render(this.author.email).as(String.class).orElseThrow()
+            );
         }
 
         return null;
@@ -347,36 +356,31 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         @Schema(
             title = "Whether to push flows as YAML files to Git."
         )
-        @PluginProperty
         @Builder.Default
         @JsonInclude(JsonInclude.Include.NON_NULL)
-        private Boolean enabled = true;
+        private Property<Boolean> enabled = Property.of(true);
 
         @Schema(
             title = "Whether flows from child namespaces should be included."
         )
-        @PluginProperty
         @Builder.Default
         @JsonInclude(JsonInclude.Include.NON_NULL)
-        private Boolean childNamespaces = true;
+        private Property<Boolean> childNamespaces = Property.of(true);
 
         @Schema(
             title = "To which directory flows should be pushed (relative to `directory`)."
         )
-        @PluginProperty(dynamic = true)
         @Builder.Default
-        private String gitDirectory = "_flows";
+        private Property<String> gitDirectory = Property.of("_flows");
     }
 
     @Builder
     @Getter
     public static class Author {
         @Schema(title = "The commit author name, if null the username will be used instead")
-        @PluginProperty(dynamic = true)
-        private String name;
+        private Property<String> name;
 
         @Schema(title = "The commit author email, if null no author will be set on this commit")
-        @PluginProperty(dynamic = true)
-        private String email;
+        private Property<String> email;
     }
 }

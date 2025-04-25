@@ -1,0 +1,1 @@
+echo "kestra.git.pat: $GH_PERSONAL_TOKEN" > src/test/resources/application-test.yml

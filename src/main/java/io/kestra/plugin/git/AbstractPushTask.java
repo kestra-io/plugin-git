@@ -1,7 +1,11 @@
 package io.kestra.plugin.git;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
-import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.exceptions.KestraRuntimeException;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
@@ -26,6 +30,8 @@ import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectReader;
 import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.transport.PushResult;
+import org.eclipse.jgit.transport.RemoteRefUpdate;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.slf4j.Logger;
 
@@ -41,46 +47,53 @@ import java.util.stream.Stream;
 
 import static io.kestra.core.utils.Rethrow.*;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
+import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
 
 @SuperBuilder(toBuilder = true)
 @NoArgsConstructor
 @Getter
 public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extends AbstractCloningTask implements RunnableTask<O> {
-    @PluginProperty(dynamic = true)
-    protected String commitMessage;
+    private static final List<RemoteRefUpdate.Status> REJECTION_STATUS = Arrays.asList(
+        REJECTED_NONFASTFORWARD,
+        REJECTED_NODELETE,
+        REJECTED_REMOTE_CHANGED,
+        REJECTED_OTHER_REASON
+    );
+
+    private static final TypeReference<List<String>> TYPE_REFERENCE = new TypeReference<>() {};
+    public static final ObjectMapper MAPPER = JacksonMapper.ofJson();
+
+    protected Property<String> commitMessage;
 
     @Schema(
         title = "If `true`, the task will only output modifications without pushing any file to Git yet. If `false` (default), all listed files will be pushed to Git immediately."
     )
-    @PluginProperty
     @Builder.Default
-    private boolean dryRun = false;
+    private Property<Boolean> dryRun = Property.of(false);
 
     @Schema(
         title = "The commit author email.",
         description = "If null, no author will be set on this commit."
     )
-    @PluginProperty(dynamic = true)
-    private String authorEmail;
+    private Property<String> authorEmail;
 
     @Schema(
         title = "The commit author name.",
         description = "If null, the username will be used instead.",
         defaultValue = "`username`"
     )
-    @PluginProperty(dynamic = true)
-    private String authorName;
+    private Property<String> authorName;
 
-    public abstract String getCommitMessage();
+    public abstract Property<String> getCommitMessage();
 
-    public abstract String getGitDirectory();
+    public abstract Property<String> getGitDirectory();
 
     public abstract Object globs();
 
-    public abstract String fetchedNamespace();
+    public abstract Property<String> fetchedNamespace();
 
     private Path createGitDirectory(RunContext runContext) throws IllegalVariableEvaluationException {
-        Path flowDirectory = runContext.workingDir().resolve(Path.of(runContext.render(this.getGitDirectory())));
+        Path flowDirectory = runContext.workingDir().resolve(Path.of(runContext.render(this.getGitDirectory()).as(String.class).orElse(null)));
         flowDirectory.toFile().mkdirs();
         return flowDirectory;
     }
@@ -130,14 +143,16 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         Files.copy(inputStream, path, REPLACE_EXISTING);
     }
 
-    private URI createDiffFile(RunContext runContext, Git git) throws IOException, GitAPIException {
+    private URI createDiffFile(RunContext runContext, Git git) throws IOException, GitAPIException, IllegalVariableEvaluationException {
         File diffFile = runContext.workingDir().createTempFile(".ion").toFile();
+        boolean dryRunValue = runContext.render(this.dryRun).as(Boolean.class).orElseThrow();
+
         try (DiffFormatter diffFormatter = new DiffFormatter(null);
              BufferedWriter diffWriter = new BufferedWriter(new FileWriter(diffFile))) {
             diffFormatter.setRepository(git.getRepository());
 
             DiffCommand diff = git.diff();
-            if (this.dryRun) {
+            if (dryRunValue) {
                 diff = diff.setCached(true);
             } else {
                 diff = diff.setOldTree(treeIterator(git, "HEAD~1"))
@@ -184,13 +199,14 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
     }
 
     private static CanonicalTreeParser treeIterator(Git git, String ref) throws IOException {
-        ObjectReader reader = git.getRepository().newObjectReader();
-        CanonicalTreeParser treeIter = new CanonicalTreeParser();
-        ObjectId oldTree = git.getRepository().resolve(ref + "^{tree}");
-        if (oldTree != null) {
-            treeIter.reset(reader, oldTree);
+        try (ObjectReader reader = git.getRepository().newObjectReader()) {
+            CanonicalTreeParser treeIter = new CanonicalTreeParser();
+            ObjectId oldTree = git.getRepository().resolve(ref + "^{tree}");
+            if (oldTree != null) {
+                treeIter.reset(reader, oldTree);
+            }
+            return treeIter;
         }
-        return treeIter;
     }
 
     private static String getPath(DiffEntry diffEntry) {
@@ -204,21 +220,21 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         String commitId = null;
         ObjectId commit;
         try {
-            String httpUrl = gitService.getHttpUrl(runContext.render(this.url));
-            if (this.isDryRun()) {
+            String httpUrl = gitService.getHttpUrl(runContext.render(this.url).as(String.class).orElse(null));
+            if (runContext.render(this.getDryRun()).as(Boolean.class).orElseThrow()) {
                 logger.info(
                     "Dry run — no changes will be pushed to {} for now until you set the `dryRun` parameter to false",
                     httpUrl
                 );
             } else {
-                String renderedBranch = runContext.render(this.getBranch());
+                String renderedBranch = runContext.render(this.getBranch()).as(String.class).orElse(null);
                 logger.info(
                     "Pushing to {} on branch {}",
                     httpUrl,
                     renderedBranch
                 );
 
-                String message = runContext.render(this.getCommitMessage());
+                String message = runContext.render(this.getCommitMessage()).as(String.class).orElse(null);
                 ObjectId head = git.getRepository().resolve(Constants.HEAD);
                 commit = git.commit()
                     .setAllowEmpty(false)
@@ -229,7 +245,18 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
                 if (head == null) {
                     git.branchRename().setNewName(renderedBranch).call();
                 }
-                authentified(git.push(), runContext).call();
+                Iterable<PushResult> pushResults = authentified(git.push(), runContext).call();
+
+                for (PushResult pushResult : pushResults) {
+                    Optional<RemoteRefUpdate.Status> pushStatus = pushResult.getRemoteUpdates().stream()
+                        .map(RemoteRefUpdate::getStatus)
+                        .filter(REJECTION_STATUS::contains)
+                        .findFirst();
+
+                    if (pushStatus.isPresent()) {
+                        throw new KestraRuntimeException(pushResult.getMessages());
+                    }
+                }
 
                 commitId = commit.getName();
                 commitURL = buildCommitUrl(httpUrl, renderedBranch, commitId);
@@ -247,13 +274,13 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
     }
 
     private PersonIdent author(RunContext runContext) throws IllegalVariableEvaluationException {
-        String name = Optional.ofNullable(this.authorName).orElse(runContext.render(this.username));
-        String authorEmail = this.authorEmail;
-        if (authorEmail == null || name == null) {
+        String name = runContext.render(this.authorName).as(String.class).orElse(runContext.render(this.username).as(String.class).orElse(null));
+        String email = runContext.render(this.authorEmail).as(String.class).orElse(null);
+        if (email == null || name == null) {
             return null;
         }
 
-        return new PersonIdent(runContext.render(name), runContext.render(authorEmail));
+        return new PersonIdent(name, email);
     }
 
     private String buildCommitUrl(String httpUrl, String branch, String commitId) {
@@ -274,16 +301,24 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         GitService gitService = new GitService(this);
 
         gitService.namespaceAccessGuard(runContext, this.fetchedNamespace());
-        this.detectPasswordLeaks();
 
-        Git git = gitService.cloneBranch(runContext, runContext.render(this.getBranch()), this.cloneSubmodules);
+        Git git = gitService.cloneBranch(runContext, runContext.render(this.getBranch()).as(String.class).orElse(null), this.cloneSubmodules);
 
         Path localGitDirectory = this.createGitDirectory(runContext);
 
-        List<String> globs = Optional.ofNullable(this.globs())
-            .map(globObject -> globObject instanceof List<?> ? (List<String>) globObject : Collections.singletonList((String) globObject))
-            .map(throwFunction(runContext::render))
-            .orElse(null);
+        List<String> globs = switch (this.globs()) {
+            case List<?> globList -> ((List<String>) globList).stream().map(throwFunction(runContext::render)).toList();
+            case String globString -> {
+                String renderedValue =  runContext.render(globString);
+                try {
+                    yield MAPPER.readValue(renderedValue, TYPE_REFERENCE);
+                } catch (JsonProcessingException e) {
+                    yield  Collections.singletonList(renderedValue);
+                }
+            }
+            case null, default -> null;
+        };
+
         Map<Path, Supplier<InputStream>> contentByPath = this.instanceResourcesContentByPath(runContext, localGitDirectory, globs);
 
         this.deleteOutdatedResources(git, localGitDirectory, contentByPath, globs);
@@ -291,7 +326,7 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         this.writeResourceFiles(contentByPath);
 
         AddCommand add = git.add();
-        add.addFilepattern(runContext.render(this.getGitDirectory()));
+        add.addFilepattern(runContext.render(this.getGitDirectory()).as(String.class).orElse(null));
         add.call();
 
         Output pushOutput = this.push(git, runContext, gitService);

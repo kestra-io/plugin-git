@@ -6,6 +6,7 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
@@ -36,17 +37,55 @@ import static io.kestra.core.utils.Rethrow.*;
     description = """
         Using this task, you can push one or more flows from a given namespace (and optionally also child namespaces) to Git.
         Check the examples below to see how you can push all flows or only specific ones.
-        You can also learn about Git integration in the Version Control with [Git documentation](https://kestra.io/docs/developer-guide/git)."""
+        To learn more, check the [Version Control with Git](https://kestra.io/docs/developer-guide/git) guide."""
 )
 @Plugin(
     examples = {
         @Example(
-            title = "Automatically push all saved flows from the dev namespace and all child namespaces to a Git repository every day at 5 p.m. Before pushing to Git, the task will adjust the flow's source code to match the targetNamespace to prepare the Git branch for merging to the production namespace.",
+            title = "Release all flows and scripts from selected namespaces to a Git repository every Thursday at 11:00 AM. Adjust the `values` list to include the namespaces for which you want to push your code to Git. This [System Flow](https://kestra.io/docs/concepts/system-flows) will create two commits per namespace: one for the flows and one for the scripts.",
+            full = true,
+            code = """
+                id: git_push
+                namespace: system
+
+                tasks:
+                  - id: push
+                    type: io.kestra.plugin.core.flow.ForEach
+                    values: ["company", "company.team", "company.analytics"]
+                    tasks:
+                      - id: flows
+                        type: io.kestra.plugin.git.PushFlows
+                        sourceNamespace: "{{ taskrun.value }}"
+                        gitDirectory: "{{'flows/' ~ taskrun.value}}"
+                        includeChildNamespaces: false
+
+                      - id: scripts
+                        type: io.kestra.plugin.git.PushNamespaceFiles
+                        namespace: "{{ taskrun.value }}"
+                        gitDirectory: "{{'scripts/' ~ taskrun.value}}"
+
+                pluginDefaults:
+                  - type: io.kestra.plugin.git
+                    values:
+                      username: anna-geller
+                      url: https://github.com/anna-geller/product
+                      password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                      branch: main
+                      dryRun: false
+
+                triggers:
+                  - id: schedule_push_to_git
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "0 11 * * 4"
+                """
+        ),
+        @Example(
+            title = "Automatically push all saved flows from the dev namespace and all child namespaces to a Git repository every day at 5 p.m. Before pushing to Git, the task will adjust the flow's source code to match the targetNamespace to prepare the Git branch for merging to the production namespace. Note that the automatic conversion of `sourceNamespace` to `targetNamespace` is optional and should only be considered as a helper for facilitating the Git workflow for simple use cases — only the `namespace` property within the flow will be adjusted and if you specify namespace names within e.g. Flow triggers, those may need to be manually adjusted. **We recommend using separate Kestra instances for development and production with the same namespace names across instances.**",
             full = true,
             code = """
                 id: push_to_git
-                namespace: company.team
-                
+                namespace: system
+
                 tasks:
                   - id: commit_and_push
                     type: io.kestra.plugin.git.PushFlows
@@ -58,10 +97,10 @@ import static io.kestra.core.utils.Rethrow.*;
                     url: https://github.com/kestra-io/scripts # required string
                     username: git_username # required string needed for Auth with Git
                     password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
-                    branch: kestra # optional, uses "kestra" by default
+                    branch: main
                     commitMessage: "add flows {{ now() }}" # optional string
                     dryRun: true  # if true, you'll see what files will be added, modified or deleted based on the state in Git without overwriting the files yet
-                
+
                 triggers:
                   - id: schedule_push
                     type: io.kestra.plugin.core.trigger.Schedule
@@ -74,27 +113,24 @@ import static io.kestra.core.utils.Rethrow.*;
             code = """
                 id: myflow
                 namespace: prod
-                
+
                 inputs:
                   - id: push
                     type: BOOLEAN
                     defaults: false
-                
+
                 tasks:
-                  - id: if
-                    type: io.kestra.plugin.core.flow.If
-                    condition: "{{ inputs.push == true}}"
-                    then:
-                      - id: commit_and_push
-                        type: io.kestra.plugin.git.PushFlows
-                        sourceNamespace: prod # optional; if you prefer templating, you can use "{{ flow.namespace }}"
-                        targetNamespace: prod # optional; by default, set to the same namespace as defined in sourceNamespace
-                        flows: myflow # if you prefer templating, you can use "{{ flow.id }}"
-                        url: https://github.com/kestra-io/scripts
-                        username: git_username
-                        password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
-                        branch: kestra
-                        commitMessage: "add flow {{ flow.namespace ~ '.' ~ flow.id }}"
+                  - id: commit_and_push
+                    type: io.kestra.plugin.git.PushFlows
+                    runIf: "{{ inputs.push == true }}"
+                    sourceNamespace: prod # optional; if you prefer templating, you can use "{{ flow.namespace }}"
+                    targetNamespace: prod # optional; by default, set to the same namespace as defined in sourceNamespace
+                    flows: myflow # if you prefer templating, you can use "{{ flow.id }}"
+                    url: https://github.com/kestra-io/scripts
+                    username: git_username
+                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                    branch: main
+                    commitMessage: "add flow {{ flow.namespace ~ '.' ~ flow.id }}"
                 """
         )
     }
@@ -104,9 +140,8 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         title = "The branch to which files should be committed and pushed.",
         description = "If the branch doesn't exist yet, it will be created."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String branch = "kestra";
+    private Property<String> branch = Property.of("main");
 
     @Schema(
         title = "Directory to which flows should be pushed.",
@@ -116,23 +151,20 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
             If the `includeChildNamespaces` property is set to true, this task will also push all flows from child namespaces into their corresponding nested directories, e.g., flows from the child namespace called prod.marketing will be added to the marketing folder within the _flows folder.
             Note that the targetNamespace (here prod) is specified in the flow code; therefore, kestra will not create the prod directory within _flows. You can use the PushFlows task to push flows from the sourceNamespace, and use SyncFlows to then sync PR-approved flows to the targetNamespace, including all child namespaces."""
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String gitDirectory = "_flows";
+    private Property<String> gitDirectory = Property.of("_flows");
 
     @Schema(
         title = "The source namespace from which flows should be synced to the `gitDirectory`."
     )
-    @PluginProperty(dynamic = true)
     @Builder.Default
-    private String sourceNamespace = "{{ flow.namespace }}";
+    private Property<String> sourceNamespace = new Property<>("{{ flow.namespace }}");
 
     @Schema(
         title = "The target namespace, intended as the production namespace.",
         description = "If set, the `sourceNamespace` will be overwritten to the `targetNamespace` in the flow source code to prepare your branch for merging into the production namespace."
     )
-    @PluginProperty(dynamic = true)
-    private String targetNamespace;
+    private Property<String> targetNamespace;
 
     @Schema(
         title = "List of glob patterns or a single one that declare which flows should be included in the Git commit.",
@@ -151,7 +183,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         title = "Whether you want to push flows from child namespaces as well.",
         description = """
             By default, it’s `false`, so the task will push only flows from the explicitly declared namespace without pushing flows from child namespaces. If set to `true`, flows from child namespaces will be pushed to child directories in Git. See the example below for a practical explanation:
-            
+
             | Source namespace in the flow code |       Git directory path       |  Synced to target namespace   |
             | --------------------------------- | ------------------------------ | ----------------------------- |
             | namespace: dev                    | _flows/flow1.yml               | namespace: prod               |
@@ -161,17 +193,16 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
             | namespace: dev.marketing.crm      | _flows/marketing/crm/flow5.yml | namespace: prod.marketing.crm |
             | namespace: dev.marketing.crm      | _flows/marketing/crm/flow6.yml | namespace: prod.marketing.crm |"""
     )
-    @PluginProperty
     @Builder.Default
-    private boolean includeChildNamespaces = false;
+    private Property<Boolean> includeChildNamespaces = Property.of(false);
 
     @Schema(
         title = "Git commit message.",
-        defaultValue = "Add flows from `sourceNamespace` namespace"
+        defaultValue = "Add flows from sourceNamespace"
     )
     @Override
-    public String getCommitMessage() {
-        return Optional.ofNullable(this.commitMessage).orElse("Add flows from " + this.sourceNamespace + " namespace");
+    public Property<String> getCommitMessage() {
+        return Optional.ofNullable(this.commitMessage).orElse(new Property<>("Add flows from " + this.sourceNamespace.toString() + " namespace"));
     }
 
     @Override
@@ -180,7 +211,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     }
 
     @Override
-    public String fetchedNamespace() {
+    public Property<String> fetchedNamespace() {
         return this.sourceNamespace;
     }
 
@@ -190,8 +221,8 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         Map<String, String> flowProps = Optional.ofNullable((Map<String, String>) runContext.getVariables().get("flow")).orElse(Collections.emptyMap());
         String tenantId = flowProps.get("tenantId");
         List<FlowWithSource> flowsToPush;
-        String renderedSourceNamespace = runContext.render(this.sourceNamespace);
-        if (Boolean.TRUE.equals(this.includeChildNamespaces)) {
+        String renderedSourceNamespace = runContext.render(this.sourceNamespace).as(String.class).orElse(null);
+        if (Boolean.TRUE.equals(runContext.render(this.includeChildNamespaces).as(Boolean.class).orElseThrow())) {
             flowsToPush = flowRepository.findWithSource(null, tenantId, null, renderedSourceNamespace, null);
         } else {
             flowsToPush = flowRepository.findByNamespaceWithSource(tenantId, renderedSourceNamespace);
@@ -206,7 +237,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
             });
         }
 
-        Map<Path, Supplier<InputStream>> flowSourceByPath = filteredFlowsToPush.collect(Collectors.toMap(flowWithSource -> {
+        return filteredFlowsToPush.collect(Collectors.toMap(flowWithSource -> {
             Path path = flowDirectory;
             if (flowWithSource.getNamespace().length() > renderedSourceNamespace.length()) {
                 path = path.resolve(flowWithSource.getNamespace().substring(renderedSourceNamespace.length() + 1).replace(".", "/"));
@@ -214,10 +245,13 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
 
             return path.resolve(flowWithSource.getId() + ".yml");
         }, throwFunction(flowWithSource -> (throwSupplier(() -> {
-            String modifiedSource = flowWithSource.getSource().replaceAll("(?m)^(\\s*namespace:\\s*)" + runContext.render(sourceNamespace), "$1" + runContext.render(targetNamespace));
+            String renderedTargetNamespace = runContext.render(targetNamespace).as(String.class).orElse(renderedSourceNamespace);
+            String modifiedSource = flowWithSource.getSource()
+                .replaceAll(
+                "(?m)^(\\s*namespace:\\s*)" + renderedSourceNamespace,
+                "$1" + renderedTargetNamespace);
             return new ByteArrayInputStream(modifiedSource.getBytes());
         })))));
-        return flowSourceByPath;
     }
 
     @Override

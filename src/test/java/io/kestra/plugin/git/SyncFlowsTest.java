@@ -1,15 +1,16 @@
 package io.kestra.plugin.git;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.models.flows.Flow;
+import io.kestra.core.models.flows.FlowId;
 import io.kestra.core.models.flows.FlowWithSource;
-import io.kestra.core.queues.QueueInterface;
+import io.kestra.core.models.flows.GenericFlow;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.models.tasks.GenericTask;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
-import io.kestra.core.serializers.YamlFlowParser;
 import io.kestra.core.utils.Rethrow;
 import io.kestra.core.junit.annotations.KestraTest;
 import jakarta.inject.Inject;
@@ -30,7 +31,6 @@ import java.util.stream.Stream;
 import static io.kestra.core.utils.Rethrow.throwFunction;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @KestraTest
 public class SyncFlowsTest extends AbstractGitTest {
@@ -47,44 +47,18 @@ public class SyncFlowsTest extends AbstractGitTest {
     private RunContextFactory runContextFactory;
 
     @Inject
-    private YamlFlowParser yamlFlowParser;
-
-    @Inject
     private FlowRepositoryInterface flowRepositoryInterface;
-
-    @Inject
-    private QueueInterface<LogEntry> logQueue;
 
     @BeforeEach
     void init() {
         flowRepositoryInterface.findAllForAllTenants().forEach(f -> {
-            Flow deleted = flowRepositoryInterface.delete(f);
+            Flow deleted = flowRepositoryInterface.delete(FlowWithSource.of(f, ""));
             previousRevisionByUid.put(deleted.uidWithoutRevision(), deleted.getRevision());
         });
     }
 
     @Test
-    void hardcodedPassword() {
-        SyncFlows syncFlows = SyncFlows.builder()
-            .id("syncFlows")
-            .type(PushNamespaceFiles.class.getName())
-            .url(repositoryUrl)
-            .password("my-password")
-            .build();
-
-        IllegalArgumentException illegalArgumentException = assertThrows(IllegalArgumentException.class, () -> syncFlows.run(runContextFactory.of(Map.of(
-            "flow", Map.of(
-                "tenantId", "tenantId",
-                "namespace", "system"
-            ))))
-        );
-        assertThat(illegalArgumentException.getMessage(), is("It looks like you have hard-coded Git credentials. Make sure to pass the credential securely using a Pebble expression (e.g. using secrets or environment variables)."));
-    }
-
-    @Test
     void defaultCase_WithDelete() throws Exception {
-        RunContext runContext = runContext();
-
         String flowSource = """
             id: first-flow
             namespace:\s""" + NAMESPACE + """
@@ -93,36 +67,26 @@ public class SyncFlowsTest extends AbstractGitTest {
               - id: old-task
                 type: io.kestra.core.tasks.log.Log
                 message: Hello from old-task""";
-        Flow flow = yamlFlowParser.parse(flowSource, Flow.class).toBuilder().tenantId(TENANT_ID).build();
-        flowRepositoryInterface.create(
-            flow,
-            flowSource,
-            flow
-        );
+        GenericFlow flow = GenericFlow.fromYaml(TENANT_ID, flowSource);
+        flowRepositoryInterface.create(flow);
 
         // this flow is not on Git and should be deleted
-        Flow flowToDelete = flow.toBuilder().id("flow-to-delete").namespace(NAMESPACE + ".child").build();
-        flowRepositoryInterface.create(
-            flowToDelete,
-            flowSource.replace("first-flow", flowToDelete.getId()).replace(NAMESPACE, flowToDelete.getNamespace()),
-            flowToDelete
+        GenericFlow flowToDelete = flow.toBuilder().id("flow-to-delete").namespace(NAMESPACE + ".child").build();
+        flowRepositoryInterface.create(flowToDelete.toBuilder()
+            .source(flowSource.replace("first-flow", flowToDelete.getId()).replace(NAMESPACE, flowToDelete.getNamespace()))
+            .build()
         );
 
         // simulate self flow, should not be deleted as it's the flow id of the simulated execution (prevent self deletion)
-        Flow selfFlow = flow.toBuilder().id(FLOW_ID).build();
+        GenericFlow selfFlow = flow.toBuilder().id(FLOW_ID).build();
         String selfFlowSource = flowSource.replace("first-flow", FLOW_ID);
-        flowRepositoryInterface.create(
-            selfFlow,
-            selfFlowSource,
-            selfFlow
-        );
+        flowRepositoryInterface.create(selfFlow.toBuilder().source(selfFlowSource).build());
 
         // a flow present on git that doesn't have any change
-        Flow unchangedFlow = flow.toBuilder().id("unchanged-flow").build();
-        flowRepositoryInterface.create(
-            unchangedFlow,
-            flowSource.replace("first-flow", unchangedFlow.getId()),
-            unchangedFlow
+        GenericFlow unchangedFlow = flow.toBuilder().id("unchanged-flow").build();
+        flowRepositoryInterface.create(unchangedFlow.toBuilder()
+            .source(flowSource.replace("first-flow", unchangedFlow.getId()))
+            .build()
         );
 
         flowSource = """
@@ -133,43 +97,74 @@ public class SyncFlowsTest extends AbstractGitTest {
               - id: old-task
                 type: io.kestra.core.tasks.log.Log
                 message: Hello from old-task""";
-        flow = yamlFlowParser.parse(flowSource, Flow.class).toBuilder().tenantId(TENANT_ID).build();
-        flowRepositoryInterface.create(
-            flow,
-            flowSource,
-            flow
-        );
+        flow = GenericFlow.fromYaml(TENANT_ID, flowSource);
+        flowRepositoryInterface.create(flow);
+
+        RunContext runContext = runContext();
+
+        String invalidFlowSource = """
+            id: first-flow
+            namespace:\s""" + NAMESPACE + """
+
+            tasks:
+              - id: old-task
+                type: io.kestra.core.tasks.log.Log
+                message: Hello from old-task""";
+        GenericFlow invalidFlow = GenericFlow.builder()
+            .id("validation-failed-flow")
+            .namespace(NAMESPACE)
+            .tenantId(TENANT_ID)
+            .revision(1)
+            .source(invalidFlowSource)
+            .tasks(List.of(new GenericTask() {
+                protected String id = "validation-failure";
+
+                protected String type = "unknown.type";
+
+                public String getId(){
+                    return this.id;
+                }
+
+                public String getType(){
+                    return this.type;
+                }
+            }))
+            .build();
+        flowRepositoryInterface.create(invalidFlow);
 
         List<Flow> flows = flowRepositoryInterface.findAllForAllTenants();
-        assertThat(flows, hasSize(5));
+        assertThat(flows, hasSize(6));
         flows.forEach(f -> previousRevisionByUid.put(f.uidWithoutRevision(), f.getRevision()));
 
         SyncFlows task = SyncFlows.builder()
-            .url("{{url}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
-            .branch("{{branch}}")
-            .gitDirectory("{{gitDirectory}}")
-            .targetNamespace("{{namespace}}")
-            .delete(true)
-            .includeChildNamespaces(true)
+            .url(new Property<>("{{url}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .branch(new Property<>("{{branch}}"))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .targetNamespace(new Property<>("{{namespace}}"))
+            .delete(Property.of(true))
+            .includeChildNamespaces(Property.of(true))
+            .ignoreInvalidFlows(Property.of(true))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
+
+        flowRepositoryInterface.delete(invalidFlow);
 
         flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(6));
 
         RunContext cloneRunContext = runContextFactory.of();
         Clone.builder()
-            .url(repositoryUrl)
-            .username(pat)
-            .password(pat)
-            .branch(BRANCH)
+            .url(new Property<>(repositoryUrl))
+            .username(new Property<>(pat))
+            .password(new Property<>(pat))
+            .branch(new Property<>(BRANCH))
             .build()
             .run(cloneRunContext);
         assertFlows(cloneRunContext.workingDir().path().resolve(Path.of(GIT_DIRECTORY)).toFile(), true, selfFlowSource);
 
-        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true, new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace.child", "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1))) {{
+        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true, new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace.child", "revision", previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1))) {{
             this.put("gitPath", null);
         }}));
     }
@@ -186,37 +181,28 @@ public class SyncFlowsTest extends AbstractGitTest {
               - id: old-task
                 type: io.kestra.core.tasks.log.Log
                 message: Hello from old-task""";
-        Flow flow = yamlFlowParser.parse(flowSource, Flow.class).toBuilder().tenantId(TENANT_ID).build();
-        flowRepositoryInterface.create(
-            flow,
-            flowSource,
-            flow
-        );
+        GenericFlow genericFlow = GenericFlow.fromYaml(TENANT_ID, flowSource);
+        flowRepositoryInterface.create(genericFlow);
 
         // this flow is not on Git and should be deleted
-        Flow nonVersionedFlow = flow.toBuilder().id("flow-to-delete").build();
-        String nonVersionedFlowSource = flowSource.replace("first-flow", nonVersionedFlow.getId());
-        flowRepositoryInterface.create(
-            nonVersionedFlow,
-            nonVersionedFlowSource,
-            nonVersionedFlow
-        );
+        GenericFlow nonVersionedFlow = genericFlow.toBuilder()
+            .id("flow-to-delete")
+            .build();
+        String nonVersionedFlowSource = flowSource.replace("first-flow", "flow-to-delete");
+        flowRepositoryInterface.create(nonVersionedFlow.toBuilder().source(nonVersionedFlowSource).build());
 
         // simulate self flow, should not be deleted as it's the flow id of the simulated execution (prevent self deletion)
-        Flow selfFlow = flow.toBuilder().id(FLOW_ID).build();
+        GenericFlow selfFlow = genericFlow.toBuilder()
+            .id(FLOW_ID)
+            .build();
         String selfFlowSource = flowSource.replace("first-flow", FLOW_ID);
-        flowRepositoryInterface.create(
-            selfFlow,
-            selfFlowSource,
-            selfFlow
-        );
+        flowRepositoryInterface.create(selfFlow.toBuilder().source(selfFlowSource).build());
 
         // a flow present on git that doesn't have any change
-        Flow unchangedFlow = flow.toBuilder().id("unchanged-flow").build();
-        flowRepositoryInterface.create(
-            unchangedFlow,
-            flowSource.replace("first-flow", unchangedFlow.getId()),
-            unchangedFlow
+        GenericFlow unchangedFlow = genericFlow.toBuilder().id("unchanged-flow").build();
+        flowRepositoryInterface.create(unchangedFlow.toBuilder()
+            .source(flowSource.replace("first-flow", unchangedFlow.getId()))
+            .build()
         );
 
         flowSource = """
@@ -227,25 +213,21 @@ public class SyncFlowsTest extends AbstractGitTest {
               - id: old-task
                 type: io.kestra.core.tasks.log.Log
                 message: Hello from old-task""";
-        flow = yamlFlowParser.parse(flowSource, Flow.class).toBuilder().tenantId(TENANT_ID).build();
-        flowRepositoryInterface.create(
-            flow,
-            flowSource,
-            flow
-        );
+        genericFlow = GenericFlow.fromYaml(TENANT_ID, flowSource);
+        flowRepositoryInterface.create(genericFlow);
 
         List<Flow> flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(5));
         flows.forEach(f -> previousRevisionByUid.put(f.uidWithoutRevision(), f.getRevision()));
 
         SyncFlows task = SyncFlows.builder()
-            .url("{{url}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
-            .branch("{{branch}}")
-            .gitDirectory("{{gitDirectory}}")
-            .targetNamespace("{{namespace}}")
-            .includeChildNamespaces(true)
+            .url(new Property<>("{{url}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .branch(new Property<>("{{branch}}"))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .targetNamespace(new Property<>("{{namespace}}"))
+            .includeChildNamespaces(Property.of(true))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 
@@ -254,10 +236,10 @@ public class SyncFlowsTest extends AbstractGitTest {
 
         RunContext cloneRunContext = runContextFactory.of();
         Clone.builder()
-            .url(repositoryUrl)
-            .username(pat)
-            .password(pat)
-            .branch(BRANCH)
+            .url(new Property<>(repositoryUrl))
+            .username(new Property<>(pat))
+            .password(new Property<>(pat))
+            .branch(new Property<>(BRANCH))
             .build()
             .run(cloneRunContext);
         assertFlows(cloneRunContext.workingDir().path().resolve(Path.of(GIT_DIRECTORY)).toFile(), true, selfFlowSource, nonVersionedFlowSource);
@@ -277,45 +259,37 @@ public class SyncFlowsTest extends AbstractGitTest {
               - id: old-task
                 type: io.kestra.core.tasks.log.Log
                 message: Hello from old-task""";
-        Flow flow = yamlFlowParser.parse(flowSource, Flow.class).toBuilder().tenantId(TENANT_ID).build();
-        flowRepositoryInterface.create(
-            flow,
-            flowSource,
-            flow
-        );
+        GenericFlow genericFlow = GenericFlow.fromYaml(TENANT_ID, flowSource);
+        flowRepositoryInterface.create(genericFlow);
 
         // this flow is not on Git and should be deleted
-        Flow flowToDelete = flow.toBuilder().id("flow-to-delete").build();
-        flowRepositoryInterface.create(
-            flowToDelete,
-            flowSource.replace("first-flow", flowToDelete.getId()),
-            flowToDelete
+        GenericFlow flowToDelete = genericFlow.toBuilder().id("flow-to-delete").build();
+        flowRepositoryInterface.create(flowToDelete.toBuilder()
+            .source(flowSource.replace("first-flow", flowToDelete.getId()))
+            .build()
         );
 
         // this flow is not on Git but should not be deleted as it's in a child namespace
-        Flow unversionedFlowInChildNamespace = flow.toBuilder().id("flow-to-delete").namespace(NAMESPACE + ".child").build();
+        GenericFlow unversionedFlowInChildNamespace = genericFlow.toBuilder().id("flow-to-delete").namespace(NAMESPACE + ".child").build();
         String unversionedFlowSourceInChildNamespace = flowSource.replace("first-flow", unversionedFlowInChildNamespace.getId()).replace(NAMESPACE, unversionedFlowInChildNamespace.getNamespace());
-        flowRepositoryInterface.create(
-            unversionedFlowInChildNamespace,
-            unversionedFlowSourceInChildNamespace,
-            unversionedFlowInChildNamespace
+        flowRepositoryInterface.create(unversionedFlowInChildNamespace.toBuilder()
+                .source(unversionedFlowSourceInChildNamespace)
+                .build()
         );
 
         // simulate self flow, should not be deleted as it's the flow id of the simulated execution (prevent self deletion)
-        Flow selfFlow = flow.toBuilder().id(FLOW_ID).build();
+        GenericFlow selfFlow = genericFlow.toBuilder().id(FLOW_ID).build();
         String selfFlowSource = flowSource.replace("first-flow", FLOW_ID);
-        flowRepositoryInterface.create(
-            selfFlow,
-            selfFlowSource,
-            selfFlow
+        flowRepositoryInterface.create(selfFlow.toBuilder()
+            .source(selfFlowSource)
+            .build()
         );
 
         // a flow present on git that doesn't have any change
-        Flow unchangedFlow = flow.toBuilder().id("unchanged-flow").build();
-        flowRepositoryInterface.create(
-            unchangedFlow,
-            flowSource.replace("first-flow", unchangedFlow.getId()),
-            unchangedFlow
+        GenericFlow unchangedFlow = genericFlow.toBuilder().id("unchanged-flow").build();
+        flowRepositoryInterface.create(unchangedFlow.toBuilder()
+            .source(flowSource.replace("first-flow", unchangedFlow.getId()))
+            .build()
         );
 
         flowSource = """
@@ -326,26 +300,22 @@ public class SyncFlowsTest extends AbstractGitTest {
               - id: old-task
                 type: io.kestra.core.tasks.log.Log
                 message: Hello from old-task""";
-        flow = yamlFlowParser.parse(flowSource, Flow.class).toBuilder().tenantId(TENANT_ID).build();
-        flowRepositoryInterface.create(
-            flow,
-            flowSource,
-            flow
-        );
+        genericFlow = GenericFlow.fromYaml(TENANT_ID, flowSource);
+        flowRepositoryInterface.create(genericFlow);
 
         List<Flow> flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(6));
         flows.forEach(f -> previousRevisionByUid.put(f.uidWithoutRevision(), f.getRevision()));
 
         SyncFlows task = SyncFlows.builder()
-            .url("{{url}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
-            .branch("{{branch}}")
-            .gitDirectory("{{gitDirectory}}")
-            .targetNamespace("{{namespace}}")
-            .delete(true)
-            .includeChildNamespaces(false)
+            .url(new Property<>("{{url}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .branch(new Property<>("{{branch}}"))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .targetNamespace(new Property<>("{{namespace}}"))
+            .delete(Property.of(true))
+            .includeChildNamespaces(Property.of(false))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 
@@ -354,15 +324,15 @@ public class SyncFlowsTest extends AbstractGitTest {
 
         RunContext cloneRunContext = runContextFactory.of();
         Clone.builder()
-            .url(repositoryUrl)
-            .username(pat)
-            .password(pat)
-            .branch(BRANCH)
+            .url(new Property<>(repositoryUrl))
+            .username(new Property<>(pat))
+            .password(new Property<>(pat))
+            .branch(new Property<>(BRANCH))
             .build()
             .run(cloneRunContext);
         assertFlows(cloneRunContext.workingDir().path().resolve(Path.of(GIT_DIRECTORY)).toFile(), false, selfFlowSource, unversionedFlowSourceInChildNamespace);
 
-        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(false, new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace", "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1))) {{
+        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(false, new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace", "revision", previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1))) {{
             this.put("gitPath", null);
         }}));
     }
@@ -379,36 +349,29 @@ public class SyncFlowsTest extends AbstractGitTest {
               - id: old-task
                 type: io.kestra.core.tasks.log.Log
                 message: Hello from old-task""";
-        Flow flow = yamlFlowParser.parse(flowSource, Flow.class).toBuilder().tenantId(TENANT_ID).build();
-        flowRepositoryInterface.create(
-            flow,
-            flowSource,
-            flow
-        );
+        GenericFlow genericFlow = GenericFlow.fromYaml(TENANT_ID, flowSource);
+        flowRepositoryInterface.create(genericFlow);
 
         // this flow is not on Git and should be deleted
-        Flow flowToDelete = flow.toBuilder().id("flow-to-delete").namespace(NAMESPACE + ".child").build();
-        flowRepositoryInterface.create(
-            flowToDelete,
-            flowSource.replace("first-flow", flowToDelete.getId()).replace(NAMESPACE, flowToDelete.getNamespace()),
-            flowToDelete
+        GenericFlow flowToDelete = genericFlow.toBuilder().id("flow-to-delete").namespace(NAMESPACE + ".child").build();
+        flowRepositoryInterface.create(flowToDelete.toBuilder()
+            .source(flowSource.replace("first-flow", flowToDelete.getId()).replace(NAMESPACE, flowToDelete.getNamespace()))
+            .build()
         );
 
         // simulate self flow, should not be deleted as it's the flow id of the simulated execution (prevent self deletion)
-        Flow selfFlow = flow.toBuilder().id(FLOW_ID).build();
+        GenericFlow selfFlow = genericFlow.toBuilder().id(FLOW_ID).build();
         String selfFlowSource = flowSource.replace("first-flow", FLOW_ID);
-        flowRepositoryInterface.create(
-            selfFlow,
-            selfFlowSource,
-            selfFlow
+        flowRepositoryInterface.create(selfFlow.toBuilder()
+            .source(selfFlowSource)
+            .build()
         );
 
         // a flow present on git that doesn't have any change
-        Flow unchangedFlow = flow.toBuilder().id("unchanged-flow").build();
-        flowRepositoryInterface.create(
-            unchangedFlow,
-            flowSource.replace("first-flow", unchangedFlow.getId()),
-            unchangedFlow
+        GenericFlow unchangedFlow = genericFlow.toBuilder().id("unchanged-flow").build();
+        flowRepositoryInterface.create(unchangedFlow.toBuilder()
+            .source(flowSource.replace("first-flow", unchangedFlow.getId()))
+            .build()
         );
 
         flowSource = """
@@ -419,12 +382,8 @@ public class SyncFlowsTest extends AbstractGitTest {
               - id: old-task
                 type: io.kestra.core.tasks.log.Log
                 message: Hello from old-task""";
-        flow = yamlFlowParser.parse(flowSource, Flow.class).toBuilder().tenantId(TENANT_ID).build();
-        flowRepositoryInterface.create(
-            flow,
-            flowSource,
-            flow
-        );
+        genericFlow = GenericFlow.fromYaml(TENANT_ID, flowSource);
+        flowRepositoryInterface.create(genericFlow);
 
         List<Flow> flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(5));
@@ -435,15 +394,15 @@ public class SyncFlowsTest extends AbstractGitTest {
             .toArray(String[]::new);
 
         SyncFlows task = SyncFlows.builder()
-            .url("{{url}}")
-            .username("{{pat}}")
-            .password("{{pat}}")
-            .branch("{{branch}}")
-            .gitDirectory("{{gitDirectory}}")
-            .targetNamespace("{{namespace}}")
-            .delete(true)
-            .includeChildNamespaces(true)
-            .dryRun(true)
+            .url(new Property<>("{{url}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .branch(new Property<>("{{branch}}"))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .targetNamespace(new Property<>("{{namespace}}"))
+            .delete(Property.of(true))
+            .includeChildNamespaces(Property.of(true))
+            .dryRun(Property.of(true))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 
@@ -456,20 +415,20 @@ public class SyncFlowsTest extends AbstractGitTest {
 
         assertThat(afterUpdateSources, arrayContainingInAnyOrder(beforeUpdateSources));
 
-        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true, new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace.child", "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1))) {{
+        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true, new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace.child", "revision", previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1))) {{
             this.put("gitPath", null);
         }}));
     }
 
     private List<Map<String, Object>> defaultCaseDiffs(boolean includeSubNamespaces, Map<String, Object>... additionalDiffs) {
         List<Map<String, Object>> diffs = new ArrayList<>(List.of(
-            Map.of("gitPath", "to_clone/_flows/unchanged-flow.yaml", "syncState", "UNCHANGED", "flowId", "unchanged-flow", "namespace", NAMESPACE, "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, NAMESPACE, "unchanged-flow"), 1)),
-            Map.of("gitPath", "to_clone/_flows/first-flow.yml", "syncState", "UPDATED", "flowId", "first-flow", "namespace", NAMESPACE, "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, NAMESPACE, "first-flow"), 0) + 1),
-            Map.of("gitPath", "to_clone/_flows/second-flow.yml", "syncState", "ADDED", "flowId", "second-flow", "namespace", NAMESPACE, "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, NAMESPACE, "second-flow"), 0) + 1)
+            Map.of("gitPath", "to_clone/_flows/unchanged-flow.yaml", "syncState", "UNCHANGED", "flowId", "unchanged-flow", "namespace", NAMESPACE, "revision", previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, NAMESPACE, "unchanged-flow"), 1)),
+            Map.of("gitPath", "to_clone/_flows/first-flow.yml", "syncState", "UPDATED", "flowId", "first-flow", "namespace", NAMESPACE, "revision", previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, NAMESPACE, "first-flow"), 0) + 1),
+            Map.of("gitPath", "to_clone/_flows/second-flow.yml", "syncState", "ADDED", "flowId", "second-flow", "namespace", NAMESPACE, "revision", previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, NAMESPACE, "second-flow"), 0) + 1)
         ));
 
         if (includeSubNamespaces) {
-            diffs.add(Map.of("gitPath", "to_clone/_flows/nested/namespace/nested_flow.yaml", "syncState", "ADDED", "flowId", "nested-flow", "namespace", "my.namespace.nested.namespace", "revision", previousRevisionByUid.getOrDefault(Flow.uidWithoutRevision(TENANT_ID, "my.namespace.nested.namespace", "nested-flow"), 0) + 1));
+            diffs.add(Map.of("gitPath", "to_clone/_flows/nested/namespace/nested_flow.yaml", "syncState", "ADDED", "flowId", "nested-flow", "namespace", "my.namespace.nested.namespace", "revision", previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, "my.namespace.nested.namespace", "nested-flow"), 0) + 1));
         }
 
         diffs.addAll(Arrays.asList(additionalDiffs));
