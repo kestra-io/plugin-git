@@ -103,7 +103,7 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
 
     @Override
     public Property<String> fetchedNamespace() {
-        return null;
+        return Property.of("");
     }
 
     protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path flowDirectory, List<String> globs) throws IllegalVariableEvaluationException {
