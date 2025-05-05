@@ -96,7 +96,7 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
 
     @Override
     public Property<String> fetchedNamespace() {
-        return null;
+        return Property.of("");
     }
 
     @Override
