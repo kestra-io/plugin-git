@@ -96,6 +96,7 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
 
     @Override
     public Property<String> fetchedNamespace() {
+        // Dashboards are not linked to namespaces
         return Property.of("");
     }
 
