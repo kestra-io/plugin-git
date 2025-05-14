@@ -103,6 +103,7 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
 
     @Override
     public Property<String> fetchedNamespace() {
+        // Dashboards are not linked to namespaces
         return Property.of("");
     }
 
