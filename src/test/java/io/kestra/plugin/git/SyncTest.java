@@ -12,6 +12,7 @@ import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
+import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.KestraIgnore;
 import io.kestra.core.utils.TestsUtils;
 import io.kestra.core.junit.annotations.KestraTest;
@@ -326,7 +327,7 @@ class SyncTest extends AbstractGitTest {
         String toUpdateFilePath = "/dir_to_file";
         String keptContent = "kept content since dry run";
         storageInterface.put(
-            null,
+            TenantService.MAIN_TENANT,
             null,
             URI.create(StorageContext.namespaceFilePrefix(namespace) + toUpdateFilePath),
             new ByteArrayInputStream(keptContent.getBytes())
@@ -335,7 +336,7 @@ class SyncTest extends AbstractGitTest {
         String someFilePath = "/file.txt";
         String someFileContent = "hello";
         storageInterface.put(
-            null,
+            TenantService.MAIN_TENANT,
             null,
             URI.create(StorageContext.namespaceFilePrefix(namespace) + someFilePath),
             new ByteArrayInputStream(someFileContent.getBytes())
@@ -356,9 +357,9 @@ class SyncTest extends AbstractGitTest {
 
         assertThat(flowRepositoryInterface.findAllForAllTenants(), hasSize(3));
 
-        assertNamespaceFileContent(null, namespace, toUpdateFilePath, keptContent);
-        assertNamespaceFileContent(null, namespace, someFilePath, someFileContent);
-        assertThat(storageInterface.exists(null, namespace, URI.create(StorageContext.namespaceFilePrefix(namespace) + "/cloned.json")), is(false));
+        assertNamespaceFileContent(TenantService.MAIN_TENANT, namespace, toUpdateFilePath, keptContent);
+        assertNamespaceFileContent(TenantService.MAIN_TENANT, namespace, someFilePath, someFileContent);
+        assertThat(storageInterface.exists(TenantService.MAIN_TENANT, namespace, URI.create(StorageContext.namespaceFilePrefix(namespace) + "/cloned.json")), is(false));
 
         assertHasInfoLog(logs, "Dry run is enabled, not performing following actions (- for deletions, + for creations, ~ for update or no modification):");
         assertHasInfoLog(logs, "~ /_flows/first-flow.yml");
