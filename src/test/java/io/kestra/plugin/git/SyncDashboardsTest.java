@@ -8,6 +8,7 @@ import io.kestra.core.repositories.DashboardRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.Rethrow;
 import jakarta.inject.Inject;
 import lombok.Builder;
@@ -30,7 +31,7 @@ import static org.hamcrest.Matchers.*;
 public class SyncDashboardsTest extends AbstractGitTest {
     public static final String BRANCH = "sync-dashboards";
     public static final String GIT_DIRECTORY = "to_clone/_dashboards";
-    public static final String TENANT_ID = "my-tenant";
+    public static final String TENANT_ID = TenantService.MAIN_TENANT;
     public static final String FLOW_ID = "self_flow";
     public static final String NAMESPACE = "my.namespace";
 
