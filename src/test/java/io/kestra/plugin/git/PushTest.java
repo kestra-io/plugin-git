@@ -11,6 +11,7 @@ import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.runners.RunContextInitializer;
 import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
+import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.junit.annotations.KestraTest;
 import jakarta.inject.Inject;
@@ -159,7 +160,7 @@ class PushTest extends AbstractGitTest {
     @Test
     void oneTaskPush_ExistingBranch() throws Exception {
         String namespace = "my-namespace";
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         FlowWithSource flow = this.createFlow(tenantId, namespace);
 
         RunContext runContext = runContextFactory.of(flow, Map.of(
@@ -382,7 +383,7 @@ class PushTest extends AbstractGitTest {
     @Test
     void oneTaskPush_WithFlows() throws Exception {
         String namespace = IdUtils.create().toLowerCase();
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         String branchName = IdUtils.create();
         RunContext runContext = runContextFactory.of(Map.of(
             "flow", Map.of(
@@ -436,7 +437,7 @@ class PushTest extends AbstractGitTest {
     @Test
     void oneTaskPush_WithFlowsNoChildNs() throws Exception {
         String namespace = IdUtils.create().toLowerCase();
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         String branchName = IdUtils.create();
         RunContext runContext = runContextFactory.of(Map.of(
             "flow", Map.of(
@@ -495,7 +496,7 @@ class PushTest extends AbstractGitTest {
     @Test
     void oneTaskPush_WithFlowsAndDirectory() throws Exception {
         String namespace = IdUtils.create().toLowerCase();
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         String branchName = IdUtils.create();
         RunContext runContext = runContextFactory.of(Map.of(
             "flow", Map.of(

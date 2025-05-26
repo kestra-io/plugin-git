@@ -45,7 +45,7 @@ import static org.hamcrest.Matchers.is;
 class SyncTest extends AbstractGitTest {
     public static final String BRANCH = "reconcile";
     public static final String NAMESPACE = "my.namespace";
-    public static final String TENANT_ID = "my-tenant";
+    public static final String TENANT_ID = TenantService.MAIN_TENANT;
     public static final Pattern NAMESPACE_FINDER_PATTERN = Pattern.compile("(?m)^namespace: (.*)$");
 
     @Inject
@@ -312,7 +312,8 @@ class SyncTest extends AbstractGitTest {
                 type: io.kestra.core.tasks.log.Log
                 message: Hello from old-task""";
 
-        GenericFlow genericFlow = GenericFlow.of(YamlParser.parse(flowSource, Flow.class));
+        GenericFlow genericFlow = GenericFlow.fromYaml(TENANT_ID, flowSource);
+
         flowRepositoryInterface.create(genericFlow);
 
         genericFlow = genericFlow.toBuilder().id("first-flow").build();
@@ -360,7 +361,7 @@ class SyncTest extends AbstractGitTest {
         assertNamespaceFileContent(TenantService.MAIN_TENANT, namespace, toUpdateFilePath, keptContent);
         assertNamespaceFileContent(TenantService.MAIN_TENANT, namespace, someFilePath, someFileContent);
         assertThat(storageInterface.exists(TenantService.MAIN_TENANT, namespace, URI.create(StorageContext.namespaceFilePrefix(namespace) + "/cloned.json")), is(false));
-
+        
         assertHasInfoLog(logs, "Dry run is enabled, not performing following actions (- for deletions, + for creations, ~ for update or no modification):");
         assertHasInfoLog(logs, "~ /_flows/first-flow.yml");
         assertHasInfoLog(logs, "~ /_flows/sub-namespace-flow.yml");

@@ -7,6 +7,7 @@ import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
+import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.Rethrow;
 import io.kestra.plugin.git.services.GitService;
@@ -48,7 +49,7 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
 
     @Test
     void defaultCase_SingleRegex() throws Exception {
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         String namespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-files";
@@ -121,7 +122,7 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
 
     @Test
     void defaultCase_SingleRegexDryRun() throws Exception {
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         String namespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-files";
@@ -167,7 +168,7 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
 
     @Test
     void defaultCase_SingleRegex_DeleteScopedToRegex() throws Exception {
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         String namespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-files";
@@ -272,7 +273,7 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
 
     @Test
     void defaultCase_NoRegex() throws Exception {
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         String namespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-files";
@@ -349,7 +350,7 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
 
     @Test
     void defaultCase_MultipleRegex() throws Exception {
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         String namespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-files";
@@ -429,7 +430,7 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
 
     @Test
     void defaultCase_NoRegexNoAuthor() throws Exception {
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         String namespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
         String gitDirectory = "my-files";

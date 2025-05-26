@@ -10,6 +10,7 @@ import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
+import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.KestraIgnore;
 import io.kestra.core.utils.Rethrow;
 import jakarta.inject.Inject;
@@ -35,7 +36,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 public class SyncNamespaceFilesTest extends AbstractGitTest {
     public static final String BRANCH = "sync";
     public static final String GIT_DIRECTORY = "to_clone";
-    public static final String TENANT_ID = "my-tenant";
+    public static final String TENANT_ID = TenantService.MAIN_TENANT;
     public static final String NAMESPACE = "my.namespace";
 
     @Inject

@@ -6,6 +6,7 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.repositories.DashboardRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.plugin.git.services.GitService;
 import jakarta.inject.Inject;
@@ -41,7 +42,7 @@ public class PushDahboardsTest extends AbstractGitTest {
 
     @Test
     void defaultCase_DefaultRegex() throws Exception {
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         String branch = IdUtils.create();
         String gitDirectory = "my-dashboard";
 
@@ -113,7 +114,7 @@ public class PushDahboardsTest extends AbstractGitTest {
 
     @Test
     void defaultCase_singleRegex() throws Exception {
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         String branch = IdUtils.create();
         String gitDirectory = "my-dashboard";
 

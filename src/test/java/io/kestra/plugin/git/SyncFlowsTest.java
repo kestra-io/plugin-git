@@ -11,6 +11,7 @@ import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.Rethrow;
 import io.kestra.core.junit.annotations.KestraTest;
 import jakarta.inject.Inject;
@@ -36,7 +37,7 @@ import static org.hamcrest.Matchers.*;
 public class SyncFlowsTest extends AbstractGitTest {
     public static final String BRANCH = "sync";
     public static final String GIT_DIRECTORY = "to_clone/_flows";
-    public static final String TENANT_ID = "my-tenant";
+    public static final String TENANT_ID = TenantService.MAIN_TENANT;
     public static final String NAMESPACE = "my.namespace";
     public static final String FLOW_ID = "self_flow";
     public static final Pattern NAMESPACE_FINDER_PATTERN = Pattern.compile("(?m)^namespace: (.*)$");

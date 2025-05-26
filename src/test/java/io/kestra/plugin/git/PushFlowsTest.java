@@ -9,6 +9,7 @@ import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.Rethrow;
 import io.kestra.plugin.git.services.GitService;
@@ -51,7 +52,7 @@ public class PushFlowsTest extends AbstractGitTest {
 
     @Test
     void defaultCase_SingleRegex() throws Exception {
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         String sourceNamespace = IdUtils.create().toLowerCase();
         String targetNamespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
@@ -127,7 +128,7 @@ public class PushFlowsTest extends AbstractGitTest {
     void defaultCase_SingleRegex_noTargetNamespace_noSourceNamespace() throws Exception {
         final String systemNamespace = "system";
         final String subNamespace = "sub-namespace";
-        final String tenantId = "my-tenant";
+        final String tenantId = TenantService.MAIN_TENANT;
         final String branch = IdUtils.create();
         final String gitDirectory = "my-flows";
 
@@ -189,7 +190,7 @@ public class PushFlowsTest extends AbstractGitTest {
 
     @Test
     void defaultCase_SingleRegexDryRun() throws Exception {
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         String sourceNamespace = IdUtils.create().toLowerCase();
         String targetNamespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
@@ -237,7 +238,7 @@ public class PushFlowsTest extends AbstractGitTest {
 
     @Test
     void defaultCase_SingleRegex_DeleteScopedToRegex() throws Exception {
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         String sourceNamespace = IdUtils.create().toLowerCase();
         String targetNamespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
@@ -339,7 +340,7 @@ public class PushFlowsTest extends AbstractGitTest {
 
     @Test
     void defaultCase_NoRegex() throws Exception {
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         String sourceNamespace = IdUtils.create().toLowerCase();
         String targetNamespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
@@ -417,7 +418,7 @@ public class PushFlowsTest extends AbstractGitTest {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     void defaultCase_MultipleRegex(boolean useStringPebbleArray) throws Exception {
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         String sourceNamespace = IdUtils.create().toLowerCase();
         String targetNamespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
@@ -496,7 +497,7 @@ public class PushFlowsTest extends AbstractGitTest {
 
     @Test
     void defaultCase_NoRegexNoChildNsNoAuthorName() throws Exception {
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         String sourceNamespace = IdUtils.create().toLowerCase();
         String targetNamespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
@@ -562,7 +563,7 @@ public class PushFlowsTest extends AbstractGitTest {
 
     @Test
     void defaultCase_NoRegexNoAuthor() throws Exception {
-        String tenantId = "my-tenant";
+        String tenantId = TenantService.MAIN_TENANT;
         String sourceNamespace = IdUtils.create().toLowerCase();
         String targetNamespace = IdUtils.create().toLowerCase();
         String branch = IdUtils.create();
