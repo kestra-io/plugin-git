@@ -223,7 +223,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         List<FlowWithSource> flowsToPush;
         String renderedSourceNamespace = runContext.render(this.sourceNamespace).as(String.class).orElse(null);
         if (Boolean.TRUE.equals(runContext.render(this.includeChildNamespaces).as(Boolean.class).orElseThrow())) {
-            flowsToPush = flowRepository.findWithSource(null, tenantId, null, renderedSourceNamespace, null);
+            flowsToPush = flowRepository.findByNamespacePrefixWithSource(tenantId, renderedSourceNamespace);
         } else {
             flowsToPush = flowRepository.findByNamespaceWithSource(tenantId, renderedSourceNamespace);
         }

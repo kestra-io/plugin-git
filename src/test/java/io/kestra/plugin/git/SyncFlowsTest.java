@@ -390,7 +390,7 @@ public class SyncFlowsTest extends AbstractGitTest {
         assertThat(flows, hasSize(5));
         flows.forEach(f -> previousRevisionByUid.put(f.uidWithoutRevision(), f.getRevision()));
 
-        String[] beforeUpdateSources = flowRepositoryInterface.findWithSource(null, TENANT_ID, null, null, null).stream()
+        String[] beforeUpdateSources = flowRepositoryInterface.findWithSource(null, TENANT_ID, null).stream()
             .map(FlowWithSource::getSource)
             .toArray(String[]::new);
 
@@ -410,7 +410,7 @@ public class SyncFlowsTest extends AbstractGitTest {
         flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(5));
 
-        String[] afterUpdateSources = flowRepositoryInterface.findWithSource(null, TENANT_ID, null, null, null).stream()
+        String[] afterUpdateSources = flowRepositoryInterface.findWithSource(null, TENANT_ID, null).stream()
             .map(FlowWithSource::getSource)
             .toArray(String[]::new);
 
@@ -480,7 +480,7 @@ public class SyncFlowsTest extends AbstractGitTest {
                     })),
                 Arrays.stream(additionalFlowSources)
             ).toArray(String[]::new);
-            String[] actualFlowSources = flowRepositoryInterface.findWithSource(null, SyncFlowsTest.TENANT_ID, null, NAMESPACE, null).stream()
+            String[] actualFlowSources = flowRepositoryInterface.findByNamespaceWithSource(SyncFlowsTest.TENANT_ID, NAMESPACE).stream()
                 .map(FlowWithSource::getSource)
                 .toArray(String[]::new);
             assertThat(actualFlowSources, arrayContainingInAnyOrder(expectedFlowSources));
