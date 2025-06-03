@@ -1,5 +1,6 @@
 package io.kestra.plugin.git;
 
+import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.GenericFlow;
@@ -9,13 +10,11 @@ import io.kestra.core.queues.QueueInterface;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
-import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.KestraIgnore;
 import io.kestra.core.utils.TestsUtils;
-import io.kestra.core.junit.annotations.KestraTest;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import org.apache.commons.io.FileUtils;
@@ -361,7 +360,7 @@ class SyncTest extends AbstractGitTest {
         assertNamespaceFileContent(TenantService.MAIN_TENANT, namespace, toUpdateFilePath, keptContent);
         assertNamespaceFileContent(TenantService.MAIN_TENANT, namespace, someFilePath, someFileContent);
         assertThat(storageInterface.exists(TenantService.MAIN_TENANT, namespace, URI.create(StorageContext.namespaceFilePrefix(namespace) + "/cloned.json")), is(false));
-        
+
         assertHasInfoLog(logs, "Dry run is enabled, not performing following actions (- for deletions, + for creations, ~ for update or no modification):");
         assertHasInfoLog(logs, "~ /_flows/first-flow.yml");
         assertHasInfoLog(logs, "~ /_flows/sub-namespace-flow.yml");
@@ -406,7 +405,7 @@ class SyncTest extends AbstractGitTest {
                 Map.Entry::getKey,
                 Map.Entry::getValue
             ));
-        Map<String, String> namespaceForActualFlowSources = flowRepositoryInterface.findWithSource(null, tenantId, null, NAMESPACE, null).stream()
+        Map<String, String> namespaceForActualFlowSources = flowRepositoryInterface.findByNamespacePrefixWithSource(tenantId, NAMESPACE).stream()
             .map(flowWithSource -> Map.entry(flowWithSource.getSource(), flowWithSource.getNamespace()))
             .collect(Collectors.toMap(
                 Map.Entry::getKey,

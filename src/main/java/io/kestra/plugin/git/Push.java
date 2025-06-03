@@ -265,7 +265,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
 
             List<FlowWithSource> flows;
             if (Boolean.TRUE.equals(runContext.render(this.flows.childNamespaces).as(Boolean.class).orElse(true))) {
-                flows = flowRepository.findWithSource(null, tenantId, null, namespace, null);
+                flows = flowRepository.findByNamespacePrefixWithSource(tenantId, namespace);
             } else {
                 flows = flowRepository.findByNamespaceWithSource(tenantId, namespace);
             }
