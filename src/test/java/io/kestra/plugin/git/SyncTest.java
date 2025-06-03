@@ -405,7 +405,7 @@ class SyncTest extends AbstractGitTest {
                 Map.Entry::getKey,
                 Map.Entry::getValue
             ));
-        Map<String, String> namespaceForActualFlowSources = flowRepositoryInterface.findByNamespaceWithSource(tenantId, NAMESPACE).stream()
+        Map<String, String> namespaceForActualFlowSources = flowRepositoryInterface.findByNamespacePrefixWithSource(tenantId, NAMESPACE).stream()
             .map(flowWithSource -> Map.entry(flowWithSource.getSource(), flowWithSource.getNamespace()))
             .collect(Collectors.toMap(
                 Map.Entry::getKey,

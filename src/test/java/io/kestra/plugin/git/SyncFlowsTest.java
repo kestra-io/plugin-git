@@ -480,7 +480,7 @@ public class SyncFlowsTest extends AbstractGitTest {
                     })),
                 Arrays.stream(additionalFlowSources)
             ).toArray(String[]::new);
-            String[] actualFlowSources = flowRepositoryInterface.findByNamespaceWithSource(SyncFlowsTest.TENANT_ID, NAMESPACE).stream()
+            String[] actualFlowSources = flowRepositoryInterface.findByNamespacePrefixWithSource(SyncFlowsTest.TENANT_ID, NAMESPACE).stream()
                 .map(FlowWithSource::getSource)
                 .toArray(String[]::new);
             assertThat(actualFlowSources, arrayContainingInAnyOrder(expectedFlowSources));
