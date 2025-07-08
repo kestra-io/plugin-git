@@ -54,7 +54,26 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
     public abstract Property<String> fetchedNamespace();
 
     private Path createGitDirectory(RunContext runContext) throws IllegalVariableEvaluationException {
-        Path syncDirectory = runContext.workingDir().resolve(Path.of(runContext.render(this.getGitDirectory()).as(String.class).orElse(null)));
+        String gitDirectoryPath = runContext.render(this.getGitDirectory()).as(String.class).orElse(null);
+        Path syncDirectory = runContext.workingDir().resolve(Path.of(gitDirectoryPath));
+
+        if (!Files.exists(syncDirectory)) {
+            throw new IllegalArgumentException(String.format(
+                "The directory '%s' was not found in the git repository. " +
+                    "Verify if the path exists in the specified branch '%s'.",
+                gitDirectoryPath,
+                runContext.render(this.getBranch()).as(String.class).orElse("main")
+            ));
+        }
+
+        if (!Files.isDirectory(syncDirectory)) {
+            throw new IllegalArgumentException(String.format(
+                "The path '%s' exists but is not a directory. " +
+                    "SyncFlows task requires a directory containing flow files.",
+                gitDirectoryPath
+            ));
+        }
+
         syncDirectory.toFile().mkdirs();
         return syncDirectory;
     }

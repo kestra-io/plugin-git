@@ -32,6 +32,7 @@ import java.util.stream.Stream;
 import static io.kestra.core.utils.Rethrow.throwFunction;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @KestraTest
 public class SyncFlowsTest extends AbstractGitTest {
@@ -419,6 +420,26 @@ public class SyncFlowsTest extends AbstractGitTest {
         assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true, new HashMap<>(Map.of("syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace.child", "revision", previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1))) {{
             this.put("gitPath", null);
         }}));
+    }
+
+    @Test
+    void shouldFailWhenGitDirectoryDoesNotExist() throws Exception {
+        RunContext runContext = runContext();
+
+        SyncFlows task = SyncFlows.builder()
+            .url(new Property<>("{{url}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .branch(new Property<>("{{branch}}"))
+            .gitDirectory(new Property<>("nonexistent/path"))
+            .targetNamespace(new Property<>("{{namespace}}"))
+            .build();
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+            task.run(runContext);
+        });
+
+        assertThat(exception.getMessage(), containsString("The directory 'nonexistent/path' was not found"));
     }
 
     private List<Map<String, Object>> defaultCaseDiffs(boolean includeSubNamespaces, Map<String, Object>... additionalDiffs) {
