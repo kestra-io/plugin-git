@@ -1,5 +1,6 @@
 package io.kestra.plugin.git;
 
+import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
@@ -33,7 +34,7 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
     title = "Commit and push Namespace Files created from Kestra’s UI to Git.",
     description = """
         Using this task, you can push one or more Namespace Files from a given kestra namespace to Git. Note that in contrast to `PushFlows`, this task requires pushing code for each namespace separately. You can use the `ForEach` task as shown below to loop over multiple namespaces. Check the [Version Control with Git](https://kestra.io/docs/developer-guide/git) guide for more examples.
-        Git does not guarantee the order of push operations to a remote repository, which can lead to potential conflicts when multiple users or flows attempt to push changes simultaneously. 
+        Git does not guarantee the order of push operations to a remote repository, which can lead to potential conflicts when multiple users or flows attempt to push changes simultaneously.
         To minimize the risk of data loss and merge conflicts, it is strongly recommended to use sequential workflows or push changes to separate branches."""
 )
 @Plugin(
@@ -156,6 +157,13 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         return Optional.ofNullable(this.commitMessage).orElse(new Property<>("Add files from " + this.namespace.toString() + " namespace"));
     }
 
+    @Schema(
+        title = "Fail the task if no files are matched.",
+        description = "If true, the task will fail explicitly when no files are matched by the provided 'files' property."
+    )
+    @Builder.Default
+    private Property<Boolean> errorOnMissing = Property.ofValue(false);
+
     @Override
     public Object globs() {
         return this.files;
@@ -172,13 +180,19 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         Namespace storage = runContext.storage().namespace(runContext.render(this.namespace).as(String.class).orElse(null));
         Predicate<Path> matcher = (globs != null) ? PathMatcherPredicate.matches(globs) : (path -> true);
 
-        return storage
+        Map<Path, Supplier<InputStream>> filesMap = storage
             .findAllFilesMatching(matcher)
             .stream()
             .collect(Collectors.toMap(
                 nsFile -> baseDirectory.resolve(nsFile.path(false)),
                 throwFunction(nsFile -> throwSupplier(() -> storage.getFileContent(Path.of(nsFile.path()))))
             ));
+
+        if (runContext.render(errorOnMissing).as(Boolean.class).orElse(false) && filesMap.isEmpty()) {
+            throw new KestraRuntimeException("No Namespace Files matched the provided 'files' parameter to commit.");
+        }
+
+        return filesMap;
     }
 
     @Override
