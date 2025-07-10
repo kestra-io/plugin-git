@@ -1,6 +1,7 @@
 package io.kestra.plugin.git;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
@@ -473,6 +474,37 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             this.deleteRemoteBranch(runContext.workingDir().path(), branch);
         }
     }
+
+    @Test
+    void shouldFailIfNoFilesMatched() {
+        String tenantId = TenantService.MAIN_TENANT;
+        String namespace = IdUtils.create().toLowerCase();
+        String branch = IdUtils.create();
+        String gitDirectory = "my-files";
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory);
+
+        PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
+            .id("pushNamespaceFiles-fail-on-missing")
+            .type(PushNamespaceFiles.class.getName())
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
+            .commitMessage(new Property<>("Push from CI - {{description}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .authorEmail(new Property<>("{{email}}"))
+            .authorName(new Property<>("{{name}}"))
+            .namespace(new Property<>("{{namespace}}"))
+            .files("nonexistent-file.txt")
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .errorOnMissing(Property.ofValue(true))
+            .build();
+
+        assertThrows(KestraRuntimeException.class, () -> {
+            pushNamespaceFiles.run(runContext);
+        });
+    }
+
 
     private RunContext runContext(String tenantId, String url, String authorEmail, String authorName, String branch, String namespace, String gitDirectory) {
         return runContextFactory.of(Map.of(
