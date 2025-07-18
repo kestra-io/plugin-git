@@ -1,0 +1,23 @@
+services:
+  gitea:
+    image: gitea/gitea:1.21-rootless
+    container_name: gitea-test
+    ports:
+      - "3443:3443"
+    environment:
+      - GITEA__database__DB_TYPE=sqlite3
+      - GITEA__security__INSTALL_LOCK=true
+      - GITEA__server__DOMAIN=localhost
+      - GITEA__server__HTTP_PORT=3443
+      - GITEA__server__PROTOCOL=https
+      - GITEA__server__ROOT_URL=https://localhost:3443/
+      - GITEA__server__CERT_FILE=/etc/ssl/cert.pem
+      - GITEA__server__KEY_FILE=/etc/ssl/key.pem
+      - GITEA__service__DISABLE_REGISTRATION=false
+    volumes:
+      - gitea_data:/var/lib/gitea
+      - ./certs/cert.pem:/etc/ssl/cert.pem:ro
+      - ./certs/key.pem:/etc/ssl/key.pem:ro
+
+volumes:
+  gitea_data:
