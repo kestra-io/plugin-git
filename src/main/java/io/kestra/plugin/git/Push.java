@@ -188,6 +188,10 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         }
 
         String branch = runContext.render(this.branch).as(String.class).orElse(null);
+
+        // we add this method to configure ssl to allow self signed certs
+        configureEnvironmentWithSsl(runContext);
+
         if (this.url != null) {
             boolean branchExists = branchExists(runContext, branch);
 
