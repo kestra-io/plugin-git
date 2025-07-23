@@ -64,6 +64,3 @@ EOF
 
 echo "Setup complete - PAT: $GITEA_PAT"
 echo "Repository URL: https://localhost:3443/gitea_admin/kestra-test.git"
-
-# CLEANUP
-rm -rf certs
