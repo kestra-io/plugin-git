@@ -126,6 +126,9 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
             path = runContext.workingDir().resolve(Path.of(directory));
         }
 
+        // we add this method to configure ssl to allow self signed certs
+        configureEnvironmentWithSsl(runContext);
+
         CloneCommand cloneCommand = Git.cloneRepository()
             .setURI(url)
             .setDirectory(path.toFile());
