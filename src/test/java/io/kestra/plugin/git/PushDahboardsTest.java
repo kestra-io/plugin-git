@@ -171,6 +171,81 @@ public class PushDahboardsTest extends AbstractGitTest {
         }
     }
 
+    @Test
+    void defaultCase_DashboardWithoutId() throws Exception {
+        String tenantId = TenantService.MAIN_TENANT;
+        String branch = IdUtils.create();
+        String gitDirectory = "my-dashboard";
+
+        String title = "dashboardWithoutId" + IdUtils.create();
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, gitDirectory);
+
+        Dashboard createdDashboard = DashboardUtils.createDashboardWithoutId(dashboardRepositoryInterface, tenantId, title);
+
+        try {
+            PushDashboards pushDashboards = PushDashboards.builder()
+                .id(PushDahboardsTest.class.getSimpleName())
+                .type(PushDashboards.class.getName())
+                .branch(new Property<>("{{branch}}"))
+                .url(new Property<>("{{url}}"))
+                .commitMessage(new Property<>("Push dashboard without ID - {{description}}"))
+                .gitDirectory(new Property<>("{{gitDirectory}}"))
+                .username(new Property<>("{{pat}}"))
+                .password(new Property<>("{{pat}}"))
+                .authorEmail(new Property<>("{{email}}"))
+                .authorName(new Property<>("{{name}}"))
+                .build();
+
+            PushDashboards.Output pushDashboardsOutput = pushDashboards.run(runContext);
+            GitService gitService = new GitService(pushDashboards);
+            assertThat(gitService.branchExists(runContext, branch), is(true));
+
+            Clone clone = Clone.builder()
+                .id("clone")
+                .type(Clone.class.getName())
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
+                .build();
+
+            RunContext cloneRunContext = runContextFactory.of();
+            Clone.Output cloneOutput = clone.run(cloneRunContext);
+
+            File dashboardFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), createdDashboard.getId() + ".yml");
+            assertThat(dashboardFile.exists(), is(true));
+
+            String fileContent = FileUtils.readFileToString(dashboardFile, "UTF-8");
+
+            assertThat(fileContent, containsString("id: " + createdDashboard.getId()));
+            assertThat(fileContent, containsString("title: " + title));
+
+            assertThat(fileContent.trim(), startsWith("id: " + createdDashboard.getId()));
+
+            RevCommit revCommit = assertIsLastCommit(cloneRunContext, pushDashboardsOutput);
+            assertThat(revCommit.getFullMessage(), is("Push dashboard without ID - " + DESCRIPTION));
+            assertAuthor(revCommit, gitUserEmail, gitUserName);
+
+            SyncDashboards syncDashboards = SyncDashboards.builder()
+                .id("syncTest")
+                .type(SyncDashboards.class.getName())
+                .branch(new Property<>(branch))
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .gitDirectory(new Property<>(gitDirectory))
+                .dryRun(Property.ofValue(true))
+                .build();
+
+            SyncDashboards.Output syncOutput = syncDashboards.run(cloneRunContext);
+            assertThat(syncOutput, is(notNullValue()));
+
+        } finally {
+            this.deleteRemoteBranch(runContext.workingDir().path(), branch);
+        }
+    }
+
     private RunContext runContext(String tenantId, String repositoryUrl, String gitUserEmail, String gitUserName, String branch, String gitDirectory) {
         return runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, gitDirectory, null, false);
     }

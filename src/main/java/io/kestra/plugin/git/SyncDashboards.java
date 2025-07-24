@@ -107,20 +107,34 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
 
     @Override
     protected Dashboard simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
-        return fetchDashboard(runContext, inputStream, true);
+        return fetchDashboard(runContext, inputStream, true, uri);
     }
 
     @Override
     protected Dashboard writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
-        return fetchDashboard(runContext, inputStream, false);
+        return fetchDashboard(runContext, inputStream, false, uri);
     }
 
-    protected Dashboard fetchDashboard(RunContext runContext, InputStream inputStream, boolean dryRun) throws IOException {
+    protected Dashboard fetchDashboard(RunContext runContext, InputStream inputStream, boolean dryRun, URI uri) throws IOException {
         if (inputStream == null) {
             return null;
         }
         String dashboardSource = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
-        Dashboard dashboardWithTenant = YamlParser.parse(dashboardSource, Dashboard.class).toBuilder()
+        Dashboard parsedDashboard = YamlParser.parse(dashboardSource, Dashboard.class);
+
+        String dashboardId = parsedDashboard.getId();
+        if (dashboardId == null || dashboardId.trim().isEmpty()) {
+            String filename = uri.getPath().substring(1);
+            if (filename.endsWith(".yml")) {
+                filename = filename.substring(0, filename.length() - 4);
+            } else if (filename.endsWith(".yaml")) {
+                filename = filename.substring(0, filename.length() - 5);
+            }
+            dashboardId = filename;
+        }
+
+        Dashboard dashboardWithTenant = parsedDashboard.toBuilder()
+            .id(dashboardId)
             .tenantId(runContext.flowInfo().tenantId())
             .sourceCode(dashboardSource)
             .build();
