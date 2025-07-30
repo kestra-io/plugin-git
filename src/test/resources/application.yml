@@ -4,6 +4,12 @@ kestra:
     user:
       email: github-ci@kestra.io
       name: Kestra GitHub CI
+  gitea:
+    repository-url: https://localhost:3443/gitea_admin/kestra-test.git
+    user:
+      name: gitea_admin
+      email: admin@gitea.local
+      password: password
   repository:
     type: memory
   queue:
