@@ -2,7 +2,6 @@ package io.kestra.plugin.git;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
@@ -134,8 +133,8 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
         // synchronize flows directory to namespace flows
         File flowsDirectory = flowsDirectoryBasePath.toFile();
         if (flowsDirectory.exists()) {
-            FlowRepositoryInterface flowRepository = ((DefaultRunContext)runContext).getApplicationContext().getBean(FlowRepositoryInterface.class);
-            FlowService flowService = ((DefaultRunContext)runContext).getApplicationContext().getBean(FlowService.class);
+            FlowRepositoryInterface flowRepository = ((DefaultRunContext) runContext).getApplicationContext().getBean(FlowRepositoryInterface.class);
+            FlowService flowService = ((DefaultRunContext) runContext).getApplicationContext().getBean(FlowService.class);
 
             Set<String> flowIdsImported = Arrays.stream(flowsDirectory.listFiles())
                 .map(File::toPath)
@@ -213,7 +212,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
                 }), HashMap::putAll);
         }
 
-        StorageInterface storage = ((DefaultRunContext)runContext).getApplicationContext().getBean(StorageInterface.class);
+        StorageInterface storage = ((DefaultRunContext) runContext).getApplicationContext().getBean(StorageInterface.class);
         URI namespaceFilePrefix = URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/");
         if (this.namespaceFilesDirectory != null) {
             String renderedNamespaceFilesDirectory = runContext.render(this.namespaceFilesDirectory).as(String.class).orElseThrow();
@@ -253,7 +252,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
                 }
 
                 if (!dryRun) {
-                    URI fileUri = finalNamespaceFilePrefix.resolve(path.replace("\\","/").substring(1));
+                    URI fileUri = finalNamespaceFilePrefix.resolve(path.replace("\\", "/").substring(1));
                     if (contentByFilePath.getValue() == null) {
                         storage.createDirectory(tenantId, namespace, fileUri);
                     } else {

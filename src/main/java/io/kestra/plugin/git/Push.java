@@ -105,14 +105,15 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
                         url: https://github.com/kestra-io/scripts
                       - id: generate_data
                         type: io.kestra.plugin.scripts.python.Commands
-                        docker:
-                          image: ghcr.io/kestra-io/pydata:latest
+                        taskRunner:
+                          type: io.kestra.plugin.scripts.runner.docker.Docker
+                        containerImage: ghcr.io/kestra-io/pydata:latest
                         commands:
                           - python generate_data/generate_orders.py
                       - id: push
                         type: io.kestra.plugin.git.Push
                         username: git_username
-                        password: myPAT
+                        password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
                         branch: feature_branch
                         inputFiles:
                           to_commit/avg_order.txt: "{{ outputs.generate_data.vars.average_order }}"
@@ -125,7 +126,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
 )
 public class Push extends AbstractCloningTask implements RunnableTask<Push.Output>, NamespaceFilesInterface, InputFilesInterface {
     @Schema(
-        title = "The optional directory associated with the clone operation.",
+        title = "The optional directory associated with the push operation.",
         description = "If the directory isn't set, the current directory will be used."
     )
     private Property<String> directory;
@@ -265,7 +266,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
             String tenantId = flowProps.get("tenantId");
             String namespace = flowProps.get("namespace");
 
-            FlowRepositoryInterface flowRepository = ((DefaultRunContext)runContext).getApplicationContext().getBean(FlowRepositoryInterface.class);
+            FlowRepositoryInterface flowRepository = ((DefaultRunContext) runContext).getApplicationContext().getBean(FlowRepositoryInterface.class);
 
             List<FlowWithSource> flows;
             if (Boolean.TRUE.equals(runContext.render(this.flows.childNamespaces).as(Boolean.class).orElse(true))) {
