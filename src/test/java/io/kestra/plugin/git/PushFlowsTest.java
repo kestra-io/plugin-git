@@ -610,6 +610,119 @@ public class PushFlowsTest extends AbstractGitTest {
         }
     }
 
+    @Test
+    void defaultCase_DeletePropertyFalse_PreservesExistingFiles() throws Exception {
+        String tenantId = TenantService.MAIN_TENANT;
+        String sourceNamespace = IdUtils.create().toLowerCase();
+        String targetNamespace = IdUtils.create().toLowerCase();
+        String branch = IdUtils.create();
+        String gitDirectory = "my-flows";
+
+        FlowWithSource keepFlow = this.createFlow(tenantId, "keep-flow", sourceNamespace);
+        FlowWithSource deleteFromKestraFlow = this.createFlow(tenantId, "delete-from-kestra", sourceNamespace);
+
+        try {
+            RunContext runContext1 = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
+
+            PushFlows firstPush = PushFlows.builder()
+                .id("pushFlows")
+                .type(PushFlows.class.getName())
+                .branch(Property.ofExpression("{{branch}}"))
+                .url(Property.ofExpression("{{url}}"))
+                .commitMessage(new Property<>("First push - both flows"))
+                .username(Property.ofExpression("{{pat}}"))
+                .password(Property.ofExpression("{{pat}}"))
+                .authorEmail(Property.ofExpression("{{email}}"))
+                .authorName(Property.ofExpression("{{name}}"))
+                .sourceNamespace(Property.ofExpression("{{sourceNamespace}}"))
+                .targetNamespace(Property.ofExpression("{{targetNamespace}}"))
+                .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+                .delete(Property.ofValue(false))
+                .build();
+
+            PushFlows.Output firstOutput = firstPush.run(runContext1);
+            assertThat(firstOutput.getCommitURL(), notNullValue());
+
+            Clone clone = Clone.builder()
+                .id("clone")
+                .type(Clone.class.getName())
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
+                .build();
+
+            Clone.Output cloneOutput = clone.run(runContextFactory.of());
+            File keepFlowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, keepFlow.getId() + ".yml").toString());
+            File deleteFromKestraFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, deleteFromKestraFlow.getId() + ".yml").toString());
+
+            assertThat("both files should exist after first push", keepFlowFile.exists() && deleteFromKestraFile.exists(), is(true));
+
+            flowRepositoryInterface.delete(deleteFromKestraFlow);
+
+            RunContext runContext2 = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
+
+            PushFlows secondPush = PushFlows.builder()
+                .id("pushFlows")
+                .type(PushFlows.class.getName())
+                .branch(Property.ofExpression("{{branch}}"))
+                .url(Property.ofExpression("{{url}}"))
+                .commitMessage(new Property<>("Second push - delete=false"))
+                .username(Property.ofExpression("{{pat}}"))
+                .password(Property.ofExpression("{{pat}}"))
+                .authorEmail(Property.ofExpression("{{email}}"))
+                .authorName(Property.ofExpression("{{name}}"))
+                .sourceNamespace(Property.ofExpression("{{sourceNamespace}}"))
+                .targetNamespace(Property.ofExpression("{{targetNamespace}}"))
+                .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+                .delete(Property.ofValue(false))
+                .build();
+
+            PushFlows.Output secondOutput = secondPush.run(runContext2);
+
+            cloneOutput = clone.run(runContextFactory.of());
+            keepFlowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, keepFlow.getId() + ".yml").toString());
+            deleteFromKestraFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, deleteFromKestraFlow.getId() + ".yml").toString());
+
+            assertThat("keep file should be there", keepFlowFile.exists(), is(true));
+            assertThat("file should still exist in Git after delete=false push", deleteFromKestraFile.exists(), is(true));
+
+            RunContext runContext3 = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
+
+            PushFlows thirdPush = PushFlows.builder()
+                .id("pushFlows")
+                .type(PushFlows.class.getName())
+                .branch(Property.ofExpression("{{branch}}"))
+                .url(Property.ofExpression("{{url}}"))
+                .commitMessage(new Property<>("Third push - delete=true"))
+                .username(Property.ofExpression("{{pat}}"))
+                .password(Property.ofExpression("{{pat}}"))
+                .authorEmail(Property.ofExpression("{{email}}"))
+                .authorName(Property.ofExpression("{{name}}"))
+                .sourceNamespace(Property.ofExpression("{{sourceNamespace}}"))
+                .targetNamespace(Property.ofExpression("{{targetNamespace}}"))
+                .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+                .delete(Property.ofValue(true))
+                .build();
+
+            PushFlows.Output thirdOutput = thirdPush.run(runContext3);
+            assertThat(thirdOutput.getCommitId(), notNullValue());
+
+            cloneOutput = clone.run(runContextFactory.of());
+            keepFlowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, keepFlow.getId() + ".yml").toString());
+            deleteFromKestraFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, deleteFromKestraFlow.getId() + ".yml").toString());
+
+            assertThat("keep file should still exist", keepFlowFile.exists(), is(true));
+            assertThat("file should be deleted from Git after delete=true push", deleteFromKestraFile.exists(), is(false));
+
+        } finally {
+            try {
+                RunContext cleanupContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
+                this.deleteRemoteBranch(cleanupContext.workingDir().path(), branch);
+            } catch (Exception ignored) {}
+        }
+    }
+
     private RunContext runContext(String tenantId, String repositoryUrl, String gitUserEmail, String gitUserName, String branch, String sourceNamespace, String targetNamespace, String gitDirectory) {
         return runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory, null, false);
     }

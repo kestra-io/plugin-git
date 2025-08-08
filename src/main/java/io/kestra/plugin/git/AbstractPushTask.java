@@ -19,7 +19,6 @@ import lombok.experimental.SuperBuilder;
 import org.eclipse.jgit.api.AddCommand;
 import org.eclipse.jgit.api.DiffCommand;
 import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.RmCommand;
 import org.eclipse.jgit.api.errors.EmptyCommitException;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.diff.DiffEntry;
@@ -38,14 +37,18 @@ import org.slf4j.Logger;
 import java.io.*;
 import java.net.URI;
 import java.nio.file.FileSystems;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
-import java.util.stream.Stream;
 
 import static io.kestra.core.utils.Rethrow.*;
+import static java.nio.file.FileVisitResult.CONTINUE;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
 
@@ -84,6 +87,13 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
     )
     private Property<String> authorName;
 
+    @Schema(
+        title = "Whether to delete flows/files from Git that are no longer present in Kestra.",
+        description = "If `true` (default), files present in Git but not in Kestra will be deleted from the Git repository."
+    )
+    @Builder.Default
+    private Property<Boolean> delete = Property.ofValue(true);
+
     public abstract Property<String> getCommitMessage();
 
     public abstract Property<String> getGitDirectory();
@@ -104,32 +114,76 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
      * Removes any file from the remote that is no longer present on the instance
      */
     private void deleteOutdatedResources(Git git, Path basePath, Map<Path, Supplier<InputStream>> contentByPath, List<String> globs) throws IOException, GitAPIException {
-        try (Stream<Path> paths = Files.walk(basePath)) {
-            Stream<Path> filteredPathsStream = paths.filter(path ->
-                !contentByPath.containsKey(path) &&
-                    !path.getFileName().toString().equals(".git") &&
-                    !path.equals(basePath)
-            );
+        if (!Files.exists(basePath)) return;
 
-            if (globs != null) {
-                List<PathMatcher> matchers = globs.stream().map(glob -> FileSystems.getDefault().getPathMatcher("glob:" + glob)).toList();
-                filteredPathsStream = filteredPathsStream.filter(path -> matchers.stream().anyMatch(matcher ->
-                    matcher.matches(path) ||
-                        matcher.matches(path.getFileName())
-                ));
+        var workTree = git.getRepository().getWorkTree().toPath().toRealPath();
+        var baseDir = basePath.toRealPath();
+        var prefix = workTree.relativize(baseDir).toString().replace(File.separatorChar, '/');
+
+        var keep = new HashSet<String>();
+        for (var k : contentByPath.keySet()) {
+            var rel = (prefix.isEmpty() ? baseDir.relativize(k.normalize()) : Path.of(prefix).resolve(baseDir.relativize(k.normalize())))
+                .toString().replace(File.separatorChar, '/');
+            keep.add(rel);
+        }
+
+        var matchers = (globs == null || globs.isEmpty()) ? null
+            : globs.stream().map(g -> FileSystems.getDefault().getPathMatcher("glob:" + g)).toArray(PathMatcher[]::new);
+
+        var rm = git.rm();
+        var changed = new AtomicBoolean(false);
+
+        Files.walkFileTree(baseDir, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+                // to avoid to visit .git unnecessarily
+                return ".git".equals(dir.getFileName().toString())
+                    ? FileVisitResult.SKIP_SUBTREE
+                    : CONTINUE;
             }
-
-            List<String> filteredPaths = filteredPathsStream
-                .map(path -> git.getRepository().getWorkTree().toPath().relativize(path).toString())
-                .toList();
-            if (filteredPaths.isEmpty()) {
-                return;
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                if (!attrs.isRegularFile()) return CONTINUE;
+                Path real = file.toRealPath();
+                if (!real.startsWith(workTree)) return CONTINUE;
+                Path baseRel = baseDir.relativize(real);
+                String rel = toUnix(prefix.isEmpty() ? baseRel : Path.of(prefix).resolve(baseRel));
+                if (keep.contains(rel)) return CONTINUE;
+                String gitRel = toUnix(workTree.relativize(real));
+                if (matchers != null) {
+                    String name = real.getFileName().toString();
+                    String stem = getStem(name);
+                    if (!matchesAny(matchers, gitRel, name, stem)) return CONTINUE;
+                }
+                rm.addFilepattern(gitRel);
+                changed.set(true);
+                return CONTINUE;
             }
+        });
 
-            RmCommand rm = git.rm();
-            filteredPaths.forEach(rm::addFilepattern);
+        if (changed.get()) {
             rm.call();
         }
+    }
+
+    private static String toUnix(Path path) {
+        return path.toString().replace(File.separatorChar, '/');
+    }
+
+    private static String getStem(String filename) {
+        int dot = filename.lastIndexOf('.');
+        return dot > 0 ? filename.substring(0, dot) : filename;
+    }
+
+    private static boolean matchesAny(PathMatcher[] matchers, String... candidates) {
+        if (matchers == null) return true;
+        for (String s : candidates) {
+            Path p = Path.of(s);
+            for (PathMatcher m : matchers) {
+                if (m.matches(p)) return true;
+            }
+        }
+        return false;
     }
 
     private void writeResourceFiles(Map<Path, Supplier<InputStream>> contentByPath) throws Exception {
@@ -324,7 +378,10 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
 
         Map<Path, Supplier<InputStream>> contentByPath = this.instanceResourcesContentByPath(runContext, localGitDirectory, globs);
 
-        this.deleteOutdatedResources(git, localGitDirectory, contentByPath, globs);
+        boolean rDelete = runContext.render(this.delete).as(Boolean.class).orElse(true);
+        if (rDelete) {
+            this.deleteOutdatedResources(git, localGitDirectory, contentByPath, globs);
+        }
 
         this.writeResourceFiles(contentByPath);
 
