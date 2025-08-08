@@ -46,7 +46,9 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
 @EqualsAndHashCode
 @Getter
 @NoArgsConstructor
+@Deprecated(since = "1.0.0", forRemoval = true)
 @Schema(
+    deprecated = true,
     title = "Commit and push files to a Git repository.",
     description = """
         Replaced by [PushFlows](https://kestra.io/plugins/plugin-git/tasks/io.kestra.plugin.git.pushflows) and [PushNamespaceFiles](https://kestra.io/plugins/plugin-git/tasks/io.kestra.plugin.git.pushnamespacefiles) for flow and namespace files push scenario. You can add `inputFiles` to be committed and pushed. Furthermore, you can use this task in combination with the `Clone` task so that you can first clone the repository, then add or modify files and push to Git afterwards. " +
