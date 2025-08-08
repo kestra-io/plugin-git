@@ -16,6 +16,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
+import lombok.extern.slf4j.Slf4j;
 import org.eclipse.jgit.api.AddCommand;
 import org.eclipse.jgit.api.DiffCommand;
 import org.eclipse.jgit.api.Git;
@@ -41,8 +42,10 @@ import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static io.kestra.core.utils.Rethrow.*;
@@ -52,6 +55,7 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
 @SuperBuilder(toBuilder = true)
 @NoArgsConstructor
 @Getter
+@Slf4j
 public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extends AbstractCloningTask implements RunnableTask<O> {
     private static final List<RemoteRefUpdate.Status> REJECTION_STATUS = Arrays.asList(
         REJECTED_NONFASTFORWARD,
@@ -84,6 +88,13 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
     )
     private Property<String> authorName;
 
+    @Schema(
+        title = "Whether to delete flows/files from Git that are no longer present in Kestra.",
+        description = "If `true` (default), files present in Git but not in Kestra will be deleted from the Git repository. If `false`, only additions and modifications will be pushed, preserving existing files in Git."
+    )
+    @Builder.Default
+    private Property<Boolean> delete = Property.ofValue(false);
+
     public abstract Property<String> getCommitMessage();
 
     public abstract Property<String> getGitDirectory();
@@ -103,34 +114,48 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
     /**
      * Removes any file from the remote that is no longer present on the instance
      */
-    private void deleteOutdatedResources(Git git, Path basePath, Map<Path, Supplier<InputStream>> contentByPath, List<String> globs) throws IOException, GitAPIException {
+    private void deleteOutdatedResources(Git git, Path basePath, Map<Path, Supplier<InputStream>> contentByPath, List<String> globs) throws Exception {
+        if (!Files.exists(basePath)) {
+            return;
+        }
+
+        Set<String> keepFiles = contentByPath.keySet().stream()
+            .map(path -> path.toAbsolutePath().normalize().toString())
+            .collect(Collectors.toSet());
+
+        List<String> filesToDelete = new ArrayList<>();
+
         try (Stream<Path> paths = Files.walk(basePath)) {
-            Stream<Path> filteredPathsStream = paths.filter(path ->
-                !contentByPath.containsKey(path) &&
-                    !path.getFileName().toString().equals(".git") &&
-                    !path.equals(basePath)
-            );
+            paths.filter(Files::isRegularFile)
+                .filter(file -> {
+                    String normalizedFile = file.toAbsolutePath().normalize().toString();
+                    return !keepFiles.contains(normalizedFile);
+                })
+                .forEach(file -> {
+                    try {
 
-            if (globs != null) {
-                List<PathMatcher> matchers = globs.stream().map(glob -> FileSystems.getDefault().getPathMatcher("glob:" + glob)).toList();
-                filteredPathsStream = filteredPathsStream.filter(path -> matchers.stream().anyMatch(matcher ->
-                    matcher.matches(path) ||
-                        matcher.matches(path.getFileName())
-                ));
+                        Path gitWorkTree = git.getRepository().getWorkTree().toPath();
+                        Path relativePath = gitWorkTree.relativize(file);
+                        String relativePathStr = relativePath.toString().replace('\\', '/');
+
+                        Files.deleteIfExists(file);
+
+                        filesToDelete.add(relativePathStr);
+                    } catch (Exception e) {
+                        log.info("Failed to delete file: {} - {}", file, e.getMessage());
+                    }
+                });
+        }
+
+        if (!filesToDelete.isEmpty()) {
+            RmCommand rmCommand = git.rm();
+            for (String relativePath : filesToDelete) {
+                rmCommand.addFilepattern(relativePath);
             }
-
-            List<String> filteredPaths = filteredPathsStream
-                .map(path -> git.getRepository().getWorkTree().toPath().relativize(path).toString())
-                .toList();
-            if (filteredPaths.isEmpty()) {
-                return;
-            }
-
-            RmCommand rm = git.rm();
-            filteredPaths.forEach(rm::addFilepattern);
-            rm.call();
+            rmCommand.call();
         }
     }
+
 
     private void writeResourceFiles(Map<Path, Supplier<InputStream>> contentByPath) throws Exception {
         contentByPath.forEach(throwBiConsumer((path, content) -> this.writeResourceFile(path, content.get())));
@@ -321,7 +346,10 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
 
         Map<Path, Supplier<InputStream>> contentByPath = this.instanceResourcesContentByPath(runContext, localGitDirectory, globs);
 
-        this.deleteOutdatedResources(git, localGitDirectory, contentByPath, globs);
+        boolean rDelete = runContext.render(this.delete).as(Boolean.class).orElse(false);
+        if (rDelete) {
+            this.deleteOutdatedResources(git, localGitDirectory, contentByPath, globs);
+        }
 
         this.writeResourceFiles(contentByPath);
 
