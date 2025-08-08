@@ -54,7 +54,7 @@ import java.nio.file.Path;
                     url: https://github.com/kestra-io/examples
                     branch: main
                     username: git_username
-                    password: your_personal_access_token
+                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
                 """
         ),
         @Example(
