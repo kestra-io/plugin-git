@@ -79,6 +79,9 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
 
     @Override
     public Output run(RunContext runContext) throws Exception {
+        // we add this method to configure ssl to allow self signed certs
+        configureEnvironmentWithSsl(runContext);
+
         GitService gitService = new GitService(this);
         FlowService flowService = ((DefaultRunContext) runContext).getApplicationContext().getBean(FlowService.class);
 

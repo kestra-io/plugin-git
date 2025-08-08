@@ -1,6 +1,5 @@
 package io.kestra.plugin.git;
 
-import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.Task;
 import io.kestra.core.runners.RunContext;
@@ -12,7 +11,21 @@ import lombok.experimental.SuperBuilder;
 import org.eclipse.jgit.api.TransportCommand;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 
+import javax.net.ssl.*;
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.KeyStore;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collection;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
 @SuperBuilder(toBuilder = true)
@@ -21,19 +34,18 @@ import java.util.regex.Pattern;
 public abstract class AbstractGitTask extends Task {
     private static final Pattern PEBBLE_TEMPLATE_PATTERN = Pattern.compile("^\\s*\\{\\{");
 
-    @Schema(
-        title = "The URI to clone from."
-    )
+    // Replaces the boolean flag with a configuration key to allow reconfiguration when the PEM changes.
+    // Possible values: "JVM" or "PEM:<sha256-of-file-bytes>"
+    private static final AtomicReference<String> SSL_CONFIGURED_KEY = new AtomicReference<>(null);
+    private static final Object SSL_CONFIG_LOCK = new Object();
+
+    @Schema(title = "The URI to clone from.")
     protected Property<String> url;
 
-    @Schema(
-        title = "The username or organization."
-    )
+    @Schema(title = "The username or organization.")
     protected Property<String> username;
 
-    @Schema(
-        title = "The password or Personal Access Token (PAT). When you authenticate the task with a PAT, any flows or files pushed to Git from Kestra will be pushed from the user associated with that PAT. This way, you don't need to configure the commit author (the `authorName` and `authorEmail` properties)."
-    )
+    @Schema(title = "The password or Personal Access Token (PAT). When you authenticate the task with a PAT, any flows or files pushed to Git from Kestra will be pushed from the user associated with that PAT. This way, you don't need to configure the commit author (the `authorName` and `authorEmail` properties).")
     protected Property<String> password;
 
     @Schema(
@@ -43,16 +55,186 @@ public abstract class AbstractGitTask extends Task {
     )
     protected Property<String> privateKey;
 
-    @Schema(
-        title = "The passphrase for the `privateKey`."
-    )
+    @Schema(title = "The passphrase for the `privateKey`.")
     protected Property<String> passphrase;
 
-
     @Schema(
-        title = "The initial Git branch."
+        title = "Optional path to a PEM-encoded CA certificate to trust (in addition to the JVM default truststore).",
+        description = "Equivalent to `git config http.sslCAInfo <path>`. Use this for self-signed/internal CAs."
     )
+    protected Property<String> trustedCaPemPath;
+
+    @Schema(title = "The initial Git branch.")
     public abstract Property<String> getBranch();
+
+    /**
+     * Configure a secure SSLContext based on either:
+     * - the JVM default truststore ("JVM" key), or
+     * - a composite trust manager (PEM trust + JVM trust) when a PEM path is provided ("PEM:<sha256>").
+     * This method is idempotent and will reconfigure the global SSLContext if and only if the desired key changes.
+     */
+    protected void configureEnvironmentWithSsl(RunContext runContext) throws Exception {
+        // Render potential PEM path
+        String pemPath = trustedCaPemPath == null ? null :
+            runContext.render(trustedCaPemPath).as(String.class).orElse(null);
+
+        // Compute desired configuration key for this run
+        String desiredKey = computeDesiredSslKey(pemPath);
+
+        // Fast-path: already configured with this key
+        if (desiredKey.equals(SSL_CONFIGURED_KEY.get())) {
+            runContext.logger().debug("SSLContext already configured with key: {}", desiredKey);
+            return;
+        }
+
+        synchronized (SSL_CONFIG_LOCK) {
+            if (desiredKey.equals(SSL_CONFIGURED_KEY.get())) {
+                return;
+            }
+
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+
+            if (pemPath != null && !pemPath.isBlank()) {
+                // Build composite TrustManager: [custom-from-PEM, jvm-default]
+                X509TrustManager customTm = buildTrustManagerFromPem(Path.of(pemPath));
+                X509TrustManager jvmTm = buildJvmDefaultTrustManager();
+                X509TrustManager composite = new CompositeX509TrustManager(List.of(customTm, jvmTm));
+                sslContext.init(null, new TrustManager[]{composite}, new SecureRandom());
+                runContext.logger().info("Configured SSLContext with PEM: {}", pemPath);
+            } else {
+                // JVM default only
+                X509TrustManager jvmTm = buildJvmDefaultTrustManager();
+                sslContext.init(null, new TrustManager[]{jvmTm}, new SecureRandom());
+                runContext.logger().info("Configured SSLContext with JVM default truststore");
+            }
+
+            // Apply as global defaults for JGit/HttpClient
+            SSLContext.setDefault(sslContext);
+            HttpsURLConnection.setDefaultSSLSocketFactory(sslContext.getSocketFactory());
+            // Keep default HostnameVerifier (strict)
+
+            SSL_CONFIGURED_KEY.set(desiredKey);
+            runContext.logger().debug("SSL configured key now: {}", desiredKey);
+        }
+    }
+
+    // Builds a key representing the desired SSL configuration.
+    // "JVM" when no PEM is used, or "PEM:<sha256-of-bytes>" when a PEM file is provided.
+    private static String computeDesiredSslKey(String pemPath) throws Exception {
+        if (pemPath == null || pemPath.isBlank()) {
+            return "JVM";
+        }
+        byte[] bytes = Files.readAllBytes(Path.of(pemPath));
+        byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
+        return "PEM:" + Base64.getEncoder().encodeToString(digest);
+    }
+
+    private static X509TrustManager buildJvmDefaultTrustManager() throws Exception {
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init((KeyStore) null); // use default JVM truststore
+        for (TrustManager tm : tmf.getTrustManagers()) {
+            if (tm instanceof X509TrustManager) {
+                return (X509TrustManager) tm;
+            }
+        }
+        throw new IllegalStateException("No X509TrustManager found in JVM default TrustManagerFactory");
+    }
+
+    private static X509TrustManager buildTrustManagerFromPem(Path pemFile) throws Exception {
+        byte[] bytes = Files.readAllBytes(pemFile);
+
+        // Try to load one or multiple certs from the PEM
+        CertificateFactory cf = CertificateFactory.getInstance("X.509");
+        Collection<X509Certificate> certs = new ArrayList<>();
+        try (ByteArrayInputStream bais = new ByteArrayInputStream(bytes)) {
+            // Works for single PEM and also multiple certs concatenated in many JDKs
+            var cert = (X509Certificate) cf.generateCertificate(bais);
+            certs.add(cert);
+            while (bais.available() > 0) {
+                X509Certificate c = (X509Certificate) cf.generateCertificate(bais);
+                if (c != null) certs.add(c);
+            }
+        } catch (Exception e) {
+            // Fallback: try generateCertificates (PKCS#7 or multiple certs)
+            try (ByteArrayInputStream bais = new ByteArrayInputStream(bytes)) {
+                for (var c : cf.generateCertificates(bais)) {
+                    certs.add((X509Certificate) c);
+                }
+            }
+        }
+
+        if (certs.isEmpty()) {
+            throw new IllegalArgumentException("No X.509 certificate found in PEM file: " + pemFile);
+        }
+
+        // Put certs in an in-memory KeyStore
+        KeyStore ks = KeyStore.getInstance(KeyStore.getDefaultType());
+        ks.load(null);
+        int i = 0;
+        for (X509Certificate c : certs) {
+            ks.setCertificateEntry("custom-ca-" + (i++), c);
+        }
+
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(ks);
+
+        for (TrustManager tm : tmf.getTrustManagers()) {
+            if (tm instanceof X509TrustManager) {
+                return (X509TrustManager) tm;
+            }
+        }
+        throw new IllegalStateException("No X509TrustManager found in custom TrustManagerFactory from PEM");
+    }
+
+    /**
+     * Simple composite X509TrustManager that tries each delegate in order and succeeds if any trusts the chain.
+     */
+    private static final class CompositeX509TrustManager implements X509TrustManager {
+        private final List<X509TrustManager> delegates;
+
+        private CompositeX509TrustManager(List<X509TrustManager> delegates) {
+            this.delegates = List.copyOf(delegates);
+        }
+
+        @Override
+        public void checkClientTrusted(X509Certificate[] chain, String authType) throws java.security.cert.CertificateException {
+            java.security.cert.CertificateException last = null;
+            for (X509TrustManager tm : delegates) {
+                try {
+                    tm.checkClientTrusted(chain, authType);
+                    return;
+                } catch (java.security.cert.CertificateException e) {
+                    last = e;
+                }
+            }
+            throw (last != null) ? last : new java.security.cert.CertificateException("No trust manager accepted client chain");
+        }
+
+        @Override
+        public void checkServerTrusted(X509Certificate[] chain, String authType) throws java.security.cert.CertificateException {
+            java.security.cert.CertificateException last = null;
+            for (X509TrustManager tm : delegates) {
+                try {
+                    tm.checkServerTrusted(chain, authType);
+                    return;
+                } catch (java.security.cert.CertificateException e) {
+                    last = e;
+                }
+            }
+            throw (last != null) ? last : new java.security.cert.CertificateException("No trust manager accepted server chain");
+        }
+
+        @Override
+        public X509Certificate[] getAcceptedIssuers() {
+            List<X509Certificate> all = new ArrayList<>();
+            for (X509TrustManager tm : delegates) {
+                for (X509Certificate c : tm.getAcceptedIssuers()) {
+                    all.add(c);
+                }
+            }
+            return all.toArray(new X509Certificate[0]);
+        }
+    }
 
     public <T extends TransportCommand<T, ?>> T authentified(T command, RunContext runContext) throws Exception {
         if (this.username != null && this.password != null) {
@@ -71,5 +253,4 @@ public abstract class AbstractGitTask extends Task {
 
         return command;
     }
-
 }

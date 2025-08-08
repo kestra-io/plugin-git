@@ -298,6 +298,9 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
     }
 
     public O run(RunContext runContext) throws Exception {
+        // we add this method to configure ssl to allow self signed certs
+        configureEnvironmentWithSsl(runContext);
+
         GitService gitService = new GitService(this);
 
         gitService.namespaceAccessGuard(runContext, this.fetchedNamespace());
