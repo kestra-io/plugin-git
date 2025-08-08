@@ -1,10 +1,9 @@
 package io.kestra.plugin.git;
 
-import io.kestra.core.http.client.configurations.SslOptions;
+import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
-import io.kestra.core.junit.annotations.KestraTest;
 import jakarta.inject.Inject;
 import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.errors.TransportException;
@@ -67,9 +66,7 @@ class CloneTest extends AbstractGitTest {
             .url(Property.ofValue(giteaRepoUrl))
             .username(Property.ofValue(giteaUserName))
             .password(Property.ofValue(giteaPat))
-            .sslOptions(SslOptions.builder()
-                .insecureTrustAllCertificates(Property.ofValue(true))
-                .build())
+            .trustedCaPemPath(Property.ofValue(giteaCaPemPath))
             .build();
 
         Clone.Output runOutput = task.run(runContext);
@@ -89,16 +86,13 @@ class CloneTest extends AbstractGitTest {
             .url(Property.ofValue(giteaRepoUrl))
             .username(Property.ofValue(giteaUserName))
             .password(Property.ofValue(giteaPat))
-            .sslOptions(SslOptions.builder()
-                .insecureTrustAllCertificates(Property.ofValue(false))
-                .build())
             .build();
 
-        TransportException ex = assertThrows(TransportException.class, () -> {
-            task.run(runContext);
-        });
+        TransportException ex = assertThrows(TransportException.class, () -> task.run(runContext));
 
-        assertThat(ex.getMessage(),
-            containsString("Secure connection to https://localhost:3443/gitea_admin/kestra-test.git could not be established because of SSL problems"));
+        assertThat(
+            ex.getMessage(),
+            containsString("Secure connection to https://localhost:3443/gitea_admin/kestra-test.git could not be established because of SSL problems")
+        );
     }
 }

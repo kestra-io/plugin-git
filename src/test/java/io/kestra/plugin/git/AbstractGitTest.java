@@ -26,4 +26,7 @@ public abstract class AbstractGitTest {
 
     @Value("${kestra.gitea.user.name}")
     protected String giteaUserName;
+
+    @Value("${kestra.gitea.ca-pem-path:}")
+    protected String giteaCaPemPath;
 }
