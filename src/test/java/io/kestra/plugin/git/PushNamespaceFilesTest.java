@@ -2,6 +2,7 @@ package io.kestra.plugin.git;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import io.kestra.core.exceptions.KestraRuntimeException;
+import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
@@ -12,7 +13,6 @@ import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.Rethrow;
 import io.kestra.plugin.git.services.GitService;
-import io.kestra.core.junit.annotations.KestraTest;
 import jakarta.inject.Inject;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
@@ -28,6 +28,7 @@ import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -505,6 +506,119 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
         });
     }
 
+    @Test
+    void kestraIgnore_IgnoresPushAndSkipsDeletion() throws Exception {
+        String tenantId = TenantService.MAIN_TENANT;
+        String namespace = IdUtils.create().toLowerCase();
+        String branch = IdUtils.create();
+        String gitDirectory = "my-files";
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory);
+
+        // Clone seed OUTSIDE the workingDir so that workingDir remains empty for the task's clone
+        Path seedClone = Files.createTempDirectory("seed-clone-");
+
+        try (Git git = Git.cloneRepository()
+            .setURI(repositoryUrl)
+            .setDirectory(seedClone.toFile())
+            .setCredentialsProvider(new UsernamePasswordCredentialsProvider(pat, pat))
+            .call()) {
+
+            git.checkout().setCreateBranch(true).setName(branch).call();
+
+            Path dir = seedClone.resolve(gitDirectory);
+            Files.createDirectories(dir);
+            Files.writeString(
+                dir.resolve(".kestraignore"),
+                String.join("\n",
+                    "ignored-file.txt",
+                    "ignored-dir/"
+                ),
+                StandardCharsets.UTF_8
+            );
+
+            Path ignoredDir = dir.resolve("ignored-dir");
+            Files.createDirectories(ignoredDir);
+            Files.writeString(ignoredDir.resolve("existing.txt"), "pre-existing ignored content", StandardCharsets.UTF_8);
+
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("seed: add .kestraignore and pre-existing ignored file").call();
+            git.push().setCredentialsProvider(new UsernamePasswordCredentialsProvider(pat, pat)).call();
+        }
+
+        // Put files in namespace storage: one ignored and one included
+        String ignoredFilePath = "ignored-file.txt";
+        String includedFilePath = "included.txt";
+        storage.put(tenantId, namespace,
+            URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + ignoredFilePath),
+            new ByteArrayInputStream("IGNORED".getBytes(StandardCharsets.UTF_8)));
+        storage.put(tenantId, namespace,
+            URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + includedFilePath),
+            new ByteArrayInputStream("INCLUDED".getBytes(StandardCharsets.UTF_8)));
+
+        PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
+            .id("pushNamespaceFiles-kestraignore")
+            .type(PushNamespaceFiles.class.getName())
+            .branch(new Property<>("{{branch}}"))
+            .url(new Property<>("{{url}}"))
+            .commitMessage(new Property<>("Push from CI - {{description}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .authorEmail(new Property<>("{{email}}"))
+            .authorName(new Property<>("{{name}}"))
+            .namespace(new Property<>("{{namespace}}"))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .build();
+
+        try {
+            PushNamespaceFiles.Output pushOutput = pushNamespaceFiles.run(runContext);
+
+            // Fresh clone to verify state after push (this uses workingDir but it's fine post-run)
+            Clone clone = Clone.builder()
+                .id("clone")
+                .type(Clone.class.getName())
+                .url(new Property<>(repositoryUrl))
+                .username(new Property<>(pat))
+                .password(new Property<>(pat))
+                .branch(new Property<>(branch))
+                .build();
+
+            RunContext cloneRunContext = runContextFactory.of();
+            Clone.Output cloneOutput = clone.run(cloneRunContext);
+            Path repoDir = Path.of(cloneOutput.getDirectory());
+
+            File included = new File(repoDir.resolve(gitDirectory).toFile(), includedFilePath);
+            assertThat(included.exists(), is(true));
+            assertThat(FileUtils.readFileToString(included, StandardCharsets.UTF_8), is("INCLUDED"));
+
+            File ignored = new File(repoDir.resolve(gitDirectory).toFile(), ignoredFilePath);
+            assertThat(ignored.exists(), is(false));
+
+            File preserved = new File(repoDir.resolve(gitDirectory).toFile(), "ignored-dir/existing.txt");
+            assertThat(preserved.exists(), is(true));
+            assertThat(FileUtils.readFileToString(preserved, StandardCharsets.UTF_8), is("pre-existing ignored content"));
+
+            assertDiffs(
+                runContext,
+                pushOutput.diffFileUri(),
+                List.of(
+                    Map.of("additions", "+1", "deletions", "-0", "changes", "0", "file", gitDirectory + "/" + includedFilePath)
+                )
+            );
+
+            RevCommit revCommit = assertIsLastCommit(cloneRunContext, pushOutput);
+            assertThat(revCommit.getFullMessage(), is("Push from CI - " + DESCRIPTION));
+            assertAuthor(revCommit, gitUserEmail, gitUserName);
+        } finally {
+            // Clean up remote branch using the seed clone path
+            try {
+                this.deleteRemoteBranch(seedClone, branch);
+            } finally {
+                // Best effort local cleanup
+                FileUtils.deleteQuietly(seedClone.toFile());
+            }
+        }
+    }
 
     private RunContext runContext(String tenantId, String url, String authorEmail, String authorName, String branch, String namespace, String gitDirectory) {
         return runContextFactory.of(Map.of(

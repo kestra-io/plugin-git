@@ -9,6 +9,7 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.core.utils.KestraIgnore;
 import io.kestra.plugin.git.services.GitService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.annotation.Nullable;
@@ -36,12 +37,7 @@ import org.slf4j.Logger;
 
 import java.io.*;
 import java.net.URI;
-import java.nio.file.FileSystems;
-import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.PathMatcher;
-import java.nio.file.SimpleFileVisitor;
+import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -113,7 +109,7 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
     /**
      * Removes any file from the remote that is no longer present on the instance
      */
-    private void deleteOutdatedResources(Git git, Path basePath, Map<Path, Supplier<InputStream>> contentByPath, List<String> globs) throws IOException, GitAPIException {
+    private void deleteOutdatedResources(Git git, Path basePath, Map<Path, Supplier<InputStream>> contentByPath, List<String> globs, KestraIgnore kestraIgnore) throws IOException, GitAPIException {
         if (!Files.exists(basePath)) return;
 
         var workTree = git.getRepository().getWorkTree().toPath().toRealPath();
@@ -141,19 +137,29 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
                     ? FileVisitResult.SKIP_SUBTREE
                     : CONTINUE;
             }
+
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
                 if (!attrs.isRegularFile()) return CONTINUE;
                 Path real = file.toRealPath();
                 if (!real.startsWith(workTree)) return CONTINUE;
+
                 Path baseRel = baseDir.relativize(real);
                 String rel = toUnix(prefix.isEmpty() ? baseRel : Path.of(prefix).resolve(baseRel));
+
+                String filename = real.getFileName().toString();
+                if (".kestraignore".equals(filename)) return CONTINUE;
+                if (kestraIgnore != null) {
+                    String relToBase = baseDir.relativize(real).toString().replace('\\', '/');
+                    if (kestraIgnore.isIgnoredFile(relToBase, false)) return CONTINUE;
+                }
+
                 if (keep.contains(rel)) return CONTINUE;
+
                 String gitRel = toUnix(workTree.relativize(real));
                 if (matchers != null) {
-                    String name = real.getFileName().toString();
-                    String stem = getStem(name);
-                    if (!matchesAny(matchers, gitRel, name, stem)) return CONTINUE;
+                    String stem = getStem(filename);
+                    if (!matchesAny(matchers, gitRel, filename, stem)) return CONTINUE;
                 }
                 rm.addFilepattern(gitRel);
                 changed.set(true);
@@ -366,11 +372,11 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         List<String> globs = switch (this.globs()) {
             case List<?> globList -> ((List<String>) globList).stream().map(throwFunction(runContext::render)).toList();
             case String globString -> {
-                String renderedValue =  runContext.render(globString);
+                String renderedValue = runContext.render(globString);
                 try {
                     yield MAPPER.readValue(renderedValue, TYPE_REFERENCE);
                 } catch (JsonProcessingException e) {
-                    yield  Collections.singletonList(renderedValue);
+                    yield Collections.singletonList(renderedValue);
                 }
             }
             case null, default -> null;
@@ -378,9 +384,25 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
 
         Map<Path, Supplier<InputStream>> contentByPath = this.instanceResourcesContentByPath(runContext, localGitDirectory, globs);
 
+        KestraIgnore kestraIgnore = new KestraIgnore(localGitDirectory);
+
+        Map<Path, Supplier<InputStream>> filteredContentByPath = new LinkedHashMap<>();
+        for (Map.Entry<Path, Supplier<InputStream>> e : contentByPath.entrySet()) {
+            Path p = e.getKey().normalize();
+            String filename = p.getFileName() != null ? p.getFileName().toString() : "";
+            if (".kestraignore".equals(filename)) {
+                continue;
+            }
+            String rel = localGitDirectory.relativize(p).toString().replace('\\', '/');
+            if (!kestraIgnore.isIgnoredFile(rel, false)) {
+                filteredContentByPath.put(e.getKey(), e.getValue());
+            }
+        }
+        contentByPath = filteredContentByPath;
+
         boolean rDelete = runContext.render(this.delete).as(Boolean.class).orElse(true);
         if (rDelete) {
-            this.deleteOutdatedResources(git, localGitDirectory, contentByPath, globs);
+            this.deleteOutdatedResources(git, localGitDirectory, contentByPath, globs, kestraIgnore);
         }
 
         this.writeResourceFiles(contentByPath);
