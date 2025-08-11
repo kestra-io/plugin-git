@@ -2,7 +2,6 @@ package io.kestra.plugin.git;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
@@ -44,7 +43,9 @@ import static io.kestra.core.utils.Rethrow.*;
 @EqualsAndHashCode
 @Getter
 @NoArgsConstructor
+@Deprecated(since = "1.0.0", forRemoval = true)
 @Schema(
+    deprecated = true,
     title = "Synchronizes the code for Namespace Files and flows based on the current state in Git.",
     description = "Replaced by [SyncFlows](https://kestra.io/plugins/plugin-git/tasks/io.kestra.plugin.git.syncflows) and [SyncNamespaceFiles](https://kestra.io/plugins/plugin-git/tasks/io.kestra.plugin.git.syncnamespacefiles). Files located in `gitDirectory` will be synced with namespace files under `namespaceFilesDirectory` folder. " +
         "Any file not present in the `gitDirectory` but present in `namespaceFilesDirectory` will be deleted from namespace files to ensure that Git remains a single source of truth for your workflow and application code. " +
@@ -134,8 +135,8 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
         // synchronize flows directory to namespace flows
         File flowsDirectory = flowsDirectoryBasePath.toFile();
         if (flowsDirectory.exists()) {
-            FlowRepositoryInterface flowRepository = ((DefaultRunContext)runContext).getApplicationContext().getBean(FlowRepositoryInterface.class);
-            FlowService flowService = ((DefaultRunContext)runContext).getApplicationContext().getBean(FlowService.class);
+            FlowRepositoryInterface flowRepository = ((DefaultRunContext) runContext).getApplicationContext().getBean(FlowRepositoryInterface.class);
+            FlowService flowService = ((DefaultRunContext) runContext).getApplicationContext().getBean(FlowService.class);
 
             Set<String> flowIdsImported = Arrays.stream(flowsDirectory.listFiles())
                 .map(File::toPath)
@@ -213,7 +214,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
                 }), HashMap::putAll);
         }
 
-        StorageInterface storage = ((DefaultRunContext)runContext).getApplicationContext().getBean(StorageInterface.class);
+        StorageInterface storage = ((DefaultRunContext) runContext).getApplicationContext().getBean(StorageInterface.class);
         URI namespaceFilePrefix = URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/");
         if (this.namespaceFilesDirectory != null) {
             String renderedNamespaceFilesDirectory = runContext.render(this.namespaceFilesDirectory).as(String.class).orElseThrow();
@@ -253,7 +254,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
                 }
 
                 if (!dryRun) {
-                    URI fileUri = finalNamespaceFilePrefix.resolve(path.replace("\\","/").substring(1));
+                    URI fileUri = finalNamespaceFilePrefix.resolve(path.replace("\\", "/").substring(1));
                     if (contentByFilePath.getValue() == null) {
                         storage.createDirectory(tenantId, namespace, fileUri);
                     } else {
