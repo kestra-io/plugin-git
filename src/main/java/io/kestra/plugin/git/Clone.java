@@ -150,6 +150,8 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         logger.info("Start cloning from '{}'", url);
 
         try (Git call = cloneCommand.call()) {
+            applyGitConfig(call.getRepository(), runContext);
+
             return Output.builder()
                 .directory(call.getRepository().getDirectory().getParent())
                 .build();
