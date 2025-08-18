@@ -9,6 +9,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.eclipse.jgit.api.TransportCommand;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.lib.StoredConfig;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 
 import javax.net.ssl.*;
@@ -22,9 +24,12 @@ import java.security.SecureRandom;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
@@ -66,6 +71,17 @@ public abstract class AbstractGitTask extends Task {
 
     @Schema(title = "The initial Git branch.")
     public abstract Property<String> getBranch();
+
+    @Schema(
+        title = "Git configuration to apply to the repository.",
+        description = """
+            Map of Git config keys and values, applied after clone.
+            few examples:
+            - 'core.fileMode': false -> ignore file permission changes
+            - 'core.autocrlf': false -> prevent line ending conversion
+        """
+    )
+    protected Property<Map<String, Object>> gitConfig;
 
     /**
      * Configure a secure SSLContext based on either:
@@ -252,5 +268,73 @@ public abstract class AbstractGitTask extends Task {
         }
 
         return command;
+    }
+
+    /**
+     * Apply Git configuration settings to a repository
+     */
+    public void applyGitConfig(Repository repository, RunContext runContext) throws Exception {
+        Map<String, Object> rGitConfig = runContext.render(this.gitConfig).asMap(String.class, Object.class);
+        if (rGitConfig.isEmpty()) {
+            return;
+        }
+
+        StoredConfig gitRepoConfig = repository.getConfig();
+
+        for (Map.Entry<String, Object> entry : rGitConfig.entrySet()) {
+            String key = entry.getKey();
+            Object entryValue = entry.getValue();
+
+            String[] parts = key.split("\\.");
+            if (parts.length < 2) {
+                // The name is actually the section and the key separated by a dot.
+                // Example: "core.fileMode" -> section = "core", name = "fileMode"
+                runContext.logger().warn("invalid git gitRepoConfig key format: {}. The name is actually the section and the key separated by a dot. " +
+                    "Expected 'section.name' or 'section.subsection.name'", key);
+                continue;
+            }
+
+            String section = parts[0].toLowerCase(Locale.ROOT);
+            String name = parts[parts.length - 1];
+            String subsection = (parts.length > 2)
+                ? String.join(".", Arrays.copyOfRange(parts, 1, parts.length - 1))
+                : null;
+
+            if (entryValue == null || (entryValue instanceof String s && s.trim().isEmpty())) {
+                gitRepoConfig.unset(section, subsection, name);
+                runContext.logger().info("Unset git gitRepoConfig {}", key);
+                continue;
+            }
+
+            switch (entryValue) {
+                case Boolean b -> gitRepoConfig.setBoolean(section, subsection, name, b);
+
+                case Number n -> {
+                    long lValue = n.longValue();
+                    if (n.doubleValue() == (double) lValue && lValue >= Integer.MIN_VALUE && lValue <= Integer.MAX_VALUE) {
+                        gitRepoConfig.setInt(section, subsection, name, (int) lValue);
+                    } else {
+                        gitRepoConfig.setString(section, subsection, name, n.toString());
+                    }
+                }
+
+                case Collection<?> col -> {
+                    List<String> values = col.stream().map(String::valueOf).toList();
+                    gitRepoConfig.setStringList(section, subsection, name, values);
+                }
+
+                case String s -> {
+                    String trimmed = s.trim();
+                    gitRepoConfig.setString(section, subsection, name, trimmed);
+                }
+
+                default -> gitRepoConfig.setString(section, subsection, name, entryValue.toString());
+            }
+
+            runContext.logger().info("Applied git config {} = {}", key, entryValue);
+        }
+
+        gitRepoConfig.save();
+        runContext.logger().info("Applied {} git configuration settings", rGitConfig.size());
     }
 }

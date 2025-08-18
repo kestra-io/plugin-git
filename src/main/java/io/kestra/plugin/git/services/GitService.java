@@ -46,6 +46,10 @@ public class GitService {
 
 
         Git git = Git.open(runContext.workingDir().path().toFile());
+
+        // here we apply git config to the repo
+        gitTask.applyGitConfig(git.getRepository(), runContext);
+
         if (!branchExists && git.getRepository().resolve(Constants.HEAD) != null) {
             git.checkout()
                 .setName(branch)
