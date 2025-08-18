@@ -31,7 +31,7 @@ class CloneTest extends AbstractGitTest {
         RunContext runContext = runContextFactory.of();
 
         Clone task = Clone.builder()
-            .url(Property.of("https://github.com/kestra-io/plugin-template"))
+            .url(Property.ofValue("https://github.com/kestra-io/plugin-template"))
             .build();
 
         Clone.Output runOutput = task.run(runContext);
@@ -139,4 +139,45 @@ class CloneTest extends AbstractGitTest {
         }
     }
 
+    @Test
+    void cloneAtSpecificCommit() throws Exception {
+        // Given a local repo with 2 commits
+        Path remote = Files.createTempDirectory("git-remote-");
+        Path file1 = remote.resolve("file1.txt");
+        Path file2 = remote.resolve("file2.txt");
+
+        String firstCommitSha;
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(file1, "first\n");
+            git.add().addFilepattern("file1.txt").call();
+            git.commit().setMessage("first").call();
+            firstCommitSha = git.getRepository().resolve("HEAD").name();
+
+            Files.writeString(file2, "second\n");
+            git.add().addFilepattern("file2.txt").call();
+            git.commit().setMessage("second").call();
+        }
+
+        // When cloning at a specific commit
+        RunContext runContext = runContextFactory.of();
+
+        Clone task = Clone.builder()
+            .url(Property.ofValue(remote.toUri().toString()))
+            .commit(Property.ofValue(firstCommitSha))
+            .build();
+
+        Clone.Output out = task.run(runContext);
+        Path repoPath = Path.of(out.getDirectory());
+
+        // Then the repo is cloned at the specified commit
+        try (Git cloned = Git.open(repoPath.toFile())) {
+            String fullBranch = cloned.getRepository().getFullBranch();
+            assertThat(fullBranch, is(firstCommitSha));
+        }
+
+        assertThat(Files.exists(repoPath.resolve("file1.txt")), is(true));
+        assertThat(Files.exists(repoPath.resolve("file2.txt")), is(false));
+
+        assertThat(repoPath.resolve(".git").toFile().exists(), is(true));
+    }
 }

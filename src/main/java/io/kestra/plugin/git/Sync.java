@@ -115,7 +115,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
         configureEnvironmentWithSsl(runContext);
 
         Clone clone = Clone.builder()
-            .depth(1)
+            .depth(Property.ofValue(1))
             .url(this.url)
             .branch(this.branch)
             .username(this.username)

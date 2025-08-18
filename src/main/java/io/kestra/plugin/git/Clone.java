@@ -2,19 +2,19 @@ package io.kestra.plugin.git;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.eclipse.jgit.api.CloneCommand;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.transport.RefSpec;
 import org.slf4j.Logger;
 
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotNull;
 import java.nio.file.Path;
 
 @SuperBuilder(toBuilder = true)
@@ -95,7 +95,21 @@ import java.nio.file.Path;
                         commands:
                           - python examples/scripts/etl_script.py
                 """
-        )
+        ),
+        @Example(
+            title = "Clone then checkout a specific commit (detached HEAD).",
+            full = true,
+            code = """
+                id: git_clone_commit
+                namespace: company.team
+
+                tasks:
+                  - id: clone_at_sha
+                    type: io.kestra.plugin.git.Clone
+                    url: https://github.com/kestra-io/kestra
+                    commit: 98189392a2a4ea0b1a951cd9dbbfe72f0193d77b
+                """
+        ),
     }
 )
 public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Output> {
@@ -105,15 +119,21 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     )
     private Property<String> directory;
 
+    @Schema(
+        title = "The branch to checkout. Ignored if \"commit\" is provided."
+    )
     private Property<String> branch;
 
     @Schema(
-        title = "Creates a shallow clone with a history truncated to the specified number of commits."
-    )
-    @PluginProperty
+        title = "Creates a shallow clone with a history truncated to the specified number of commits.\nIgnored when `commit` is provided to guarantee the commit is available.")
     @Builder.Default
-    @Min(1)
-    private Integer depth = 1;
+    private Property<Integer> depth = Property.ofValue(1);
+
+    @Schema(
+        title = "Commit SHA1 to checkout (detached HEAD). Works also with a shortened SHA1.",
+        description = "If set, the repository is cloned and the specified commit is checked out. This takes precedence over `branch` and disables shallow cloning to ensure the commit is present."
+    )
+    private Property<String> commit;
 
     @Override
     public Clone.Output run(RunContext runContext) throws Exception {
@@ -133,12 +153,19 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
             .setURI(url)
             .setDirectory(path.toFile());
 
-        if (this.branch != null) {
-            cloneCommand.setBranch(runContext.render(this.branch).as(String.class).orElse(null));
-        }
+        // If a specific commit is requested, we must not do a shallow clone;
+        // otherwise the target commit might not be present.
+        boolean hasCommit = this.commit != null;
 
-        if (this.depth != null) {
-            cloneCommand.setDepth(this.depth);
+        if (!hasCommit) {
+            if (this.branch != null) {
+                cloneCommand.setBranch(runContext.render(this.branch).as(String.class).orElse(null));
+            }
+
+            var rDepth = runContext.render(this.depth).as(Integer.class).orElse(1);
+            if (this.depth != null) {
+                cloneCommand.setDepth(rDepth);
+            }
         }
 
         if (this.cloneSubmodules != null) {
@@ -149,11 +176,47 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
         logger.info("Start cloning from '{}'", url);
 
-        try (Git call = cloneCommand.call()) {
-            applyGitConfig(call.getRepository(), runContext);
+        try (Git git = cloneCommand.call()) {
+            applyGitConfig(git.getRepository(), runContext);
+
+            if (hasCommit) {
+                String sha = runContext.render(this.commit).as(String.class).orElseThrow();
+
+                // Ensure we have a full history in case the repo was shallow by default on the remote
+                // or if the requested SHA is deep in history.
+                try {
+                    // Fetch all branches and tags to guarantee the target commit is available locally.
+                    git.fetch()
+                        .setRefSpecs(
+                            new RefSpec("+refs/heads/*:refs/remotes/origin/*"),
+                            new RefSpec("+refs/tags/*:refs/tags/*")
+                        )
+                        .call();
+                } catch (Exception fetchEx) {
+                    logger.warn("Fetch before checkout failed: {}", fetchEx.getMessage());
+                }
+
+                ObjectId target;
+                try {
+                    target = git.getRepository().resolve(sha);
+                    if (target == null) {
+                        throw new IllegalArgumentException("Cannot resolve commit SHA: " + sha);
+                    }
+                    git.checkout().setName(target.name()).call();
+                    logger.info("Checked out commit {} (detached HEAD)", target.name());
+                } catch (Exception e) {
+                    throw new IllegalStateException("Failed to checkout commit " + sha + ": " + e.getMessage(), e);
+                }
+            } else if (this.branch != null) {
+                // If a branch was provided, ensure we're on it (useful when depth is set)
+                String targetBranch = runContext.render(this.branch).as(String.class).orElse(null);
+                if (targetBranch != null) {
+                    git.checkout().setName(targetBranch).call();
+                }
+            }
 
             return Output.builder()
-                .directory(call.getRepository().getDirectory().getParent())
+                .directory(git.getRepository().getDirectory().getParent())
                 .build();
         }
     }
