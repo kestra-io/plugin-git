@@ -35,19 +35,16 @@ public class GitService {
         boolean branchExists = this.branchExists(runContext, branch);
         if (branchExists) {
             cloneHead.toBuilder()
-                .branch(Property.of(branch))
+                .branch(Property.ofValue(branch))
                 .build()
                 .run(runContext);
         } else {
             runContext.logger().info("Branch {} does not exist, creating it", branch);
-
             cloneHead.run(runContext);
         }
 
-
         Git git = Git.open(runContext.workingDir().path().toFile());
 
-        // here we apply git config to the repo
         gitTask.applyGitConfig(git.getRepository(), runContext);
 
         if (!branchExists && git.getRepository().resolve(Constants.HEAD) != null) {
