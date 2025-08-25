@@ -384,20 +384,29 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
 
         Map<Path, Supplier<InputStream>> contentByPath = this.instanceResourcesContentByPath(runContext, localGitDirectory, globs);
 
+        this.writeResourceFiles(contentByPath);
+
         KestraIgnore kestraIgnore = new KestraIgnore(localGitDirectory);
 
         Map<Path, Supplier<InputStream>> filteredContentByPath = new LinkedHashMap<>();
         for (Map.Entry<Path, Supplier<InputStream>> e : contentByPath.entrySet()) {
             Path p = e.getKey().normalize();
             String filename = p.getFileName() != null ? p.getFileName().toString() : "";
+
             if (".kestraignore".equals(filename)) {
+                filteredContentByPath.put(e.getKey(), e.getValue());
                 continue;
             }
+
             String rel = localGitDirectory.relativize(p).toString().replace('\\', '/');
             if (!kestraIgnore.isIgnoredFile(rel, false)) {
                 filteredContentByPath.put(e.getKey(), e.getValue());
+            } else {
+                runContext.logger().debug("Skipped ignored file: {}", rel);
             }
+
         }
+
         contentByPath = filteredContentByPath;
 
         boolean rDelete = runContext.render(this.delete).as(Boolean.class).orElse(true);
@@ -405,10 +414,13 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
             this.deleteOutdatedResources(git, localGitDirectory, contentByPath, globs, kestraIgnore);
         }
 
-        this.writeResourceFiles(contentByPath);
-
+        var workTree = git.getRepository().getWorkTree().toPath().toRealPath();
         AddCommand add = git.add();
-        add.addFilepattern(runContext.render(this.getGitDirectory()).as(String.class).orElse(null));
+
+        for (Path p : contentByPath.keySet()) {
+            String gitRel = workTree.relativize(p.toRealPath()).toString().replace('\\', '/');
+            add.addFilepattern(gitRel);
+        }
         add.call();
 
         Output pushOutput = this.push(git, runContext, gitService);
