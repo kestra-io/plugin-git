@@ -58,7 +58,7 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Namespace unidirectional sync between Kestra and Git.",
+    title = "Unidirectional namespace sync between Kestra and Git.",
     description = "Create/update is driven by 'sourceOfTruth'; delete/keep/fail is driven by 'whenMissingInSource'."
 )
 @Plugin(
@@ -68,11 +68,11 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
             full = true,
             code = """
                 id: git_namespace_sync
-                namespace: company.team
+                namespace: system
                 tasks:
                   - id: sync
                     type: io.kestra.plugin.git.NamespaceSync
-                    namespace: company.team
+                    namespace: system
                     sourceOfTruth: GIT
                     whenMissingInSource: DELETE
                     protectedNamespaces:
@@ -90,11 +90,11 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
             full = true,
             code = """
                 id: kestra_namespace_sync
-                namespace: company.team
+                namespace: system
                 tasks:
                   - id: sync
                     type: io.kestra.plugin.git.NamespaceSync
-                    namespace: company.team
+                    namespace: system
                     sourceOfTruth: KESTRA
                     whenMissingInSource: KEEP
                     protectedNamespaces:
@@ -122,7 +122,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     @NotNull
     private Property<String> branch;
 
-    @Schema(title = "Subdirectory inside the repo used to store Kestra artifacts; if empty, repo root is used.")
+    @Schema(title = "Subdirectory inside the repo used to store Kestra code and files; if empty, repo root is used.")
     private Property<String> gitDirectory;
 
     @Schema(title = "Target namespace to sync (required).")
