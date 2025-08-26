@@ -137,14 +137,14 @@ import static io.kestra.core.utils.Rethrow.*;
 )
 public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     @Schema(
-        title = "The branch to which files should be committed and pushed.",
+        title = "The branch to which files should be committed and pushed",
         description = "If the branch doesn't exist yet, it will be created."
     )
     @Builder.Default
     private Property<String> branch = Property.of("main");
 
     @Schema(
-        title = "Directory to which flows should be pushed.",
+        title = "Directory to which flows should be pushed",
         description = """
             If not set, flows will be pushed to a Git directory named _flows and will optionally also include subdirectories named after the child namespaces.
             If you prefer, you can specify an arbitrary path, e.g., kestra/flows, allowing you to push flows to that specific Git directory.
@@ -155,19 +155,19 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     private Property<String> gitDirectory = Property.of("_flows");
 
     @Schema(
-        title = "The source namespace from which flows should be synced to the `gitDirectory`."
+        title = "The source namespace from which flows should be synced to the `gitDirectory`"
     )
     @Builder.Default
     private Property<String> sourceNamespace = new Property<>("{{ flow.namespace }}");
 
     @Schema(
-        title = "The target namespace, intended as the production namespace.",
+        title = "The target namespace, intended as the production namespace",
         description = "If set, the `sourceNamespace` will be overwritten to the `targetNamespace` in the flow source code to prepare your branch for merging into the production namespace."
     )
     private Property<String> targetNamespace;
 
     @Schema(
-        title = "List of glob patterns or a single one that declare which flows should be included in the Git commit.",
+        title = "List of glob patterns or a single one that declare which flows should be included in the Git commit",
         description = """
             By default, all flows from the specified sourceNamespace will be pushed (and optionally adjusted to match the targetNamespace before pushing to Git).
             If you want to push only the current flow, you can use the "{{flow.id}}" expression or specify the flow ID explicitly, e.g. myflow.
@@ -180,7 +180,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     private Object flows;
 
     @Schema(
-        title = "Whether you want to push flows from child namespaces as well.",
+        title = "Whether you want to push flows from child namespaces as well",
         description = """
             By default, it’s `false`, so the task will push only flows from the explicitly declared namespace without pushing flows from child namespaces. If set to `true`, flows from child namespaces will be pushed to child directories in Git. See the example below for a practical explanation:
 
@@ -197,8 +197,8 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     private Property<Boolean> includeChildNamespaces = Property.of(false);
 
     @Schema(
-        title = "Git commit message.",
-        defaultValue = "Add flows from sourceNamespace"
+        title = "Git commit message",
+        defaultValue = "Add flows from `sourceNamespace`"
     )
     @Override
     public Property<String> getCommitMessage() {
@@ -267,9 +267,9 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     @Getter
     public static class Output extends AbstractPushTask.Output {
         @Schema(
-            title = "A file containing all changes pushed (or not in case of dry run) to Git.",
+            title = "A file containing all changes pushed (or not in case of dry run) to Git",
             description = """
-                The output format is a ION file with one row per files, each row containing the number of added, deleted and changed lines.
+                The output format is a ION file with one row per file, each row containing the number of added, deleted, and changed lines.
                 A row looks as follows: `{changes:"3",file:"_flows/first-flow.yml",deletions:"-5",additions:"+10"}`"""
         )
         private URI flows;

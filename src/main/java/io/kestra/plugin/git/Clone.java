@@ -114,13 +114,13 @@ import java.nio.file.Path;
 )
 public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Output> {
     @Schema(
-        title = "The optional directory associated with the clone operation.",
+        title = "The optional directory associated with the clone operation",
         description = "If the directory isn't set, the current directory will be used."
     )
     private Property<String> directory;
 
     @Schema(
-        title = "The branch to checkout. Ignored if \"commit\" is provided."
+        title = "The branch to checkout -- ignored if \"commit\" is provided."
     )
     private Property<String> branch;
 
@@ -130,7 +130,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     private Property<Integer> depth = Property.ofValue(1);
 
     @Schema(
-        title = "Commit SHA1 to checkout (detached HEAD). Works also with a shortened SHA1.",
+        title = "Commit SHA1 to checkout (detached HEAD) -- works also with a shortened SHA1.",
         description = "If set, the repository is cloned and the specified commit is checked out. This takes precedence over `branch` and disables shallow cloning to ensure the commit is present."
     )
     private Property<String> commit;
@@ -231,7 +231,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     @Getter
     public static class Output implements io.kestra.core.models.tasks.Output {
         @Schema(
-            title = "The path where the repository is cloned."
+            title = "The path where the repository is cloned"
         )
         private final String directory;
     }

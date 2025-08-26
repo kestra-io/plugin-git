@@ -87,12 +87,12 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
     public static final Pattern FLOW_ID_FINDER_PATTERN = Pattern.compile("(?m)^id: (.*)$");
 
     @Schema(
-        title = "Git directory to sync code from. If not specified, all files from a Git repository will be synchronized."
+        title = "Git directory to sync code from -- if not specified, all files from a Git repository will be synchronized."
     )
     private Property<String> gitDirectory;
 
     @Schema(
-        title = "Namespace files directory to which files from Git should be synced. It defaults to the root directory of the namespace."
+        title = "Namespace files directory to which files from Git should be synced -- it defaults to the root directory of the namespace."
     )
     private Property<String> namespaceFilesDirectory;
 

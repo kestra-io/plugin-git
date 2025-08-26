@@ -56,7 +56,7 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
 
     public static final Pattern NAMESPACE_FINDER_PATTERN = Pattern.compile("(?m)^\\s*namespace:\\s*(.*)$");
 
-    @Schema(title = "The branch to clone from.")
+    @Schema(title = "The branch to clone from")
     @Builder.Default
     private Property<String> branch = Property.of("main");
 
@@ -65,11 +65,11 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
         return this.branch;
     }
 
-    @Schema(title = "The target namespace where the flow will be synced.")
+    @Schema(title = "The target namespace where the flow will be synced")
     @NotNull
     private Property<String> targetNamespace;
 
-    @Schema(title = "The full path to the flow YAML file within the Git repository.")
+    @Schema(title = "The full path to the flow YAML file within the Git repository")
     @NotNull
     private Property<String> flowPath;
 
@@ -118,11 +118,11 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
     @SuperBuilder
     @Getter
     public static class Output implements io.kestra.core.models.tasks.Output {
-        @Schema(title = "The ID of the synced flow.")
+        @Schema(title = "The ID of the synced flow")
         private final String flowId;
-        @Schema(title = "The namespace of the synced flow.")
+        @Schema(title = "The namespace of the synced flow")
         private final String namespace;
-        @Schema(title = "The new revision number of the flow.")
+        @Schema(title = "The new revision number of the flow")
         private final Integer revision;
     }
 }

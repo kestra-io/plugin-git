@@ -44,38 +44,38 @@ public abstract class AbstractGitTask extends Task {
     private static final AtomicReference<String> SSL_CONFIGURED_KEY = new AtomicReference<>(null);
     private static final Object SSL_CONFIG_LOCK = new Object();
 
-    @Schema(title = "The URI to clone from.")
+    @Schema(title = "The URI to clone from")
     protected Property<String> url;
 
-    @Schema(title = "The username or organization.")
+    @Schema(title = "The username or organization")
     protected Property<String> username;
 
-    @Schema(title = "The password or Personal Access Token (PAT). When you authenticate the task with a PAT, any flows or files pushed to Git from Kestra will be pushed from the user associated with that PAT. This way, you don't need to configure the commit author (the `authorName` and `authorEmail` properties).")
+    @Schema(title = "The password or Personal Access Token (PAT) -- when you authenticate the task with a PAT, any flows or files pushed to Git from Kestra will be pushed from the user associated with that PAT. This way, you don't need to configure the commit author (the `authorName` and `authorEmail` properties).")
     protected Property<String> password;
 
     @Schema(
-        title = "PEM-format private key content that is paired with a public key registered on Git.",
+        title = "PEM-format private key content that is paired with a public key registered on Git",
         description = "To generate an ECDSA PEM format key from OpenSSH, use the following command: `ssh-keygen -t ecdsa -b 256 -m PEM`. " +
             "You can then set this property with your private key content and put your public key on Git."
     )
     protected Property<String> privateKey;
 
-    @Schema(title = "The passphrase for the `privateKey`.")
+    @Schema(title = "The passphrase for the `privateKey`")
     protected Property<String> passphrase;
 
     @Schema(
-        title = "Optional path to a PEM-encoded CA certificate to trust (in addition to the JVM default truststore).",
+        title = "Optional path to a PEM-encoded CA certificate to trust (in addition to the JVM default truststore)",
         description = "Equivalent to `git config http.sslCAInfo <path>`. Use this for self-signed/internal CAs."
     )
     protected Property<String> trustedCaPemPath;
 
-    @Schema(title = "The initial Git branch.")
+    @Schema(title = "The initial Git branch")
     public abstract Property<String> getBranch();
 
     @Schema(
-        title = "Git configuration to apply to the repository.",
+        title = "Git configuration to apply to the repository",
         description = """
-            Map of Git config keys and values, applied after clone.
+            Map of Git config keys and values, applied after clone
             few examples:
             - 'core.fileMode': false -> ignore file permission changes
             - 'core.autocrlf': false -> prevent line ending conversion

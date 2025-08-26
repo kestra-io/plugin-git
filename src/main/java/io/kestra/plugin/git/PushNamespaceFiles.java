@@ -107,14 +107,14 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
 )
 public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Output> {
     @Schema(
-        title = "The branch to which Namespace Files should be committed and pushed.",
+        title = "The branch to which Namespace Files should be committed and pushed",
         description = "If the branch doesn’t exist yet, it will be created. If not set, the task will push the files to the `kestra` branch."
     )
     @Builder.Default
     private Property<String> branch = Property.of("main");
 
     @Schema(
-        title = "The namespace from which files should be pushed to the `gitDirectory`."
+        title = "The namespace from which files should be pushed to the `gitDirectory`"
     )
     @Builder.Default
     private Property<String> namespace = new Property<>("{{ flow.namespace }}");
@@ -122,7 +122,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     @Schema(
         title = "Directory to which Namespace Files should be pushed.",
         description = """
-            If not set, files will be pushed to a Git directory named _files. See the table below for an example mapping of Namespace Files to Git paths:
+            If not set, files will be pushed to a Git directory `named _files`. See the table below for an example mapping of Namespace Files to Git paths:
 
             |  Namespace File Path  |      Git directory path      |
             | --------------------- | ---------------------------- |
@@ -136,10 +136,10 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     private Property<String> gitDirectory = Property.of("_files");
 
     @Schema(
-        title = "Which Namespace Files should be included in the commit.",
+        title = "Which Namespace Files should be included in the commit",
         description = """
             By default, Kestra will push all Namespace Files from the specified namespace.
-            If you want to push only a specific file or directory e.g. myfile.py, you can set it explicitly using files: myfile.py.
+            If you want to push only a specific file or directory (e.g., myfile.py), you can set it explicitly using files: myfile.py.
             Given that this is a glob pattern string (or a list of glob patterns), you can include as many files as you wish, provided that the user is authorized to access that namespace.
             Note that each glob pattern try to match the file name OR the relative path starting from `gitDirectory`""",
         defaultValue = "**"
@@ -149,7 +149,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     private Object files;
 
     @Schema(
-        title = "Git commit message.",
+        title = "Git commit message",
         defaultValue = "Add files from `namespace` namespace"
     )
     @Override
@@ -158,7 +158,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     }
 
     @Schema(
-        title = "Fail the task if no files are matched.",
+        title = "Fail the task if no files are matched",
         description = "If true, the task will fail explicitly when no files are matched by the provided 'files' property."
     )
     @Builder.Default
@@ -208,9 +208,9 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     @Getter
     public static class Output extends AbstractPushTask.Output {
         @Schema(
-            title = "A file containing all changes pushed (or not in case of dry run) to Git.",
+            title = "A file containing all changes pushed (or not in case of dry run) to Git",
             description = """
-                The output format is a ION file with one row per files, each row containing the number of added, deleted and changed lines.
+                The output format is a ION file with one row per file, each row containing the number of added, deleted, and changed lines.
                 A row looks as follows: `{changes:"3",file:"path/to/my/script.py",deletions:"-5",additions:"+10"}`"""
         )
         private URI files;
