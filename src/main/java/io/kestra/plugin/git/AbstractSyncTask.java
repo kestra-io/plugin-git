@@ -45,7 +45,13 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
         title = "If `true`, the task will only output modifications without performing any modification to Kestra. If `false` (default), all listed modifications will be applied."
     )
     @Builder.Default
-    private Property<Boolean> dryRun = Property.of(false);
+    private Property<Boolean> dryRun = Property.ofValue(false);
+
+    @Schema(
+        title = "If `true` (default), the task will fail if the specified directory doesn't exist. If `false`, missing directories will be skipped."
+    )
+    @Builder.Default
+    private Property<Boolean> failOnMissingDirectory = Property.ofValue(true);
 
     public abstract Property<Boolean> getDelete();
 
@@ -57,20 +63,9 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
         String gitDirectoryPath = runContext.render(this.getGitDirectory()).as(String.class).orElse(null);
         Path syncDirectory = runContext.workingDir().resolve(Path.of(gitDirectoryPath));
 
-        if (!Files.exists(syncDirectory)) {
+        if (!Files.exists(syncDirectory) && runContext.render(this.failOnMissingDirectory).as(Boolean.class).orElse(true)) {
             throw new IllegalArgumentException(String.format(
-                "The directory '%s' was not found in the git repository. " +
-                    "Verify if the path exists in the specified branch '%s'.",
-                gitDirectoryPath,
-                runContext.render(this.getBranch()).as(String.class).orElse("main")
-            ));
-        }
-
-        if (!Files.isDirectory(syncDirectory)) {
-            throw new IllegalArgumentException(String.format(
-                "The path '%s' exists but is not a directory. " +
-                    "SyncFlows task requires a directory containing flow files.",
-                gitDirectoryPath
+                "The directory '%s' was not found in the git repository. Verify if the path exists in the specified branch '%s'.", gitDirectoryPath, runContext.render(this.getBranch()).as(String.class).orElse("main")
             ));
         }
 
