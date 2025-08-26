@@ -201,7 +201,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         Map<String, byte[]> gitFiles = readGitNamespaceFiles(baseDir, rNamespace);
 
         if (rSourceOfTruth == SourceOfTruth.KESTRA) {
-            ensureNamespaceSkeletons(baseDir, rNamespace);
+            ensureNamespaceFolders(baseDir, rNamespace);
         }
 
         // Fetch Kestra state limited to target namespace only
@@ -570,10 +570,6 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
             }
         });
         return out;
-    }
-
-    private void ensureNamespaceSkeletons(Path baseDir, String ns) {
-        ensureNamespaceFolders(baseDir, ns);
     }
 
     private void ensureNamespaceFolders(Path baseDir, String ns) {
