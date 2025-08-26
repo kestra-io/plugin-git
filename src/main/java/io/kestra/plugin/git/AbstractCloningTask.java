@@ -11,7 +11,7 @@ import lombok.experimental.SuperBuilder;
 @Getter
 public abstract class AbstractCloningTask extends AbstractGitTask {
     @Schema(
-        title = "Whether to clone submodules."
+        title = "Whether to clone submodules"
     )
     protected Property<Boolean> cloneSubmodules;
 }

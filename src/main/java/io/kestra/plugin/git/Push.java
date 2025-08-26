@@ -128,20 +128,20 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
 )
 public class Push extends AbstractCloningTask implements RunnableTask<Push.Output>, NamespaceFilesInterface, InputFilesInterface {
     @Schema(
-        title = "The optional directory associated with the push operation.",
+        title = "The optional directory associated with the push operation",
         description = "If the directory isn't set, the current directory will be used."
     )
     private Property<String> directory;
 
     @Schema(
-        title = "The branch to which files should be committed and pushed.",
+        title = "The branch to which files should be committed and pushed",
         description = "If the branch doesn't exist yet, it will be created."
     )
     @NotNull
     private Property<String> branch;
 
     @Schema(
-        title = "Commit message."
+        title = "Commit message"
     )
     @NotNull
     private Property<String> commitMessage;
@@ -149,7 +149,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
     private NamespaceFiles namespaceFiles;
 
     @Schema(
-        title = "Whether to push flows from the current namespace to Git."
+        title = "Whether to push flows from the current namespace to Git"
     )
     @PluginProperty
     @Builder.Default
@@ -158,13 +158,13 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
     private Object inputFiles;
 
     @Schema(
-        title = "Patterns of files to add to the commit. Default is `.` which means all files.",
-        description = "A directory name (e.g. `dir` to add `dir/file1` and `dir/file2`) can also be given to add all files in the directory, recursively. File globs (e.g. `*.py`) are not yet supported."
+        title = "Patterns of files to add to the commit -- default is `.` which means all files.",
+        description = "A directory name (e.g., `dir` to add `dir/file1` and `dir/file2`) can also be given to add all files in the directory, recursively. File globs (e.g., `*.py`) are not yet supported."
     )
     @Builder.Default
     private Property<List<String>> addFilesPattern = Property.of(List.of("."));
 
-    @Schema(title = "Commit author.")
+    @Schema(title = "Commit author")
     @PluginProperty
     private Author author;
 
@@ -361,21 +361,21 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
     @Jacksonized
     public static class FlowFiles {
         @Schema(
-            title = "Whether to push flows as YAML files to Git."
+            title = "Whether to push flows as YAML files to Git"
         )
         @Builder.Default
         @JsonInclude(JsonInclude.Include.NON_NULL)
         private Property<Boolean> enabled = Property.of(true);
 
         @Schema(
-            title = "Whether flows from child namespaces should be included."
+            title = "Whether flows from child namespaces should be included"
         )
         @Builder.Default
         @JsonInclude(JsonInclude.Include.NON_NULL)
         private Property<Boolean> childNamespaces = Property.of(true);
 
         @Schema(
-            title = "To which directory flows should be pushed (relative to `directory`)."
+            title = "To which directory flows should be pushed (relative to `directory`)"
         )
         @Builder.Default
         private Property<String> gitDirectory = Property.of("_flows");

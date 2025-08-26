@@ -71,20 +71,20 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
     private Property<Boolean> dryRun = Property.of(false);
 
     @Schema(
-        title = "The commit author email.",
+        title = "The commit author email",
         description = "If null, no author will be set on this commit."
     )
     private Property<String> authorEmail;
 
     @Schema(
-        title = "The commit author name.",
+        title = "The commit author name",
         description = "If null, the username will be used instead.",
         defaultValue = "`username`"
     )
     private Property<String> authorName;
 
     @Schema(
-        title = "Whether to delete flows/files from Git that are no longer present in Kestra.",
+        title = "Whether to delete flows/files from Git that are no longer present in Kestra",
         description = "If `true` (default), files present in Git but not in Kestra will be deleted from the Git repository."
     )
     @Builder.Default
@@ -438,14 +438,14 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
     @Getter
     public static class Output implements io.kestra.core.models.tasks.Output {
         @Schema(
-            title = "ID of the commit pushed."
+            title = "ID of the commit pushed"
         )
         @Nullable
         private String commitId;
 
         @Schema(
-            title = "URL to see what’s included in the commit.",
-            description = "Example format for GitHub: https://github.com/username/your_repo/commit/{commitId}."
+            title = "URL to see what’s included in the commit",
+            description = "Example format for GitHub: https://github.com/username/your_repo/commit/{commitId}"
         )
         @Nullable
         private String commitURL;

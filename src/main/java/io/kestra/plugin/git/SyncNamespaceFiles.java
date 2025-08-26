@@ -100,27 +100,27 @@ import java.util.Optional;
 )
 public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles.Output> {
     @Schema(
-        title = "The branch from which Namespace Files will be synced to Kestra."
+        title = "The branch from which Namespace files will be synced to Kestra -- defaults to `main`."
     )
     @Builder.Default
     private Property<String> branch = Property.of("main");
 
     @Schema(
-        title = "The namespace from which files should be synced from the `gitDirectory` to Kestra."
+        title = "The namespace from which files should be synced from the `gitDirectory` to Kestra"
     )
     @Builder.Default
     private Property<String> namespace = new Property<>("{{ flow.namespace }}");
 
     @Schema(
-        title = "Directory from which Namespace Files should be synced.",
+        title = "Directory from which Namespace files should be synced",
         description = "If not set, this task assumes your branch includes a directory named `_files`"
     )
     @Builder.Default
     private Property<String> gitDirectory = Property.of("_files");
 
     @Schema(
-        title = "Whether you want to delete Namespace Files present in kestra but not present in Git.",
-        description = "It’s `false` by default to avoid destructive behavior. Use with caution because when set to `true`, this task will delete all Namespace Files which are not present in Git."
+        title = "Whether you want to delete Namespace files present in Kestra but not present in Git",
+        description = "It’s `false` by default to avoid destructive behavior. Use with caution because when set to `true`, this task will delete all Namespace files which are not present in Git."
     )
     @Builder.Default
     private Property<Boolean> delete = Property.of(false);
@@ -209,9 +209,9 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     @Getter
     public static class Output extends AbstractSyncTask.Output {
         @Schema(
-            title = "A file containing all changes applied (or not in case of dry run) from Git.",
+            title = "A file containing all changes applied (or not in case of dry run) from Git",
             description = """
-                The output format is a ION file with one row per files, each row containing the number of added, deleted and changed lines.
+                The output format is a ION file with one row per file, each row containing the number of added, deleted, and changed lines.
                 A row looks as follows: `{changes:"3",file:"path/to/my/script.py",deletions:"-5",additions:"+10"}`"""
         )
         private URI files;
