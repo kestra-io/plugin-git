@@ -70,6 +70,11 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
         }
 
         syncDirectory.toFile().mkdirs();
+
+        if (Files.exists(syncDirectory) && !Files.isDirectory(syncDirectory)) {
+            throw new IllegalArgumentException(String.format("The path '%s' exists but is a file, not a directory. Sync tasks require a directory to process files.", gitDirectoryPath));
+        }
+
         return syncDirectory;
     }
 
