@@ -47,12 +47,6 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
         var builder = KestraClient.builder();
         builder.url(normalizedUrl);
         if (auth != null) {
-            if (auth.apiToken != null && (auth.username != null || auth.password != null)) {
-                throw new IllegalArgumentException("Cannot use both API Token authentication and HTTP Basic authentication");
-            }
-
-            runContext.render(auth.apiToken).as(String.class).ifPresent(token -> builder.tokenAuth(token));
-
             Optional<String> maybeUsername = runContext.render(auth.username).as(String.class);
             Optional<String> maybePassword = runContext.render(auth.password).as(String.class);
             if (maybeUsername.isPresent() && maybePassword.isPresent()) {
@@ -60,9 +54,7 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
                 return builder.build();
             }
 
-            if (maybeUsername.isPresent() || maybePassword.isPresent()) {
-                throw new IllegalArgumentException("Both username and password are required for HTTP Basic authentication");
-            }
+            throw new IllegalArgumentException("Both username and password are required for HTTP Basic authentication");
         }
         return builder.build();
     }
@@ -70,9 +62,6 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
     @Builder
     @Getter
     public static class Auth {
-        @Schema(title = "API token.")
-        private Property<String> apiToken;
-
         @Schema(title = "Username for HTTP Basic authentication.")
         private Property<String> username;
 

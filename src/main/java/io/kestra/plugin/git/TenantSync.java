@@ -52,7 +52,7 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
 @Plugin(
     examples = {
         @Example(
-            title = "Sync all namespaces using Git as source of truth",
+            title = "Sync all objects (flows, files, dashboards) under the same tenant than this flow using Git as source of truth",
             full = true,
             code = """
                 id: tenant_sync_git
@@ -72,11 +72,12 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
                     dryRun: true
                     kestraUrl: "http://localhost:8080"
                     auth:
-                      apiToken: "{{ secret('KESTRA_API_TOKEN') }}"
+                      username: "{{ secret('KESTRA_USERNAME') }}"
+                      password: "{{ secret('KESTRA_PASSWORD') }}"
                 """
         ),
         @Example(
-            title = "Sync all namespaces using Kestra as source of truth",
+            title = "Sync all objects (flows, files, dashboards) under the same tenant than this flow using Kestra as source of truth",
             full = true,
             code = """
                 id: tenant_sync_kestra
@@ -92,7 +93,8 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
                     branch: dev
                     kestraUrl: "http://localhost:8080"
                     auth:
-                      apiToken: "{{ secret('KESTRA_API_TOKEN') }}"
+                      username: "{{ secret('KESTRA_USERNAME') }}"
+                      password: "{{ secret('KESTRA_PASSWORD') }}"
                 """
         )
     }
