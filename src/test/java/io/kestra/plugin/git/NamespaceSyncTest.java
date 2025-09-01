@@ -129,7 +129,7 @@ public class NamespaceSyncTest extends AbstractGitTest {
 
         Path base = cloneCtx.workingDir().path()
             .resolve(GIT_DIRECTORY)
-            .resolve(NAMESPACE.replace('.', '/'));
+            .resolve(NAMESPACE);
 
         assertTrue(Files.exists(base.resolve("flows/" + flowId + ".yaml")));
         assertTrue(Files.exists(base.resolve("files/" + cfgRel)));
