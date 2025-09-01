@@ -366,7 +366,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         allFlowIds.addAll(kestraFlowsMap.keySet());
 
         for (String flowId : allFlowIds) {
-            Path flowPath = flowsDir.resolve(flowId + ".yml");
+            Path flowPath = flowsDir.resolve(flowId + ".yaml");
             String gitYaml = gitFlows.get(flowId);
             String kestraYaml = kestraFlowsMap.get(flowId);
 
@@ -572,7 +572,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         allDashboards.addAll(gitDashboards.keySet());
 
         for (String dashboardId : allDashboards) {
-            Path dashboardPath = dashboardsDir.resolve(dashboardId + ".yml");
+            Path dashboardPath = dashboardsDir.resolve(dashboardId + ".yaml");
             String gitYaml = gitDashboards.get(dashboardId);
             String kestraYaml = kestraDashboards.get(dashboardId);
 
@@ -916,7 +916,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
     // ======================================================================================
     private File toTempFile(String yaml) {
         try {
-            File tmp = File.createTempFile("tmp", ".yml");
+            File tmp = File.createTempFile("tmp", ".yaml");
             Files.writeString(tmp.toPath(), yaml, StandardCharsets.UTF_8);
             return tmp;
         } catch (IOException e) {
