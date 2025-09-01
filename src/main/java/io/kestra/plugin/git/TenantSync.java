@@ -196,11 +196,20 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
         // Plan synchronization for each namespace
         for (String ns : namespaces) {
+            List<FlowWithSource> kestraFlows = fetchFlowsFromKestra(kestraClient, runContext, ns);
+            Map<String, byte[]> kestraFiles = listNamespaceFiles(kestraClient, runContext, ns);
+
+            if (kestraFlows.isEmpty() && kestraFiles.isEmpty()) {
+                runContext.logger().info("Skipping empty namespace: {}", ns);
+                continue;
+            }
+
             planNamespace(
                 runContext, kestraClient, baseDir, ns,
                 rSourceOfTruth, rWhenMissingInSource,
                 rOnInvalidSyntax, rProtectedNamespaces,
-                rDryRun, diffs, apply
+                rDryRun, diffs, apply,
+                kestraFlows, kestraFiles
             );
         }
 
@@ -282,18 +291,14 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         List<String> rProtectedNamespaces,
         boolean rDryRun,
         List<DiffLine> diffs,
-        List<Runnable> apply
+        List<Runnable> apply,
+        List<FlowWithSource> kestraFlows,
+        Map<String, byte[]> kestraFiles
     ) throws Exception {
 
-        Path nsRoot = baseDir.resolve(namespace.replace('.', '/'));
+        Path nsRoot = baseDir.resolve(namespace);
         Path flowsDir = nsRoot.resolve(FLOWS_DIR);
         Path filesDir = nsRoot.resolve(FILES_DIR);
-
-        // Retrieve flows from Kestra using exportFlowsByQuery
-        List<FlowWithSource> kestraFlows = fetchFlowsFromKestra(kestraClient, runContext, namespace);
-
-        // Retrieve files from Kestra storage
-        var kestraFiles = listNamespaceFiles(kestraClient, runContext, namespace);
 
         // Retrieve Git state
         var gitFlows = readGitFlows(flowsDir);
@@ -321,6 +326,11 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             Map<String, byte[]> out = new HashMap<>();
             for (String path : filePaths) {
                 String normalizedPath = normalizeNsPath(path);
+
+                var metadata = filesApi.getFileMetadatas(ns, tenantId, normalizedPath);
+                if (metadata.getMetadata() == null || !ns.equals(metadata.getMetadata().get("namespace"))) {
+                    continue;
+                }
 
                 File file = filesApi.getFileContent(ns, normalizedPath, tenantId);
                 try (InputStream is = new FileInputStream(file)) {
@@ -668,13 +678,13 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
     // ======================================================================================
     private List<FlowWithSource> fetchFlowsFromKestra(KestraClient kestraClient, RunContext runContext, String namespace) {
         try {
-            // Export all flows from Kestra for the given namespace
+            // Export all flows from Kestra for the given namespace (including sub-namespaces)
             byte[] zippedFlows = kestraClient.flows().exportFlowsByQuery(
                 runContext.flowInfo().tenantId(),
                 null,      // ids
                 null,      // q
                 null,      // sort
-                namespace, // filter by namespace
+                namespace, // filter by namespace (includes children)
                 null       // other params
             );
 
@@ -686,25 +696,24 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             ) {
                 java.util.zip.ZipEntry entry;
                 while ((entry = zis.getNextEntry()) != null) {
-                    // We only care about YAML files
                     if (!entry.getName().endsWith(".yml") && !entry.getName().endsWith(".yaml")) {
                         continue;
                     }
 
-                    // Read YAML content
                     String yaml = new String(zis.readAllBytes(), StandardCharsets.UTF_8);
 
-                    // Build the Flow object with its ID and namespace
-                    var flow = io.kestra.core.models.flows.Flow.builder()
-                        .id(entry.getName().replaceFirst("\\.ya?ml$", ""))
-                        .namespace(namespace)
-                        .build();
+                    io.kestra.core.models.flows.Flow parsed = io.kestra.core.serializers.YamlParser.parse(yaml, io.kestra.core.models.flows.Flow.class);
 
-                    flows.add(FlowWithSource.of(flow, yaml));
+                    if (!namespace.equals(parsed.getNamespace())) {
+                        continue;
+                    }
+
+                    flows.add(FlowWithSource.of(parsed, yaml));
                 }
             }
 
             return flows;
+
         } catch (Exception e) {
             throw new KestraRuntimeException("Failed to export flows from Kestra for namespace " + namespace, e);
         }
