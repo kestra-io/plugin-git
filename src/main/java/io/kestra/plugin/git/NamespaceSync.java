@@ -158,7 +158,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     @Schema(title = "The commit author name (defaults to username if null).")
     private Property<String> authorName;
 
-    // Directory names (namespace-first structure: <ns>/<kind>/<id>.yml)
+    // Directory names (namespace-first structure: <ns>/<kind>/<id>.yaml)
     private static final String FLOWS_DIR = "flows";
     private static final String FILES_DIR = "files";
 
@@ -628,7 +628,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     private static String fileRelFromKey(String kind, String key) {
         String ns = namespaceFromKey(key);
         String id = idFromKey(key);
-        Path rel = Path.of(ns.replace('.', '/')).resolve(kind).resolve(id + ".yml");
+        Path rel = Path.of(ns.replace('.', '/')).resolve(kind).resolve(id + ".yaml");
         return rel.toString().replace(File.separatorChar, '/');
     }
 

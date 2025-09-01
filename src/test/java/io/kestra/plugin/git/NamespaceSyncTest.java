@@ -131,7 +131,7 @@ public class NamespaceSyncTest extends AbstractGitTest {
             .resolve(GIT_DIRECTORY)
             .resolve(NAMESPACE.replace('.', '/'));
 
-        assertTrue(Files.exists(base.resolve("flows/" + flowId + ".yml")));
+        assertTrue(Files.exists(base.resolve("flows/" + flowId + ".yaml")));
         assertTrue(Files.exists(base.resolve("files/" + cfgRel)));
 
         if (out.getDiff() != null) {
