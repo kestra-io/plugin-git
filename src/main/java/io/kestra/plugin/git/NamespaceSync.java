@@ -354,7 +354,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         for (String rel : paths) {
             boolean inGit = gitFiles.containsKey(rel);
             boolean inKestra = kestraFiles.containsKey(rel);
-            String fileRel = ns.replace('.', '/') + "/" + FILES_DIR + "/" + rel;
+            String fileRel = ns + "/" + FILES_DIR + "/" + rel;
 
             if (inGit && !inKestra) {
                 if (rSource == SourceOfTruth.GIT) {
@@ -470,7 +470,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     private Map<String, byte[]> readGitNamespaceFiles(Path baseDir, String ns) throws IOException {
         Map<String, byte[]> out = new HashMap<>();
         if (baseDir == null || !Files.exists(baseDir)) return out;
-        Path nsFilesRoot = baseDir.resolve(ns.replace('.', '/')).resolve(FILES_DIR);
+        Path nsFilesRoot = baseDir.resolve(ns).resolve(FILES_DIR);
         if (!Files.exists(nsFilesRoot)) return out;
 
         try (Stream<Path> paths = Files.walk(nsFilesRoot, MAX_VALUE)) {
@@ -578,7 +578,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
     private void ensureNamespaceFolders(Path baseDir, String ns) {
         if (baseDir == null) return;
-        Path nsRoot = baseDir.resolve(ns.replace('.', '/'));
+        Path nsRoot = baseDir.resolve(ns);
         for (String d : List.of(FLOWS_DIR, FILES_DIR)) {
             try {
                 Files.createDirectories(nsRoot.resolve(d));
@@ -628,7 +628,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     private static String fileRelFromKey(String kind, String key) {
         String ns = namespaceFromKey(key);
         String id = idFromKey(key);
-        Path rel = Path.of(ns.replace('.', '/')).resolve(kind).resolve(id + ".yaml");
+        Path rel = Path.of(ns).resolve(kind).resolve(id + ".yaml");
         return rel.toString().replace(File.separatorChar, '/');
     }
 
