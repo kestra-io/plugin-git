@@ -114,7 +114,20 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
     @NotNull
     private Property<String> branch;
 
-    @Schema(title = "Subdirectory inside the repo used to store Kestra code and files; if empty, repo root is used.")
+    @Schema(
+        title = "Subdirectory inside the repo used to store Kestra code and files; if empty, repo root is used.",
+        description = """
+                This is the base folder in your Git repository where Kestra will look for code and files.
+                If you don't set it, the repo root will be used. Inside that folder, Kestra always expects
+                a structure like <namespace>/flows, <namespace>/files, etc.
+
+                | gitDirectory | namespace       | Expected Git path                        |
+                | ------------ | --------------- | -----------------------------------------|
+                | (not set)    | company         | company/flows/my-flow.yaml               |
+                | monorepo     | system          | monorepo/system/flows/my-flow.yaml       |
+                | projectA     | company.team    | projectA/company.team/flows/my-flow.yaml |
+            """
+    )
     private Property<String> gitDirectory;
 
     @Schema(title = "Select the source of truth.")
@@ -398,7 +411,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                     if (!rDryRun) {
                         apply.add(() -> {
                             try {
-                                runContext.logger().info("Importing flow {} for namespace {}: {}", flowId, namespace, gitYaml);
+                                runContext.logger().info("Importing flow {} for namespace {}:\n\n{}", flowId, namespace, gitYaml);
                                 kestraClient(runContext).flows().importFlows(
                                     runContext.flowInfo().tenantId(),
                                     toNamedTempFile(flowId + ".yaml", gitYaml),
