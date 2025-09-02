@@ -396,15 +396,17 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             String kestraYaml = kestraFlowsMap.get(flowId);
 
             // Case 1: Flow exists only in Git
+            String tenantId = runContext.flowInfo().tenantId();
             if (gitYaml != null && kestraYaml == null) {
                 if (rSourceOfTruth == SourceOfTruth.GIT) {
                     diffs.add(DiffLine.added(flowPath.toString(), flowId, "FLOW"));
                     if (!rDryRun) {
                         apply.add(() -> {
                             try {
+                                runContext.logger().info("Importing flow {} for namespace {}", flowId, namespace);
                                 kestraClient(runContext).flows().importFlows(
                                     runContext.flowInfo().tenantId(),
-                                    toTempFile(gitYaml),
+                                    toNamedTempFile(flowId + ".yaml", gitYaml),
                                     Map.of()
                                 );
                             } catch (Exception e) {
@@ -446,7 +448,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                                     apply.add(() -> {
                                         try {
                                             kestraClient(runContext).flows()
-                                                .deleteFlow(namespace, flowId, runContext.flowInfo().tenantId());
+                                                .deleteFlow(namespace, flowId, tenantId);
                                         } catch (Exception e) {
                                             handleInvalid(runContext, rOnInvalidSyntax, "FLOW " + flowId, e);
                                         }
@@ -475,7 +477,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                             try {
                                 kestraClient(runContext).flows().importFlows(
                                     runContext.flowInfo().tenantId(),
-                                    toTempFile(gitYaml),
+                                    toNamedTempFile(flowId + ".yaml", gitYaml),
                                     Map.of()
                                 );
                             } catch (Exception e) {
@@ -936,15 +938,19 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
     }
 
     // ======================================================================================
-    // Create a temporary file from YAML string (for imports)
+    // Create a named file from YAML string (for imports)
     // ======================================================================================
-    private File toTempFile(String yaml) {
+    private File toNamedTempFile(String fileName, String yaml) {
         try {
-            File tmp = File.createTempFile("tmp", ".yaml");
-            Files.writeString(tmp.toPath(), yaml, StandardCharsets.UTF_8);
-            return tmp;
+            Path tmpPath = Files.createTempDirectory("kestra-import")
+                .resolve(fileName.endsWith(".yaml") ? fileName : fileName + ".yaml");
+
+            Files.createDirectories(tmpPath.getParent());
+            Files.writeString(tmpPath, yaml, StandardCharsets.UTF_8);
+
+            return tmpPath.toFile();
         } catch (IOException e) {
-            throw new KestraRuntimeException("Failed to create temp file", e);
+            throw new KestraRuntimeException("Failed to create named file for: " + fileName, e);
         }
     }
 
