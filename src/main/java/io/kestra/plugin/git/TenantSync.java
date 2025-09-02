@@ -9,6 +9,9 @@ import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.git.services.GitService;
 import io.kestra.sdk.KestraClient;
+import io.kestra.sdk.api.FilesApi;
+import io.kestra.sdk.internal.ApiException;
+import io.kestra.sdk.model.FileAttributes;
 import io.kestra.sdk.model.PagedResultsDashboard;
 import io.kestra.sdk.model.PagedResultsNamespace;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -149,7 +152,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
     // Directory names
     private static final String FLOWS_DIR = "flows";
     private static final String FILES_DIR = "files";
-    private static final String DASHBOARDS_DIR = "dashboards";
+    private static final String DASHBOARDS_DIR = "_global/dashboards";
 
     @Override
     public Output run(RunContext runContext) throws Exception {
@@ -321,26 +324,38 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             var filesApi = kestraClient.files();
             String tenantId = runContext.flowInfo().tenantId();
 
-            List<String> filePaths = filesApi.searchNamespaceFiles(ns, "", tenantId);
+            Map<String, byte[]> files = new HashMap<>();
+            collectFilesRecursive(filesApi, tenantId, ns, null, files);
 
-            Map<String, byte[]> out = new HashMap<>();
-            for (String path : filePaths) {
-                String normalizedPath = normalizeNsPath(path);
-
-                var metadata = filesApi.getFileMetadatas(ns, tenantId, normalizedPath);
-                if (metadata.getMetadata() == null || !ns.equals(metadata.getMetadata().get("namespace"))) {
-                    continue;
-                }
-
-                File file = filesApi.getFileContent(ns, normalizedPath, tenantId);
-                try (InputStream is = new FileInputStream(file)) {
-                    out.put(normalizedPath, is.readAllBytes());
-                }
-            }
-
-            return out;
+            return files;
         } catch (Exception e) {
             throw new KestraRuntimeException("Unable to list namespace files for " + ns + ": " + e.getMessage(), e);
+        }
+    }
+
+    private void collectFilesRecursive(
+        FilesApi filesApi,
+        String tenantId,
+        String namespace,
+        @Nullable String currentPath,
+        Map<String, byte[]> filesOut
+    ) throws IOException, ApiException {
+        List<FileAttributes> children = filesApi.listNamespaceDirectoryFiles(namespace, tenantId, currentPath);
+
+        for (FileAttributes child : children) {
+            String name = child.getFileName();
+            if (name == null) continue; // skip malformed
+
+            String fullPath = currentPath == null ? name : currentPath + "/" + name;
+
+            if ("directory".equalsIgnoreCase(String.valueOf(child.getType()))) {
+                collectFilesRecursive(filesApi, tenantId, namespace, fullPath, filesOut);
+            } else if ("file".equalsIgnoreCase(String.valueOf(child.getType()))) {
+                File file = filesApi.getFileContent(namespace, fullPath, tenantId);
+                try (InputStream is = new FileInputStream(file)) {
+                    filesOut.put(normalizeNsPath(fullPath), is.readAllBytes());
+                }
+            }
         }
     }
 
