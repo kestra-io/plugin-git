@@ -5,6 +5,7 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.sdk.KestraClient;
 import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
@@ -23,6 +24,7 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
     private Property<String> kestraUrl;
 
     @Schema(title = "Authentication information.")
+    @NotNull
     private Auth auth;
 
     @Schema(title = "The tenant ID to use for the request, defaults to current tenant.")
@@ -53,10 +55,10 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
                 builder.basicAuth(maybeUsername.get(), maybePassword.get());
                 return builder.build();
             }
-
             throw new IllegalArgumentException("Both username and password are required for HTTP Basic authentication");
+        } else {
+            throw new IllegalArgumentException("Auth is required");
         }
-        return builder.build();
     }
 
     @Builder
