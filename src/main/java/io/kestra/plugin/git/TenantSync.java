@@ -313,7 +313,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
         // Plan namespace files synchronization
         planNamespaceFiles(runContext, kestraClient, filesDir, gitFiles, kestraFiles, rSourceOfTruth,
-            rWhenMissingInSource, rDryRun, diffs, apply);
+            rWhenMissingInSource, rProtectedNamespaces, rDryRun, diffs, apply);
     }
 
     // ======================================================================================
@@ -504,6 +504,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         Map<String, byte[]> kestraFiles,
         SourceOfTruth rSourceOfTruth,
         WhenMissingInSource rWhenMissingInSource,
+        List<String> rProtectedNamespaces,
         boolean rDryRun,
         List<DiffLine> diffs,
         List<Runnable> apply
@@ -544,8 +545,13 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                     switch (rWhenMissingInSource) {
                         case KEEP -> diffs.add(DiffLine.unchanged(filePath.toString(), rel, "FILE"));
                         case DELETE -> {
-                            diffs.add(DiffLine.deletedKestra(filePath.toString(), rel, "FILE"));
-                            if (!rDryRun) apply.add(() -> deleteNamespaceFile(kestraClient, runContext, rel));
+                            String namespace = runContext.flowInfo().namespace();
+                            if (isProtected(namespace, rProtectedNamespaces)) {
+                                runContext.logger().warn("Protected namespace, skipping delete for FILE {}", rel);
+                            } else {
+                                diffs.add(DiffLine.deletedKestra(filePath.toString(), rel, "FILE"));
+                                if (!rDryRun) apply.add(() -> deleteNamespaceFile(kestraClient, runContext, rel));
+                            }
                         }
                         case FAIL -> throw new KestraRuntimeException(
                             "Sync failed: FILE missing in Git but present in Kestra: " + rel
