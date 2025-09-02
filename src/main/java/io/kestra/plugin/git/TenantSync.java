@@ -202,11 +202,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             List<FlowWithSource> kestraFlows = fetchFlowsFromKestra(kestraClient, runContext, ns);
             Map<String, byte[]> kestraFiles = listNamespaceFiles(kestraClient, runContext, ns);
 
-            if (kestraFlows.isEmpty() && kestraFiles.isEmpty()) {
-                runContext.logger().info("Skipping empty namespace: {}", ns);
-                continue;
-            }
-
             planNamespace(
                 runContext, kestraClient, baseDir, ns,
                 rSourceOfTruth, rWhenMissingInSource,
@@ -403,7 +398,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                     if (!rDryRun) {
                         apply.add(() -> {
                             try {
-                                runContext.logger().info("Importing flow {} for namespace {}", flowId, namespace);
+                                runContext.logger().info("Importing flow {} for namespace {}: {}", flowId, namespace, gitYaml);
                                 kestraClient(runContext).flows().importFlows(
                                     runContext.flowInfo().tenantId(),
                                     toNamedTempFile(flowId + ".yaml", gitYaml),
