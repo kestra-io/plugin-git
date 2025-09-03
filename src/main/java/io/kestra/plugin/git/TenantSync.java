@@ -1,5 +1,6 @@
 package io.kestra.plugin.git;
 
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
@@ -55,7 +56,7 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
 @Plugin(
     examples = {
         @Example(
-            title = "Sync all objects (flows, files, dashboards) under the same tenant than this flow using Git as source of truth",
+            title = "Sync all objects (flows, files, dashboards, namespaces) under the same tenant than this flow using Git as source of truth",
             full = true,
             code = """
                 id: tenant_sync_git
@@ -80,7 +81,7 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
                 """
         ),
         @Example(
-            title = "Sync all objects (flows, files, dashboards) under the same tenant than this flow using Kestra as source of truth",
+            title = "Sync all objects (flows, files, dashboards, namespaces) under the same tenant than this flow using Kestra as source of truth",
             full = true,
             code = """
                 id: tenant_sync_kestra
@@ -411,7 +412,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                     if (!rDryRun) {
                         apply.add(() -> {
                             try {
-                                runContext.logger().info("Importing flow {} for namespace {}:\n\n{}", flowId, namespace, gitYaml);
                                 kestraClient(runContext).flows().importFlows(
                                     runContext.flowInfo().tenantId(),
                                     toNamedTempFile(flowId + ".yaml", gitYaml),
@@ -971,26 +971,11 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
     // ======================================================================================
     // Build the commit author information
     // ======================================================================================
-    private PersonIdent author(RunContext runContext) {
-        try {
-            String rName = runContext.render(this.authorName).as(String.class).orElse("Kestra Sync Bot");
-            String rEmail = runContext.render(this.authorEmail).as(String.class).orElse("bot@kestra.io");
-            return new PersonIdent(rName, rEmail);
-        } catch (io.kestra.core.exceptions.IllegalVariableEvaluationException e) {
-            runContext.logger().warn("Unable to evaluate authorName or authorEmail, using defaults: {}", e.getMessage());
-            return new PersonIdent("Kestra Sync Bot", "bot@kestra.io");
-        }
-    }
-
-    // ======================================================================================
-    // Retrieve the commit ID after Git commit
-    // ======================================================================================
-    private String getCommitId(Git git) {
-        try {
-            return git.getRepository().findRef("HEAD").getObjectId().getName();
-        } catch (IOException e) {
-            throw new KestraRuntimeException("Unable to resolve commit ID", e);
-        }
+    private PersonIdent author(RunContext runContext) throws IllegalVariableEvaluationException {
+        String rName = runContext.render(this.authorName).as(String.class).orElse(runContext.render(this.username).as(String.class).orElse(null));
+        String rEmail = runContext.render(this.authorEmail).as(String.class).orElse(null);
+        if (rEmail == null || rName == null) return null;
+        return new PersonIdent(rName, rEmail);
     }
 
     // ======================================================================================
