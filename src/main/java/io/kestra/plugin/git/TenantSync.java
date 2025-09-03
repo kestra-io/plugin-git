@@ -55,6 +55,7 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
     description = "Synchronizes ALL namespaces, flows, files, and dashboards between Kestra and Git."
 )
 @Plugin(
+    priority = Plugin.Priority.SECONDARY,
     examples = {
         @Example(
             title = "Sync all objects (flows, files, dashboards, namespaces) under the same tenant than this flow using Git as source of truth",

@@ -62,6 +62,7 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
     description = "Create/update is driven by 'sourceOfTruth'; delete/keep/fail is driven by 'whenMissingInSource'."
 )
 @Plugin(
+    priority = Plugin.Priority.SECONDARY,
     examples = {
         @Example(
             title = "Sync a namespace using Git as the source of truth (destructive).",
