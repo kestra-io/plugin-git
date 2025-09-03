@@ -171,6 +171,9 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
     @Override
     public Output run(RunContext runContext) throws Exception {
+
+        runContext.logger().info("Now in TenantSync for tenant {}", runContext.flowInfo().tenantId());
+
         GitService gitService = new GitService(this);
         KestraClient kestraClient = kestraClient(runContext);
 
