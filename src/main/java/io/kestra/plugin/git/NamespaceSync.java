@@ -82,7 +82,6 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
                     password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
                     branch: main
                     gitDirectory: kestra
-                    dryRun: true
                 """
         ),
         @Example(

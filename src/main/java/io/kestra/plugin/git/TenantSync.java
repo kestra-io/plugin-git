@@ -13,6 +13,7 @@ import io.kestra.sdk.KestraClient;
 import io.kestra.sdk.api.FilesApi;
 import io.kestra.sdk.internal.ApiException;
 import io.kestra.sdk.model.FileAttributes;
+import io.kestra.sdk.model.Namespace;
 import io.kestra.sdk.model.PagedResultsDashboard;
 import io.kestra.sdk.model.PagedResultsNamespace;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -73,7 +74,6 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
                     password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
                     branch: main
                     gitDirectory: kestra
-                    dryRun: true
                     kestraUrl: "http://localhost:8080"
                     auth:
                       username: "{{ secret('KESTRA_USERNAME') }}"
@@ -197,22 +197,39 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             : repoWorktree.resolve(rGitDirectory);
 
         // Retrieve all namespaces with pagination
-        List<String> namespaces = new ArrayList<>();
+        List<String> kestraNamespaces = new ArrayList<>();
         int page = 1;
         int size = 200;
         PagedResultsNamespace result;
         do {
             result = kestraClient.namespaces()
                 .searchNamespaces(page, size, false, tenantId, null, null, Map.of());
-            result.getResults().forEach(ns -> namespaces.add(ns.getId()));
+            result.getResults().forEach(ns -> kestraNamespaces.add(ns.getId()));
             page++;
         } while (result.getResults().size() == size);
 
         List<DiffLine> diffs = new ArrayList<>();
         List<Runnable> apply = new ArrayList<>();
 
-        // Plan synchronization for each namespace
+        Set<String> namespaces = new LinkedHashSet<>(kestraNamespaces);
+
+        if (rSourceOfTruth == SourceOfTruth.GIT) {
+            namespaces.addAll(discoverGitNamespaces(baseDir));
+        }
+
         for (String ns : namespaces) {
+            if (rSourceOfTruth == SourceOfTruth.GIT && !rDryRun && !kestraNamespaces.contains(ns)) {
+                Path nsRoot = baseDir.resolve(ns);
+                boolean gitHasContent = java.nio.file.Files.isDirectory(nsRoot.resolve(FLOWS_DIR)) || java.nio.file.Files.isDirectory(nsRoot.resolve(FILES_DIR));
+
+                if (gitHasContent) {
+                    try {
+                        kestraClient.namespaces().createNamespace(tenantId, new Namespace().id(ns));
+                        kestraNamespaces.add(ns);
+                    } catch (Exception ignored) {}
+                }
+            }
+
             List<FlowWithSource> kestraFlows = fetchFlowsFromKestra(kestraClient, runContext, ns);
             Map<String, byte[]> kestraFiles = listNamespaceFiles(kestraClient, runContext, ns);
 
@@ -289,6 +306,18 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             .build();
     }
 
+    private Set<String> fetchAllKestraNamespaces(KestraClient kestraClient, String tenantId) throws ApiException {
+        Set<String> out = new HashSet<>();
+        int page = 1, size = 200;
+        PagedResultsNamespace result;
+        do {
+            result = kestraClient.namespaces().searchNamespaces(page, size, false, tenantId, null, null, Map.of());
+            result.getResults().forEach(ns -> out.add(ns.getId()));
+            page++;
+        } while (result.getResults().size() == size);
+        return out;
+    }
+
     // ======================================================================================
     // Plan synchronization for a specific namespace
     // ======================================================================================
@@ -321,7 +350,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             rWhenMissingInSource, rOnInvalidSyntax, rProtectedNamespaces, rDryRun, diffs, apply);
 
         // Plan namespace files synchronization
-        planNamespaceFiles(runContext, kestraClient, filesDir, gitFiles, kestraFiles, rSourceOfTruth,
+        planNamespaceFiles(runContext, kestraClient, filesDir, gitFiles, kestraFiles, namespace, rSourceOfTruth,
             rWhenMissingInSource, rProtectedNamespaces, rDryRun, diffs, apply);
     }
 
@@ -510,6 +539,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         Path filesDir,
         Map<String, byte[]> gitFiles,
         Map<String, byte[]> kestraFiles,
+        String namespace,
         SourceOfTruth rSourceOfTruth,
         WhenMissingInSource rWhenMissingInSource,
         List<String> rProtectedNamespaces,
@@ -553,7 +583,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                     switch (rWhenMissingInSource) {
                         case KEEP -> diffs.add(DiffLine.unchanged(filePath.toString(), rel, "FILE"));
                         case DELETE -> {
-                            String namespace = runContext.flowInfo().namespace();
                             if (isProtected(namespace, rProtectedNamespaces)) {
                                 runContext.logger().warn("Protected namespace, skipping delete for FILE {}", rel);
                             } else {
@@ -1020,6 +1049,22 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         return diffEntry.getChangeType() == DiffEntry.ChangeType.DELETE
             ? diffEntry.getOldPath()
             : diffEntry.getNewPath();
+    }
+
+    private Set<String> discoverGitNamespaces(Path baseDir) throws IOException {
+        Set<String> out = new HashSet<>();
+        if (!Files.exists(baseDir)) return out;
+
+        try (var stream = Files.list(baseDir)) {
+            for (Path nsDir : (Iterable<Path>) stream::iterator) {
+                if (!Files.isDirectory(nsDir)) continue;
+                boolean isNamespace = Files.isDirectory(nsDir.resolve(FLOWS_DIR)) || Files.isDirectory(nsDir.resolve(FILES_DIR));
+                if (isNamespace) {
+                    out.add(nsDir.getFileName().toString());
+                }
+            }
+        }
+        return out;
     }
 
     // ======================================================================================
