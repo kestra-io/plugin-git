@@ -82,7 +82,7 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
                 """
         ),
         @Example(
-            title = "Sync all objects (flows, files, dashboards, namespaces) under the same tenant than this flow using Kestra as source of truth",
+            title = "Sync all objects (flows, files, dashboards, namespaces) under the same tenant as this flow using Kestra as the source of truth",
             full = true,
             code = """
                 id: tenant_sync_kestra
