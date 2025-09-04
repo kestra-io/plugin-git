@@ -22,13 +22,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.eclipse.jgit.api.AddCommand;
-import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.EmptyCommitException;
-import org.eclipse.jgit.api.errors.GitAPIException;
-import org.eclipse.jgit.diff.DiffEntry;
-import org.eclipse.jgit.diff.DiffFormatter;
-import org.eclipse.jgit.diff.Edit;
-import org.eclipse.jgit.diff.EditList;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.PersonIdent;
@@ -230,7 +224,8 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                     try {
                         kestraClient.namespaces().createNamespace(tenantId, new Namespace().id(ns));
                         kestraNamespaces.add(ns);
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+                    }
                 }
             }
 
@@ -257,17 +252,18 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
         String rCommitId = null;
         String rCommitURL = null;
+        URI diffFile = null;
 
         if (!rDryRun) {
             for (Runnable r : apply) r.run();
 
-            // Stage changes
             git.add().addFilepattern(addPattern).call();
             AddCommand update = git.add();
             update.setUpdate(true).addFilepattern(addPattern).call();
 
+            diffFile = createIonDiff(runContext, git);
+
             try {
-                // Commit changes
                 PersonIdent author = author(runContext);
                 git.commit().setAllowEmpty(false).setMessage(rCommitMessage).setAuthor(author).call();
 
@@ -288,7 +284,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                     }
                 }
 
-                // Retrieve commit metadata
                 ObjectId commit = git.getRepository().resolve(Constants.HEAD);
                 rCommitId = commit != null ? commit.getName() : null;
                 String httpUrl = gitService.getHttpUrl(runContext.render(this.url).as(String.class).orElse(null));
@@ -299,8 +294,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             }
         }
 
-        // Generate diff file for output
-        URI diffFile = createIonDiff(runContext, git);
         git.close();
 
         return Output.builder()
@@ -1011,50 +1004,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         return new PersonIdent(rName, rEmail);
     }
 
-    // ======================================================================================
-    // Create ION diff file for audit purposes
-    // ======================================================================================
-    private URI createIonDiff(RunContext runContext, Git git) throws IOException, GitAPIException {
-        File diffFile = runContext.workingDir().createTempFile(".ion").toFile();
-
-        try (BufferedWriter diffWriter = new BufferedWriter(new FileWriter(diffFile));
-             DiffFormatter diffFormatter = new DiffFormatter(new ByteArrayOutputStream())) {
-
-            diffFormatter.setRepository(git.getRepository());
-            var diff = git.diff().setCached(true).call();
-
-            for (DiffEntry de : diff) {
-                EditList editList = diffFormatter.toFileHeader(de).toEditList();
-                int additions = 0, deletions = 0, changes = 0;
-
-                for (Edit edit : editList) {
-                    int mods = edit.getLengthB() - edit.getLengthA();
-                    if (mods > 0) additions += mods;
-                    else if (mods < 0) deletions += -mods;
-                    else changes += edit.getLengthB();
-                }
-
-                Map<String, String> row = Map.of(
-                    "file", getPath(de),
-                    "additions", "+" + additions,
-                    "deletions", "-" + deletions,
-                    "changes", Integer.toString(changes)
-                );
-
-                diffWriter.write(row.toString());
-                diffWriter.newLine();
-            }
-        }
-
-        return runContext.storage().putFile(diffFile);
-    }
-
-    private static String getPath(DiffEntry diffEntry) {
-        return diffEntry.getChangeType() == DiffEntry.ChangeType.DELETE
-            ? diffEntry.getOldPath()
-            : diffEntry.getNewPath();
-    }
-
     private Set<String> discoverGitNamespaces(Path baseDir) throws IOException {
         Set<String> out = new HashSet<>();
         if (!Files.exists(baseDir)) return out;
@@ -1105,16 +1054,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         public static DiffLine deletedKestra(String file, String key, String kind) {
             return new DiffLine(file, key, kind, "DELETED_KES");
         }
-    }
-
-    private String buildCommitUrl(String httpUrl, String branch, String commitId) {
-        if (commitId == null) return null;
-        String commitSubroute = httpUrl.contains("bitbucket.org") ? "commits" : "commit";
-        String commitUrl = httpUrl + "/" + commitSubroute + "/" + commitId;
-        if (commitUrl.contains("azure.com")) {
-            commitUrl = commitUrl + "?refName=refs%2Fheads%2F" + branch;
-        }
-        return commitUrl;
     }
 
     private Property<String> getCommitMessage() {

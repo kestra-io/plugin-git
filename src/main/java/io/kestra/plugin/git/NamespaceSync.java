@@ -11,7 +11,6 @@ import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.services.FlowService;
 import io.kestra.core.storages.NamespaceFile;
@@ -22,20 +21,17 @@ import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.eclipse.jgit.api.AddCommand;
-import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.EmptyCommitException;
-import org.eclipse.jgit.api.errors.GitAPIException;
-import org.eclipse.jgit.diff.DiffEntry;
-import org.eclipse.jgit.diff.DiffFormatter;
-import org.eclipse.jgit.diff.Edit;
-import org.eclipse.jgit.diff.EditList;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.transport.PushResult;
 import org.eclipse.jgit.transport.RemoteRefUpdate;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
@@ -225,6 +221,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
         String rCommitId = null;
         String rCommitURL = null;
+        URI rDiff = createIonDiff(runContext, git);
         try {
             if (!rDryRun) {
                 PersonIdent author = author(runContext);
@@ -249,8 +246,6 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         } catch (EmptyCommitException e) {
             // no changes
         }
-
-        URI rDiff = createIonDiff(runContext, git);
 
         git.close();
         return Output.builder().diff(rDiff).commitId(rCommitId).commitURL(rCommitURL).build();
@@ -705,54 +700,11 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         }
     }
 
-    private URI createIonDiff(RunContext runContext, Git git) throws IOException, GitAPIException {
-        File diffFile = runContext.workingDir().createTempFile(".ion").toFile();
-        try (BufferedWriter diffWriter = new BufferedWriter(new FileWriter(diffFile))) {
-            try (DiffFormatter diffFormatter = new DiffFormatter(null)) {
-                diffFormatter.setRepository(git.getRepository());
-                var diff = git.diff().setCached(true).call();
-                for (DiffEntry de : diff) {
-                    EditList editList = diffFormatter.toFileHeader(de).toEditList();
-                    int additions = 0, deletions = 0, changes = 0;
-                    for (Edit edit : editList) {
-                        int mods = edit.getLengthB() - edit.getLengthA();
-                        if (mods > 0) additions += mods;
-                        else if (mods < 0) deletions += -mods;
-                        else changes += edit.getLengthB();
-                    }
-                    Map<String, String> row = Map.of(
-                        "file", getPath(de),
-                        "additions", "+" + additions,
-                        "deletions", "-" + deletions,
-                        "changes", Integer.toString(changes)
-                    );
-                    diffWriter.write(JacksonMapper.ofIon().writeValueAsString(row));
-                    diffWriter.write("\n");
-                }
-            }
-        }
-        return runContext.storage().putFile(diffFile);
-    }
-
-    private static String getPath(DiffEntry diffEntry) {
-        return diffEntry.getChangeType() == DiffEntry.ChangeType.DELETE ? diffEntry.getOldPath() : diffEntry.getNewPath();
-    }
-
     private PersonIdent author(RunContext runContext) throws IllegalVariableEvaluationException {
         String rName = runContext.render(this.authorName).as(String.class).orElse(runContext.render(this.username).as(String.class).orElse(null));
         String rEmail = runContext.render(this.authorEmail).as(String.class).orElse(null);
         if (rEmail == null || rName == null) return null;
         return new PersonIdent(rName, rEmail);
-    }
-
-    private String buildCommitUrl(String httpUrl, String branch, String commitId) {
-        if (commitId == null) return null;
-        String commitSubroute = httpUrl.contains("bitbucket.org") ? "commits" : "commit";
-        String commitUrl = httpUrl + "/" + commitSubroute + "/" + commitId;
-        if (commitUrl.contains("azure.com")) {
-            commitUrl = commitUrl + "?refName=refs%2Fheads%2F" + branch;
-        }
-        return commitUrl;
     }
 
     private Property<String> getCommitMessage() {
