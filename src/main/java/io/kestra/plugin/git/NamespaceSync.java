@@ -169,6 +169,8 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         var rBranch = runContext.render(this.branch).as(String.class).orElseThrow(() -> new IllegalArgumentException("Branch must be explicitly set."));
         var rNamespace = runContext.render(this.namespace).as(String.class).orElseThrow(() -> new IllegalArgumentException("Namespace must be explicitly set."));
 
+        runContext.logger().info("Now in NamespaceSync for namespace {}", rNamespace);
+
         var flowRepository = ((DefaultRunContext) runContext).getApplicationContext().getBean(FlowRepositoryInterface.class);
         var tenantId = runContext.flowInfo().tenantId();
         var distinctNamespaces = flowRepository.findDistinctNamespace(tenantId);
