@@ -33,13 +33,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.Collection;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
@@ -86,10 +80,10 @@ public abstract class AbstractGitTask extends Task {
         title = "Git configuration to apply to the repository",
         description = """
             Map of Git config keys and values, applied after clone
-            few examples:
-            - 'core.fileMode': false -> ignore file permission changes
-            - 'core.autocrlf': false -> prevent line ending conversion
-        """
+                few examples:
+                - 'core.fileMode': false -> ignore file permission changes
+                - 'core.autocrlf': false -> prevent line ending conversion
+            """
     )
     protected Property<Map<String, Object>> gitConfig;
 

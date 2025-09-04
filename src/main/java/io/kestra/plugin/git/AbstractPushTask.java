@@ -343,20 +343,6 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         return new PersonIdent(name, email);
     }
 
-    private String buildCommitUrl(String httpUrl, String branch, String commitId) {
-        if (commitId == null) {
-            return null;
-        }
-
-        String commitSubroute = httpUrl.contains("bitbucket.org") ? "commits" : "commit";
-        String commitUrl = httpUrl + "/" + commitSubroute + "/" + commitId;
-        if (commitUrl.contains("azure.com")) {
-            commitUrl = commitUrl + "?refName=refs%2Fheads%2F" + branch;
-        }
-
-        return commitUrl;
-    }
-
     public O run(RunContext runContext) throws Exception {
         // we add this method to configure ssl to allow self signed certs
         configureEnvironmentWithSsl(runContext);
