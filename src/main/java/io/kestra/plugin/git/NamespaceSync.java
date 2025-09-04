@@ -271,7 +271,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
             if (gitNode != null && kestraFlowWithSource == null) {
                 if (rSource == SourceOfTruth.GIT) {
-                    diff.add(DiffLine.added(baseDir, fileRel, key, "FLOW"));
+                    diff.add(DiffLine.added(fileRel, key, Kind.FLOW));
                     if (!rDryRun) apply.add(() -> {
                         try {
                             fs.importFlow(tenant, gitNode.rawYaml, false);
@@ -281,13 +281,13 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                     });
                 } else {
                     switch (rMissing) {
-                        case KEEP -> diff.add(DiffLine.unchanged(fileRel, key, "FLOW"));
+                        case KEEP -> diff.add(DiffLine.unchanged(fileRel, key, Kind.FLOW));
                         case DELETE -> {
                             if (isProtected(ns, protectedNs)) {
                                 rc.logger().warn("Protected namespace, skipping delete in Git for FLOW {}", key);
-                                diff.add(DiffLine.unchanged(fileRel, key, "FLOW"));
+                                diff.add(DiffLine.unchanged(fileRel, key, Kind.FLOW));
                             } else {
-                                diff.add(DiffLine.deletedGit(fileRel, key, "FLOW"));
+                                diff.add(DiffLine.deletedGit(fileRel, key, Kind.FLOW));
                                 if (!rDryRun) apply.add(() -> deleteGitFile(baseDir, fileRel));
                             }
                         }
@@ -298,20 +298,20 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
             } else if (gitNode == null && kestraFlowWithSource != null) {
                 if (rSource == SourceOfTruth.KESTRA) {
                     String rel = fileRelFromKey(FLOWS_DIR, key);
-                    diff.add(DiffLine.added(baseDir, rel, key, "FLOW"));
+                    diff.add(DiffLine.added(rel, key, Kind.FLOW));
                     if (!rDryRun) apply.add(() -> {
                         ensureNamespaceFolders(baseDir, ns);
                         writeGitFile(baseDir, rel, kestraFlowWithSource.getSource());
                     });
                 } else {
                     switch (rMissing) {
-                        case KEEP -> diff.add(DiffLine.unchanged(fileRelFromKey(FLOWS_DIR, key), key, "FLOW"));
+                        case KEEP -> diff.add(DiffLine.unchanged(fileRelFromKey(FLOWS_DIR, key), key, Kind.FLOW));
                         case DELETE -> {
                             if (isProtected(ns, protectedNs)) {
                                 rc.logger().warn("Protected namespace, skipping delete for FLOW {}", key);
                                 break;
                             }
-                            diff.add(DiffLine.deletedKestra(fileRelFromKey(FLOWS_DIR, key), key, "FLOW"));
+                            diff.add(DiffLine.deletedKestra(fileRelFromKey(FLOWS_DIR, key), key, Kind.FLOW));
                             if (!rDryRun) apply.add(() -> deleteFlow(rc, kestraFlowWithSource));
                         }
                         case FAIL ->
@@ -321,11 +321,11 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
             } else if (gitNode != null) {
                 boolean changed = !Objects.equals(normalizeYaml(gitNode.rawYaml), normalizeYaml(kestraFlowWithSource.getSource()));
                 if (!changed) {
-                    diff.add(DiffLine.unchanged(fileRel, key, "FLOW"));
+                    diff.add(DiffLine.unchanged(fileRel, key, Kind.FLOW));
                     continue;
                 }
                 if (rSource == SourceOfTruth.GIT) {
-                    diff.add(DiffLine.updatedKestra(fileRel, key, "FLOW"));
+                    diff.add(DiffLine.updatedKestra(fileRel, key, Kind.FLOW));
                     if (!rDryRun) apply.add(() -> {
                         try {
                             fs.importFlow(tenant, gitNode.rawYaml, false);
@@ -334,7 +334,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                         }
                     });
                 } else {
-                    diff.add(DiffLine.updatedGit(fileRel, key, "FLOW"));
+                    diff.add(DiffLine.updatedGit(fileRel, key, Kind.FLOW));
                     if (!rDryRun) apply.add(() -> writeGitFile(baseDir, fileRel, kestraFlowWithSource.getSource()));
                 }
             }
@@ -353,19 +353,19 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
             if (inGit && !inKestra) {
                 if (rSource == SourceOfTruth.GIT) {
-                    diff.add(DiffLine.added(baseDir, fileRel, ns + ":" + rel, "FILE"));
+                    diff.add(DiffLine.added(fileRel, ns + ":" + rel, Kind.FILE));
                     if (!rDryRun) apply.add(() -> {
                         putNamespaceFile(rc, ns, rel, gitFiles.get(rel));
                     });
                 } else {
                     switch (rMissing) {
-                        case KEEP -> diff.add(DiffLine.unchanged(fileRel, ns + ":" + rel, "FILE"));
+                        case KEEP -> diff.add(DiffLine.unchanged(fileRel, ns + ":" + rel, Kind.FILE));
                         case DELETE -> {
                             if (isProtected(ns, protectedNs)) {
                                 rc.logger().warn("Protected namespace, skipping delete in Git for FILE {}:{}", ns, rel);
-                                diff.add(DiffLine.unchanged(fileRel, ns + ":" + rel, "FILE"));
+                                diff.add(DiffLine.unchanged(fileRel, ns + ":" + rel, Kind.FILE));
                             } else {
-                                diff.add(DiffLine.deletedGit(fileRel, ns + ":" + rel, "FILE"));
+                                diff.add(DiffLine.deletedGit(fileRel, ns + ":" + rel, Kind.FILE));
                                 if (!rDryRun) apply.add(() -> deleteGitFile(baseDir, fileRel));
                             }
                         }
@@ -378,17 +378,17 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
             if (!inGit && inKestra) {
                 if (rSource == SourceOfTruth.KESTRA) {
-                    diff.add(DiffLine.added(baseDir, fileRel, ns + ":" + rel, "FILE"));
+                    diff.add(DiffLine.added(fileRel, ns + ":" + rel, Kind.FILE));
                     if (!rDryRun) apply.add(() -> writeGitBinaryFile(baseDir, fileRel, kestraFiles.get(rel)));
                 } else {
                     switch (rMissing) {
-                        case KEEP -> diff.add(DiffLine.unchanged(fileRel, ns + ":" + rel, "FILE"));
+                        case KEEP -> diff.add(DiffLine.unchanged(fileRel, ns + ":" + rel, Kind.FILE));
                         case DELETE -> {
                             if (isProtected(ns, protectedNs)) {
                                 rc.logger().warn("Protected namespace, skipping delete for FILE {}:{}", ns, rel);
                                 break;
                             }
-                            diff.add(DiffLine.deletedKestra(fileRel, ns + ":" + rel, "FILE"));
+                            diff.add(DiffLine.deletedKestra(fileRel, ns + ":" + rel, Kind.FILE));
                             if (!rDryRun) apply.add(() -> deleteNamespaceFile(rc, ns, rel));
                         }
                         case FAIL ->
@@ -402,12 +402,12 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                 byte[] g = gitFiles.get(rel);
                 byte[] k = kestraFiles.get(rel);
                 if (Arrays.equals(g, k)) {
-                    diff.add(DiffLine.unchanged(fileRel, ns + ":" + rel, "FILE"));
+                    diff.add(DiffLine.unchanged(fileRel, ns + ":" + rel, Kind.FILE));
                 } else if (rSource == SourceOfTruth.GIT) {
-                    diff.add(DiffLine.updatedKestra(fileRel, ns + ":" + rel, "FILE"));
+                    diff.add(DiffLine.updatedKestra(fileRel, ns + ":" + rel, Kind.FILE));
                     if (!rDryRun) apply.add(() -> putNamespaceFile(rc, ns, rel, g));
                 } else { // KESTRA
-                    diff.add(DiffLine.updatedGit(fileRel, ns + ":" + rel, "FILE"));
+                    diff.add(DiffLine.updatedGit(fileRel, ns + ":" + rel, Kind.FILE));
                     if (!rDryRun) apply.add(() -> writeGitBinaryFile(baseDir, fileRel, k));
                 }
             }
@@ -659,39 +659,6 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
             case SKIP -> rc.logger().info("Skipping invalid {}", what);
             case WARN -> rc.logger().warn("{} couldn't be synced due to invalid syntax: {}", what, e.getMessage());
             case FAIL -> throw new KestraRuntimeException("Invalid syntax for " + what + ": " + e.getMessage(), e);
-        }
-    }
-
-    @Getter
-    @AllArgsConstructor
-    private static class DiffLine {
-        private String file;
-        private String key;        // namespace:id or namespace:relative/path for FILE
-        private String kind;       // FLOW/FILE
-        private String action;     // ADDED/UPDATED/UNCHANGED/UPDATED_GIT/UPDATED_KES/DELETED_GIT/DELETED_KES
-
-        public static DiffLine added(Path base, String file, String key, String kind) {
-            return new DiffLine((base == null ? file : base.resolve(file).toString()), key, kind, "ADDED");
-        }
-
-        public static DiffLine updatedGit(String file, String key, String kind) {
-            return new DiffLine(file, key, kind, "UPDATED_GIT");
-        }
-
-        public static DiffLine updatedKestra(String file, String key, String kind) {
-            return new DiffLine(file, key, kind, "UPDATED_KES");
-        }
-
-        public static DiffLine unchanged(String file, String key, String kind) {
-            return new DiffLine(file, key, kind, "UNCHANGED");
-        }
-
-        public static DiffLine deletedGit(String file, String key, String kind) {
-            return new DiffLine(file, key, kind, "DELETED_GIT");
-        }
-
-        public static DiffLine deletedKestra(String file, String key, String kind) {
-            return new DiffLine(file, key, kind, "DELETED_KES");
         }
     }
 

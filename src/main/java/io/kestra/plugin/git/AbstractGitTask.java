@@ -8,6 +8,7 @@ import io.kestra.core.models.tasks.Task;
 import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.git.services.SshTransportConfigCallback;
 import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
@@ -402,5 +403,53 @@ public abstract class AbstractGitTask extends Task {
         }
 
         return commitUrl;
+    }
+
+    @Getter
+    @AllArgsConstructor
+    protected static class DiffLine {
+        private String file;
+        private String key;
+        private Kind kind;
+        private Action action;
+
+        public static DiffLine added(String file, String key, Kind kind) {
+            return new DiffLine(file, key, kind, Action.ADDED);
+        }
+
+        public static DiffLine updatedGit(String file, String key, Kind kind) {
+            return new DiffLine(file, key, kind, Action.UPDATED_GIT);
+        }
+
+        public static DiffLine updatedKestra(String file, String key, Kind kind) {
+            return new DiffLine(file, key, kind, Action.UPDATED_KES);
+        }
+
+        public static DiffLine unchanged(String file, String key, Kind kind) {
+            return new DiffLine(file, key, kind, Action.UNCHANGED);
+        }
+
+        public static DiffLine deletedGit(String file, String key, Kind kind) {
+            return new DiffLine(file, key, kind, Action.DELETED_GIT);
+        }
+
+        public static DiffLine deletedKestra(String file, String key, Kind kind) {
+            return new DiffLine(file, key, kind, Action.DELETED_KES);
+        }
+    }
+
+    protected enum Kind {
+        FLOW,
+        FILE,
+        DASHBOARD
+    }
+
+    protected enum Action {
+        ADDED,
+        UPDATED_GIT,
+        UPDATED_KES,
+        UNCHANGED,
+        DELETED_GIT,
+        DELETED_KES
     }
 }

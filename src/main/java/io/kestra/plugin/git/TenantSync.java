@@ -403,7 +403,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             String tenantId = runContext.flowInfo().tenantId();
             if (gitYaml != null && kestraYaml == null) {
                 if (rSourceOfTruth == SourceOfTruth.GIT) {
-                    diffs.add(DiffLine.added(flowPath.toString(), flowId, "FLOW"));
+                    diffs.add(DiffLine.added(flowPath.toString(), flowId, Kind.FLOW));
                     if (!rDryRun) {
                         apply.add(() -> {
                             try {
@@ -419,12 +419,12 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                     }
                 } else {
                     switch (rWhenMissingInSource) {
-                        case KEEP -> diffs.add(DiffLine.unchanged(flowPath.toString(), flowId, "FLOW"));
+                        case KEEP -> diffs.add(DiffLine.unchanged(flowPath.toString(), flowId, Kind.FLOW));
                         case DELETE -> {
                             if (isProtected(namespace, rProtectedNamespaces)) {
                                 runContext.logger().warn("Protected namespace, skipping delete in Git for FLOW {}", flowId);
                             } else {
-                                diffs.add(DiffLine.deletedGit(flowPath.toString(), flowId, "FLOW"));
+                                diffs.add(DiffLine.deletedGit(flowPath.toString(), flowId, Kind.FLOW));
                                 if (!rDryRun) apply.add(() -> deleteGitFile(flowPath));
                             }
                         }
@@ -437,16 +437,16 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                 // Case 2: Flow exists only in Kestra
             } else if (gitYaml == null && kestraYaml != null) {
                 if (rSourceOfTruth == SourceOfTruth.KESTRA) {
-                    diffs.add(DiffLine.added(flowPath.toString(), flowId, "FLOW"));
+                    diffs.add(DiffLine.added(flowPath.toString(), flowId, Kind.FLOW));
                     if (!rDryRun) apply.add(() -> writeGitFile(flowPath, kestraYaml));
                 } else {
                     switch (rWhenMissingInSource) {
-                        case KEEP -> diffs.add(DiffLine.unchanged(flowPath.toString(), flowId, "FLOW"));
+                        case KEEP -> diffs.add(DiffLine.unchanged(flowPath.toString(), flowId, Kind.FLOW));
                         case DELETE -> {
                             if (isProtected(namespace, rProtectedNamespaces)) {
                                 runContext.logger().warn("Protected namespace, skipping delete for FLOW {}", flowId);
                             } else {
-                                diffs.add(DiffLine.deletedKestra(flowPath.toString(), flowId, "FLOW"));
+                                diffs.add(DiffLine.deletedKestra(flowPath.toString(), flowId, Kind.FLOW));
                                 if (!rDryRun) {
                                     apply.add(() -> {
                                         try {
@@ -469,12 +469,12 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             } else if (gitYaml != null) {
                 boolean changed = !normalizeYaml(gitYaml).equals(normalizeYaml(kestraYaml));
                 if (!changed) {
-                    diffs.add(DiffLine.unchanged(flowPath.toString(), flowId, "FLOW"));
+                    diffs.add(DiffLine.unchanged(flowPath.toString(), flowId, Kind.FLOW));
                     continue;
                 }
 
                 if (rSourceOfTruth == SourceOfTruth.GIT) {
-                    diffs.add(DiffLine.updatedKestra(flowPath.toString(), flowId, "FLOW"));
+                    diffs.add(DiffLine.updatedKestra(flowPath.toString(), flowId, Kind.FLOW));
                     if (!rDryRun) {
                         apply.add(() -> {
                             try {
@@ -489,7 +489,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                         });
                     }
                 } else {
-                    diffs.add(DiffLine.updatedGit(flowPath.toString(), flowId, "FLOW"));
+                    diffs.add(DiffLine.updatedGit(flowPath.toString(), flowId, Kind.FLOW));
                     if (!rDryRun) apply.add(() -> writeGitFile(flowPath, kestraYaml));
                 }
             }
@@ -521,13 +521,13 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
             if (inGit && !inKestra) {
                 if (rSourceOfTruth == SourceOfTruth.GIT) {
-                    diffs.add(DiffLine.added(filePath.toString(), rel, "FILE"));
+                    diffs.add(DiffLine.added(filePath.toString(), rel, Kind.FILE));
                     if (!rDryRun) apply.add(() -> putNamespaceFile(kestraClient, runContext, rel, gitFiles.get(rel)));
                 } else {
                     switch (rWhenMissingInSource) {
-                        case KEEP -> diffs.add(DiffLine.unchanged(filePath.toString(), rel, "FILE"));
+                        case KEEP -> diffs.add(DiffLine.unchanged(filePath.toString(), rel, Kind.FILE));
                         case DELETE -> {
-                            diffs.add(DiffLine.deletedGit(filePath.toString(), rel, "FILE"));
+                            diffs.add(DiffLine.deletedGit(filePath.toString(), rel, Kind.FILE));
                             if (!rDryRun) apply.add(() -> deleteGitFile(filePath));
                         }
                         case FAIL -> throw new KestraRuntimeException(
@@ -540,16 +540,16 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
             if (!inGit && inKestra) {
                 if (rSourceOfTruth == SourceOfTruth.KESTRA) {
-                    diffs.add(DiffLine.added(filePath.toString(), rel, "FILE"));
+                    diffs.add(DiffLine.added(filePath.toString(), rel, Kind.FILE));
                     if (!rDryRun) apply.add(() -> writeGitBinaryFile(filePath, kestraFiles.get(rel)));
                 } else {
                     switch (rWhenMissingInSource) {
-                        case KEEP -> diffs.add(DiffLine.unchanged(filePath.toString(), rel, "FILE"));
+                        case KEEP -> diffs.add(DiffLine.unchanged(filePath.toString(), rel, Kind.FILE));
                         case DELETE -> {
                             if (isProtected(namespace, rProtectedNamespaces)) {
                                 runContext.logger().warn("Protected namespace, skipping delete for FILE {}", rel);
                             } else {
-                                diffs.add(DiffLine.deletedKestra(filePath.toString(), rel, "FILE"));
+                                diffs.add(DiffLine.deletedKestra(filePath.toString(), rel, Kind.FILE));
                                 if (!rDryRun) apply.add(() -> deleteNamespaceFile(kestraClient, runContext, rel));
                             }
                         }
@@ -565,12 +565,12 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                 byte[] g = gitFiles.get(rel);
                 byte[] k = kestraFiles.get(rel);
                 if (Arrays.equals(g, k)) {
-                    diffs.add(DiffLine.unchanged(filePath.toString(), rel, "FILE"));
+                    diffs.add(DiffLine.unchanged(filePath.toString(), rel, Kind.FILE));
                 } else if (rSourceOfTruth == SourceOfTruth.GIT) {
-                    diffs.add(DiffLine.updatedKestra(filePath.toString(), rel, "FILE"));
+                    diffs.add(DiffLine.updatedKestra(filePath.toString(), rel, Kind.FILE));
                     if (!rDryRun) apply.add(() -> putNamespaceFile(kestraClient, runContext, rel, g));
                 } else {
-                    diffs.add(DiffLine.updatedGit(filePath.toString(), rel, "FILE"));
+                    diffs.add(DiffLine.updatedGit(filePath.toString(), rel, Kind.FILE));
                     if (!rDryRun) apply.add(() -> writeGitBinaryFile(filePath, k));
                 }
             }
@@ -606,7 +606,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             // Dashboard exists only in Git
             if (gitYaml != null && kestraYaml == null) {
                 if (rSourceOfTruth == SourceOfTruth.GIT) {
-                    diffs.add(DiffLine.added(dashboardPath.toString(), dashboardId, "DASHBOARD"));
+                    diffs.add(DiffLine.added(dashboardPath.toString(), dashboardId, Kind.DASHBOARD));
                     if (!rDryRun) {
                         apply.add(() -> {
                             try {
@@ -621,9 +621,10 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                     }
                 } else {
                     switch (rWhenMissingInSource) {
-                        case KEEP -> diffs.add(DiffLine.unchanged(dashboardPath.toString(), dashboardId, "DASHBOARD"));
+                        case KEEP ->
+                            diffs.add(DiffLine.unchanged(dashboardPath.toString(), dashboardId, Kind.DASHBOARD));
                         case DELETE -> {
-                            diffs.add(DiffLine.deletedGit(dashboardPath.toString(), dashboardId, "DASHBOARD"));
+                            diffs.add(DiffLine.deletedGit(dashboardPath.toString(), dashboardId, Kind.DASHBOARD));
                             if (!rDryRun) apply.add(() -> deleteGitFile(dashboardPath));
                         }
                         case FAIL -> throw new KestraRuntimeException(
@@ -635,13 +636,14 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                 // Dashboard exists only in Kestra
             } else if (gitYaml == null && kestraYaml != null) {
                 if (rSourceOfTruth == SourceOfTruth.KESTRA) {
-                    diffs.add(DiffLine.added(dashboardPath.toString(), dashboardId, "DASHBOARD"));
+                    diffs.add(DiffLine.added(dashboardPath.toString(), dashboardId, Kind.DASHBOARD));
                     if (!rDryRun) apply.add(() -> writeGitFile(dashboardPath, kestraYaml));
                 } else {
                     switch (rWhenMissingInSource) {
-                        case KEEP -> diffs.add(DiffLine.unchanged(dashboardPath.toString(), dashboardId, "DASHBOARD"));
+                        case KEEP ->
+                            diffs.add(DiffLine.unchanged(dashboardPath.toString(), dashboardId, Kind.DASHBOARD));
                         case DELETE -> {
-                            diffs.add(DiffLine.deletedKestra(dashboardPath.toString(), dashboardId, "DASHBOARD"));
+                            diffs.add(DiffLine.deletedKestra(dashboardPath.toString(), dashboardId, Kind.DASHBOARD));
                             if (!rDryRun) {
                                 apply.add(() -> {
                                     try {
@@ -664,12 +666,12 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             } else if (gitYaml != null) {
                 boolean changed = !normalizeYaml(gitYaml).equals(normalizeYaml(kestraYaml));
                 if (!changed) {
-                    diffs.add(DiffLine.unchanged(dashboardPath.toString(), dashboardId, "DASHBOARD"));
+                    diffs.add(DiffLine.unchanged(dashboardPath.toString(), dashboardId, Kind.DASHBOARD));
                     continue;
                 }
 
                 if (rSourceOfTruth == SourceOfTruth.GIT) {
-                    diffs.add(DiffLine.updatedKestra(dashboardPath.toString(), dashboardId, "DASHBOARD"));
+                    diffs.add(DiffLine.updatedKestra(dashboardPath.toString(), dashboardId, Kind.DASHBOARD));
                     if (!rDryRun) {
                         apply.add(() -> {
                             try {
@@ -683,7 +685,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                         });
                     }
                 } else {
-                    diffs.add(DiffLine.updatedGit(dashboardPath.toString(), dashboardId, "DASHBOARD"));
+                    diffs.add(DiffLine.updatedGit(dashboardPath.toString(), dashboardId, Kind.DASHBOARD));
                     if (!rDryRun) apply.add(() -> writeGitFile(dashboardPath, kestraYaml));
                 }
             }
@@ -932,39 +934,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             }
         }
         return out;
-    }
-
-    @Getter
-    @AllArgsConstructor
-    private static class DiffLine {
-        private String file;
-        private String key;
-        private String kind;    // FLOW, FILE, DASHBOARD
-        private String action;  // ADDED, UPDATED_GIT, UPDATED_KES, UNCHANGED, DELETED_GIT, DELETED_KES
-
-        public static DiffLine added(String file, String key, String kind) {
-            return new DiffLine(file, key, kind, "ADDED");
-        }
-
-        public static DiffLine updatedGit(String file, String key, String kind) {
-            return new DiffLine(file, key, kind, "UPDATED_GIT");
-        }
-
-        public static DiffLine updatedKestra(String file, String key, String kind) {
-            return new DiffLine(file, key, kind, "UPDATED_KES");
-        }
-
-        public static DiffLine unchanged(String file, String key, String kind) {
-            return new DiffLine(file, key, kind, "UNCHANGED");
-        }
-
-        public static DiffLine deletedGit(String file, String key, String kind) {
-            return new DiffLine(file, key, kind, "DELETED_GIT");
-        }
-
-        public static DiffLine deletedKestra(String file, String key, String kind) {
-            return new DiffLine(file, key, kind, "DELETED_KES");
-        }
     }
 
     private Property<String> getCommitMessage() {
