@@ -171,7 +171,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         GitService gitService = new GitService(this);
         KestraClient kestraClient = kestraClient(runContext);
 
-        // Required runtime parameters
         String tenantId = runContext.flowInfo().tenantId();
         String rBranch = runContext.render(this.branch).as(String.class)
             .orElseThrow(() -> new IllegalArgumentException("Branch must be explicitly set."));
@@ -187,14 +186,12 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         String rCommitMessage = runContext.render(this.getCommitMessage())
             .as(String.class).orElse("Tenant sync from Kestra");
 
-        // Clone the Git repository
         var git = gitService.cloneBranch(runContext, rBranch, this.cloneSubmodules);
         Path repoWorktree = git.getRepository().getWorkTree().toPath();
         Path baseDir = (rGitDirectory == null || rGitDirectory.isBlank())
             ? repoWorktree
             : repoWorktree.resolve(rGitDirectory);
 
-        // Retrieve all namespaces with pagination
         List<String> kestraNamespaces = new ArrayList<>();
         int page = 1;
         int size = 200;
@@ -241,7 +238,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             );
         }
 
-        // Plan dashboard synchronization
         planDashboards(
             runContext, kestraClient, baseDir,
             rSourceOfTruth, rWhenMissingInSource,
@@ -303,21 +299,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             .build();
     }
 
-    private Set<String> fetchAllKestraNamespaces(KestraClient kestraClient, String tenantId) throws ApiException {
-        Set<String> out = new HashSet<>();
-        int page = 1, size = 200;
-        PagedResultsNamespace result;
-        do {
-            result = kestraClient.namespaces().searchNamespaces(page, size, false, tenantId, null, null, Map.of());
-            result.getResults().forEach(ns -> out.add(ns.getId()));
-            page++;
-        } while (result.getResults().size() == size);
-        return out;
-    }
-
-    // ======================================================================================
-    // Plan synchronization for a specific namespace
-    // ======================================================================================
     private void planNamespace(
         RunContext runContext,
         KestraClient kestraClient,
@@ -338,22 +319,16 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         Path flowsDir = nsRoot.resolve(FLOWS_DIR);
         Path filesDir = nsRoot.resolve(FILES_DIR);
 
-        // Retrieve Git state
         var gitFlows = readGitFlows(flowsDir);
         var gitFiles = readGitFiles(filesDir);
 
-        // Plan flows synchronization
         planFlows(runContext, flowsDir, gitFlows, kestraFlows, namespace, rSourceOfTruth,
             rWhenMissingInSource, rOnInvalidSyntax, rProtectedNamespaces, rDryRun, diffs, apply);
 
-        // Plan namespace files synchronization
         planNamespaceFiles(runContext, kestraClient, filesDir, gitFiles, kestraFiles, namespace, rSourceOfTruth,
             rWhenMissingInSource, rProtectedNamespaces, rDryRun, diffs, apply);
     }
 
-    // ======================================================================================
-    // List all namespace files stored in Kestra
-    // ======================================================================================
     private Map<String, byte[]> listNamespaceFiles(KestraClient kestraClient, RunContext runContext, String ns) {
         try {
             var filesApi = kestraClient.files();
@@ -394,16 +369,10 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         }
     }
 
-    // ======================================================================================
-    // Normalize namespace paths
-    // ======================================================================================
     private String normalizeNsPath(String path) {
         return path.replace("\\", "/");
     }
 
-    // ======================================================================================
-    // Plan flows synchronization between Git and Kestra
-    // ======================================================================================
     private void planFlows(
         RunContext runContext,
         Path flowsDir,
@@ -527,9 +496,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         }
     }
 
-    // ======================================================================================
-    // Plan namespace files synchronization between Git and Kestra
-    // ======================================================================================
     private void planNamespaceFiles(
         RunContext runContext,
         KestraClient kestraClient,
@@ -595,7 +561,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                 continue;
             }
 
-            // Present in both Git and Kestra
             if (inGit) {
                 byte[] g = gitFiles.get(rel);
                 byte[] k = kestraFiles.get(rel);
@@ -612,9 +577,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         }
     }
 
-    // ======================================================================================
-    // Plan dashboards synchronization between Git and Kestra
-    // ======================================================================================
     private void planDashboards(
         RunContext runContext,
         KestraClient kestraClient,
@@ -628,10 +590,8 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
     ) throws Exception {
         Path dashboardsDir = baseDir.resolve(DASHBOARDS_DIR);
 
-        // Get dashboards from Kestra using searchDashboards (pagination)
         Map<String, String> kestraDashboards = fetchDashboardsFromKestra(kestraClient, runContext);
 
-        // Get dashboards from Git
         Map<String, String> gitDashboards = readGitDashboards(dashboardsDir);
 
         Set<String> allDashboards = new HashSet<>();
@@ -730,19 +690,16 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         }
     }
 
-    // ======================================================================================
-    // Fetch flows from Kestra via exportFlowsByQuery() and unzip them
-    // ======================================================================================
     private List<FlowWithSource> fetchFlowsFromKestra(KestraClient kestraClient, RunContext runContext, String namespace) {
         try {
             // Export all flows from Kestra for the given namespace (including sub-namespaces)
             byte[] zippedFlows = kestraClient.flows().exportFlowsByQuery(
                 runContext.flowInfo().tenantId(),
-                null,      // ids
-                null,      // q
-                null,      // sort
-                namespace, // filter by namespace (includes children)
-                null       // other params
+                null, // ids
+                null,       // q
+                null,       // sort
+                namespace,  // filter by namespace (includes children)
+                null        // other params
             );
 
             List<FlowWithSource> flows = new ArrayList<>();
@@ -776,9 +733,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         }
     }
 
-    // ======================================================================================
-    // Fetch dashboards from Kestra via DashboardsApi + pagination
-    // ======================================================================================
     private Map<String, String> fetchDashboardsFromKestra(KestraClient kestraClient, RunContext runContext) {
         try {
             Map<String, String> dashboards = new HashMap<>();
@@ -804,9 +758,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         }
     }
 
-    // ======================================================================================
-    // Read dashboards from Git into memory
-    // ======================================================================================
     private Map<String, String> readGitDashboards(Path dashboardsDir) throws IOException {
         Map<String, String> dashboards = new HashMap<>();
         if (!Files.exists(dashboardsDir)) {
@@ -828,9 +779,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         return dashboards;
     }
 
-    // ======================================================================================
-    // Read all flows from Git into memory
-    // ======================================================================================
     private Map<String, String> readGitFlows(Path flowsDir) throws IOException {
         Map<String, String> flows = new HashMap<>();
         if (!Files.exists(flowsDir)) {
@@ -852,9 +800,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         return flows;
     }
 
-    // ======================================================================================
-    // Read all binary files from Git into memory
-    // ======================================================================================
     private Map<String, byte[]> readGitFiles(Path filesDir) throws IOException {
         Map<String, byte[]> files = new HashMap<>();
         if (!Files.exists(filesDir)) {
@@ -875,9 +820,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         return files;
     }
 
-    // ======================================================================================
-    // Write YAML file into Git repository
-    // ======================================================================================
     private void writeGitFile(Path path, String content) {
         try {
             Files.createDirectories(path.getParent());
@@ -887,9 +829,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         }
     }
 
-    // ======================================================================================
-    // Write binary file into Git repository
-    // ======================================================================================
     private void writeGitBinaryFile(Path path, byte[] content) {
         try {
             Files.createDirectories(path.getParent());
@@ -899,9 +838,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         }
     }
 
-    // ======================================================================================
-    // Delete a file from Git repository
-    // ======================================================================================
     private void deleteGitFile(Path path) {
         try {
             Files.deleteIfExists(path);
@@ -909,10 +845,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             throw new KestraRuntimeException(e);
         }
     }
-
-    // ======================================================================================
-    // Store a file into Kestra namespace storage
-    // ======================================================================================
 
     private void putNamespaceFile(KestraClient kestraClient, RunContext runContext, String rel, byte[] bytes) {
         try {
@@ -935,9 +867,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         }
     }
 
-    // ======================================================================================
-    // Delete a file from Kestra namespace storage
-    // ======================================================================================
     private void deleteNamespaceFile(KestraClient kestraClient, RunContext runContext, String rel) {
         try {
             var filesApi = kestraClient.files();
@@ -951,24 +880,15 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         }
     }
 
-    // ======================================================================================
-    // Utility: check if a namespace is protected
-    // ======================================================================================
     private static boolean isProtected(String ns, List<String> protectedNs) {
         if (ns == null) return false;
         return protectedNs.stream().anyMatch(p -> p.equals(ns) || ns.startsWith(p + "."));
     }
 
-    // ======================================================================================
-    // Utility: normalize YAML content for diff comparison
-    // ======================================================================================
     private static String normalizeYaml(String yaml) {
         return yaml == null ? null : yaml.replace("\r\n", "\n").trim();
     }
 
-    // ======================================================================================
-    // Utility: handle invalid syntax based on configured policy
-    // ======================================================================================
     private void handleInvalid(RunContext rc, OnInvalidSyntax mode, String what, Exception e) {
         switch (mode) {
             case SKIP -> rc.logger().info("Skipping invalid {}", what);
@@ -977,9 +897,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         }
     }
 
-    // ======================================================================================
-    // Create a named file from YAML string (for imports)
-    // ======================================================================================
     private File toNamedTempFile(String fileName, String yaml) {
         try {
             Path tmpPath = Files.createTempDirectory("kestra-import")
@@ -994,9 +911,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         }
     }
 
-    // ======================================================================================
-    // Build the commit author information
-    // ======================================================================================
     private PersonIdent author(RunContext runContext) throws IllegalVariableEvaluationException {
         String rName = runContext.render(this.authorName).as(String.class).orElse(runContext.render(this.username).as(String.class).orElse(null));
         String rEmail = runContext.render(this.authorEmail).as(String.class).orElse(null);
@@ -1020,9 +934,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         return out;
     }
 
-    // ======================================================================================
-    // DiffLine helper class
-    // ======================================================================================
     @Getter
     @AllArgsConstructor
     private static class DiffLine {
@@ -1060,9 +971,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         return Optional.ofNullable(this.commitMessage).orElse(Property.ofValue("Tenant sync from Kestra"));
     }
 
-    // ======================================================================================
-    // Output definition
-    // ======================================================================================
     @SuperBuilder
     @Getter
     public static class Output implements io.kestra.core.models.tasks.Output {
