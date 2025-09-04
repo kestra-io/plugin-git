@@ -42,7 +42,7 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
                 }
             });
 
-        runContext.logger().info("Kestra URL: {}", rKestraUrl);
+        runContext.logger().debug("Kestra URL: {}", rKestraUrl);
 
         String normalizedUrl = rKestraUrl.trim().replaceAll("/+$", "");
 
