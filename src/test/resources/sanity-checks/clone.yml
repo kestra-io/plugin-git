@@ -1,0 +1,21 @@
+id: git_clone
+namespace: sanitychecks
+
+tasks:
+  - id: file_system
+    type: io.kestra.plugin.core.flow.WorkingDirectory
+    tasks:
+      - id: clone
+        type: io.kestra.plugin.git.Clone
+        url: https://github.com/dbt-labs/jaffle_shop
+        branch: main   
+
+      - id: delete_file # Delete one of the files from the cloned repo
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+        - rm README.md
+
+      - id: assert
+        type: io.kestra.plugin.core.execution.Assert
+        conditions: 
+          - "{{ outputs.delete_file.exitCode == 0}}"
