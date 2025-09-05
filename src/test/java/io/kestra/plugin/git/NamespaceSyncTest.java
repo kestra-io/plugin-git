@@ -136,7 +136,7 @@ public class NamespaceSyncTest extends AbstractGitTest {
 
         if (out.getDiff() != null) {
             String ion = IOUtils.toString(cloneCtx.storage().getFile(out.getDiff()), StandardCharsets.UTF_8);
-            assertTrue(ion.isEmpty() || ion.isBlank());
+            assertFalse(ion.isBlank());
         }
     }
 
