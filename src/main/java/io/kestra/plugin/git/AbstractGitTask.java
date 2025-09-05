@@ -1,20 +1,33 @@
 package io.kestra.plugin.git;
 
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.Task;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.plugin.git.services.SshTransportConfigCallback;
 import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.SneakyThrows;
 import lombok.experimental.SuperBuilder;
+import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.TransportCommand;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.diff.DiffEntry;
+import org.eclipse.jgit.diff.DiffFormatter;
+import org.eclipse.jgit.diff.Edit;
+import org.eclipse.jgit.diff.EditList;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.lib.StoredConfig;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 
 import javax.net.ssl.*;
-import java.io.ByteArrayInputStream;
+import java.io.*;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,13 +36,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.Collection;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 
@@ -76,10 +83,10 @@ public abstract class AbstractGitTask extends Task {
         title = "Git configuration to apply to the repository",
         description = """
             Map of Git config keys and values, applied after clone
-            few examples:
-            - 'core.fileMode': false -> ignore file permission changes
-            - 'core.autocrlf': false -> prevent line ending conversion
-        """
+                few examples:
+                - 'core.fileMode': false -> ignore file permission changes
+                - 'core.autocrlf': false -> prevent line ending conversion
+            """
     )
     protected Property<Map<String, Object>> gitConfig;
 
@@ -336,5 +343,123 @@ public abstract class AbstractGitTask extends Task {
 
         gitRepoConfig.save();
         runContext.logger().info("Applied {} git configuration settings", rGitConfig.size());
+    }
+
+    protected URI createIonDiff(RunContext runContext, Git git) throws IOException, GitAPIException {
+        File diffFile = runContext.workingDir().createTempFile(".ion").toFile();
+
+        try (BufferedWriter diffWriter = new BufferedWriter(new FileWriter(diffFile));
+             DiffFormatter diffFormatter = new DiffFormatter(new ByteArrayOutputStream())) {
+
+            diffFormatter.setRepository(git.getRepository());
+            var diff = git.diff().setCached(true).call();
+
+            ObjectMapper mapper = new ObjectMapper();
+            JsonFactory factory = mapper.getFactory();
+            try (JsonGenerator generator = factory.createGenerator(diffWriter)) {
+                for (DiffEntry de : diff) {
+                    EditList editList = diffFormatter.toFileHeader(de).toEditList();
+                    int additions = 0, deletions = 0, changes = 0;
+
+                    for (Edit edit : editList) {
+                        int mods = edit.getLengthB() - edit.getLengthA();
+                        if (mods > 0) additions += mods;
+                        else if (mods < 0) deletions += -mods;
+                        else changes += edit.getLengthB();
+                    }
+
+                    generator.writeStartObject();
+                    generator.writeStringField("file", getPath(de));
+                    generator.writeNumberField("additions", additions);
+                    generator.writeNumberField("deletions", deletions);
+                    generator.writeNumberField("changes", changes);
+                    generator.writeEndObject();
+                    generator.writeRaw('\n');
+                }
+            }
+        }
+
+        return runContext.storage().putFile(diffFile);
+    }
+
+    private static String getPath(DiffEntry diffEntry) {
+        return diffEntry.getChangeType() == DiffEntry.ChangeType.DELETE
+            ? diffEntry.getOldPath()
+            : diffEntry.getNewPath();
+    }
+
+    protected String buildCommitUrl(String httpUrl, String branch, String commitId) {
+
+        if (commitId == null || httpUrl == null) {
+            return null;
+        }
+
+        // Clean URL (remove .git if present)
+        httpUrl = httpUrl.replaceAll("\\.git$", "");
+
+        String commitSubroute = httpUrl.contains("bitbucket.org") ? "commits" : "commit";
+        String commitUrl = httpUrl + "/" + commitSubroute + "/" + commitId;
+
+        if (httpUrl.contains("azure.com")) {
+            commitUrl += "?refName=refs%2Fheads%2F" + branch;
+        }
+
+        return commitUrl;
+    }
+
+    @Getter
+    @AllArgsConstructor
+    protected static class DiffLine {
+        private String file;
+        private String key;
+        private Kind kind;
+        private Action action;
+
+        public static DiffLine added(String file, String key, Kind kind) {
+            return new DiffLine(file, key, kind, Action.ADDED);
+        }
+
+        public static DiffLine updatedGit(String file, String key, Kind kind) {
+            return new DiffLine(file, key, kind, Action.UPDATED_GIT);
+        }
+
+        public static DiffLine updatedKestra(String file, String key, Kind kind) {
+            return new DiffLine(file, key, kind, Action.UPDATED_KES);
+        }
+
+        public static DiffLine unchanged(String file, String key, Kind kind) {
+            return new DiffLine(file, key, kind, Action.UNCHANGED);
+        }
+
+        public static DiffLine deletedGit(String file, String key, Kind kind) {
+            return new DiffLine(file, key, kind, Action.DELETED_GIT);
+        }
+
+        public static DiffLine deletedKestra(String file, String key, Kind kind) {
+            return new DiffLine(file, key, kind, Action.DELETED_KES);
+        }
+
+        @SneakyThrows
+        public static URI writeIonFile(RunContext runContext, List<DiffLine> diffs) {
+            byte[] ionContent = JacksonMapper.ofIon().writeValueAsBytes(diffs);
+            try (ByteArrayInputStream input = new ByteArrayInputStream(ionContent)) {
+                return runContext.storage().putFile(input, "diffs.ion");
+            }
+        }
+    }
+
+    protected enum Kind {
+        FLOW,
+        FILE,
+        DASHBOARD
+    }
+
+    protected enum Action {
+        ADDED,
+        UPDATED_GIT,
+        UPDATED_KES,
+        UNCHANGED,
+        DELETED_GIT,
+        DELETED_KES
     }
 }
