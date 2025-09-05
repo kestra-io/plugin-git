@@ -538,9 +538,10 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     private void deleteNamespaceFile(RunContext runContext, String namespace, String file) {
         try {
             var nsStore = runContext.storage().namespace(namespace);
+            Path storagePath = NamespaceFile.of(namespace, Path.of(file)).storagePath();
 
             try {
-                nsStore.delete(Path.of(file));
+                nsStore.delete(storagePath);
             } catch (IOException e1) {
                 try {
                     nsStore.delete(Path.of("files").resolve(file));
