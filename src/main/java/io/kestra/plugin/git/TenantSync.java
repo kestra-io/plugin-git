@@ -288,6 +288,8 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             } catch (EmptyCommitException e) {
                 runContext.logger().info("No changes to commit.");
             }
+        } else {
+            diffFile = DiffLine.writeIonFile(runContext, diffs);
         }
 
         git.close();

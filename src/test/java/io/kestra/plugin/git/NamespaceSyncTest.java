@@ -86,8 +86,8 @@ public class NamespaceSyncTest extends AbstractGitTest {
 
         NamespaceSync.Output out = task.run(rc);
 
-        List<Map<String, Object>> lines = readIon(out.getDiff(), rc);
-        assertTrue(lines.isEmpty(), "dryRun ne doit pas produire de diff Git (index propre)");
+        List<AbstractGitTask.DiffLine> lines = readIon(out.getDiff(), rc);
+        assertFalse(lines.isEmpty());
         assertNull(out.getCommitId());
         assertNull(out.getCommitURL());
     }
@@ -207,51 +207,6 @@ public class NamespaceSyncTest extends AbstractGitTest {
         }
     }
 
-    private Set<String> listNsFiles(RunContext rc) throws Exception {
-        Set<String> files = new HashSet<>();
-
-        var entries = rc.storage().namespace(NAMESPACE).all(true);
-
-        List<String> normalized = new ArrayList<>();
-        for (var nf : entries) {
-            String p = nf.path().replace("\\", "/");
-            if (p.startsWith("files/")) {
-                p = p.substring("files/".length());
-            }
-            normalized.add(p);
-        }
-
-        Set<String> directories = new HashSet<>();
-        for (String p : normalized) {
-            String prefix = p + "/";
-            for (String q : normalized) {
-                if (!p.equals(q) && q.startsWith(prefix)) {
-                    directories.add(p);
-                    break;
-                }
-            }
-        }
-
-        for (int i = 0; i < entries.size(); i++) {
-            String key = normalized.get(i);
-            if (!directories.contains(key)) {
-                files.add(key);
-            }
-        }
-        return files;
-    }
-
-    private void clearKestraStateOnly() throws Exception {
-        flowRepository.findAllForAllTenants()
-            .forEach(f -> flowRepository.delete(FlowWithSource.of(f, "")));
-
-        URI prefix = URI.create(StorageContext.namespaceFilePrefix(NAMESPACE));
-        var uris = storageInterface.allByPrefix(TENANT_ID, NAMESPACE, prefix, true);
-        for (URI uri : uris) {
-            storageInterface.delete(TENANT_ID, NAMESPACE, uri);
-        }
-    }
-
     private void runKestraToGitApply() throws Exception {
         RunContext rc = runContext();
         NamespaceSync push = NamespaceSync.builder()
@@ -268,14 +223,10 @@ public class NamespaceSyncTest extends AbstractGitTest {
         push.run(rc);
     }
 
-    private static List<Map<String, Object>> readIon(URI uri, RunContext rc) throws Exception {
-        String body = IOUtils.toString(rc.storage().getFile(uri), StandardCharsets.UTF_8);
-        if (body == null || body.isBlank()) return List.of();
-        List<Map<String, Object>> rows = new ArrayList<>();
-        for (String line : body.lines().toList()) {
-            rows.add(JacksonMapper.ofIon().readValue(line, new TypeReference<>() {
-            }));
+    private List<AbstractGitTask.DiffLine> readIon(URI uri, RunContext rc) throws Exception {
+        try (InputStream in = rc.storage().getFile(uri)) {
+            return JacksonMapper.ofIon().readValue(in, new TypeReference<>() {
+            });
         }
-        return rows;
     }
 }

@@ -6,11 +6,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.Task;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.plugin.git.services.SshTransportConfigCallback;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.SneakyThrows;
 import lombok.experimental.SuperBuilder;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.TransportCommand;
@@ -435,6 +437,14 @@ public abstract class AbstractGitTask extends Task {
 
         public static DiffLine deletedKestra(String file, String key, Kind kind) {
             return new DiffLine(file, key, kind, Action.DELETED_KES);
+        }
+
+        @SneakyThrows
+        public static URI writeIonFile(RunContext runContext, List<DiffLine> diffs) {
+            byte[] ionContent = JacksonMapper.ofIon().writeValueAsBytes(diffs);
+            try (ByteArrayInputStream input = new ByteArrayInputStream(ionContent)) {
+                return runContext.storage().putFile(input, "diffs.ion");
+            }
         }
     }
 

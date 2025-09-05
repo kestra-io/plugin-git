@@ -206,11 +206,11 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         KestraState kestraState = loadKestraState(runContext, rNamespace);
         Map<String, byte[]> namespaceFiles = listNamespaceFiles(runContext, rNamespace);
 
-        List<DiffLine> diff = new ArrayList<>();
+        List<DiffLine> diffs = new ArrayList<>();
         List<Runnable> apply = new ArrayList<>();
 
-        planFlows(runContext, baseDir, gitFlows, kestraState, rSourceOfTruth, rWhenMissingInSource, rOnInvalidSyntax, rProtectedNamespaces, rDryRun, diff, apply);
-        planNamespaceFiles(runContext, baseDir, rNamespace, gitFiles, namespaceFiles, rSourceOfTruth, rWhenMissingInSource, rProtectedNamespaces, rDryRun, diff, apply);
+        planFlows(runContext, baseDir, gitFlows, kestraState, rSourceOfTruth, rWhenMissingInSource, rOnInvalidSyntax, rProtectedNamespaces, rDryRun, diffs, apply);
+        planNamespaceFiles(runContext, baseDir, rNamespace, gitFiles, namespaceFiles, rSourceOfTruth, rWhenMissingInSource, rProtectedNamespaces, rDryRun, diffs, apply);
 
         if (!rDryRun) {
             for (Runnable r : apply) r.run();
@@ -221,11 +221,14 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         AddCommand update = git.add();
         update.setUpdate(true).addFilepattern(addPattern).call();
 
-        String rCommitId = null;
-        String rCommitURL = null;
-        URI rDiff = createIonDiff(runContext, git);
-        try {
-            if (!rDryRun) {
+        String commitId = null;
+        String commitURL = null;
+        URI diffFile = null;
+
+        if (!rDryRun) {
+            try {
+                diffFile = createIonDiff(runContext, git);
+
                 PersonIdent author = author(runContext);
                 git.commit().setAllowEmpty(false).setMessage(rCommitMessage).setAuthor(author).call();
 
@@ -241,16 +244,21 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                 }
 
                 ObjectId commit = git.getRepository().resolve(Constants.HEAD);
-                rCommitId = commit != null ? commit.getName() : null;
+                commitId = commit != null ? commit.getName() : null;
                 String httpUrl = gitService.getHttpUrl(runContext.render(this.url).as(String.class).orElse(null));
-                rCommitURL = buildCommitUrl(httpUrl, rBranch, rCommitId);
+                commitURL = buildCommitUrl(httpUrl, rBranch, commitId);
+            } catch (EmptyCommitException e) {
+                runContext.logger().info("No changes to commit.");
             }
-        } catch (EmptyCommitException e) {
-            // no changes
+        } else {
+            diffFile = DiffLine.writeIonFile(runContext, diffs);
         }
 
-        git.close();
-        return Output.builder().diff(rDiff).commitId(rCommitId).commitURL(rCommitURL).build();
+        return Output.builder()
+            .diff(diffFile)
+            .commitId(commitId)
+            .commitURL(commitURL)
+            .build();
     }
 
     private void planFlows(RunContext rc, Path baseDir, GitTree gitTree, KestraState kes,
