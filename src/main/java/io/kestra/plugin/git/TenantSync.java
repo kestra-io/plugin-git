@@ -213,6 +213,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         }
 
         for (String namespace : namespaces) {
+            runContext.logger().info("Processing namespace {}", namespace);
             if (rSourceOfTruth == SourceOfTruth.GIT && !rDryRun && !kestraNamespaces.contains(namespace)) {
                 Path namespaceRoot = baseDir.resolve(namespace);
                 boolean gitHasContent = java.nio.file.Files.isDirectory(namespaceRoot.resolve(FLOWS_DIR)) || java.nio.file.Files.isDirectory(namespaceRoot.resolve(FILES_DIR));
@@ -248,7 +249,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
         String rCommitId = null;
         String rCommitURL = null;
-        URI diffFile = null;
+        URI diffFile;
 
         if (!rDryRun) {
             for (Runnable r : apply) r.run();
@@ -263,7 +264,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                 PersonIdent author = author(runContext);
                 git.commit().setAllowEmpty(false).setMessage(rCommitMessage).setAuthor(author).call();
 
-                // Push changes with proper authentication
                 Iterable<PushResult> results = this.authentified(git.push(), runContext).call();
                 for (PushResult pr : results) {
                     Optional<RemoteRefUpdate.Status> rejection = pr.getRemoteUpdates().stream()
