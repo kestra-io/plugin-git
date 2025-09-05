@@ -1,0 +1,25 @@
+id: git_clone
+namespace: sanitychecks
+
+tasks:
+  - id: file_system
+    type: io.kestra.plugin.core.flow.WorkingDirectory
+    tasks:
+      - id: clone
+        type: io.kestra.plugin.git.Clone
+        url: https://github.com/kestra-io/plugin-git
+        branch: master
+
+      - id: delete_file
+        type: io.kestra.plugin.scripts.shell.Commands
+        commands:
+          - cp README.md text.md
+          - rm README.md
+        outputFiles:
+          - text.md
+
+      - id: assert
+        type: io.kestra.plugin.core.execution.Assert
+        conditions:
+          - "{{ outputs.delete_file.exitCode == 0}}"
+          - "{{ outputs.delete_file.outputFiles['text.md'] != null }}"
