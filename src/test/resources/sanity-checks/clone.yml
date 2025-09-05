@@ -7,15 +7,19 @@ tasks:
     tasks:
       - id: clone
         type: io.kestra.plugin.git.Clone
-        url: https://github.com/dbt-labs/jaffle_shop
-        branch: main   
+        url: https://github.com/kestra-io/plugin-git
+        branch: master
 
-      - id: delete_file # Delete one of the files from the cloned repo
+      - id: delete_file
         type: io.kestra.plugin.scripts.shell.Commands
         commands:
-        - rm README.md
+          - cp README.md text.md
+          - rm README.md
+        outputFiles:
+          - text.md
 
       - id: assert
         type: io.kestra.plugin.core.execution.Assert
-        conditions: 
+        conditions:
           - "{{ outputs.delete_file.exitCode == 0}}"
+          - "{{ outputs.delete_file.outputFiles['text.md'] != null }}"
