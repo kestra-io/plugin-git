@@ -212,25 +212,25 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             namespaces.addAll(discoverGitNamespaces(baseDir));
         }
 
-        for (String ns : namespaces) {
-            if (rSourceOfTruth == SourceOfTruth.GIT && !rDryRun && !kestraNamespaces.contains(ns)) {
-                Path nsRoot = baseDir.resolve(ns);
-                boolean gitHasContent = java.nio.file.Files.isDirectory(nsRoot.resolve(FLOWS_DIR)) || java.nio.file.Files.isDirectory(nsRoot.resolve(FILES_DIR));
+        for (String namespace : namespaces) {
+            if (rSourceOfTruth == SourceOfTruth.GIT && !rDryRun && !kestraNamespaces.contains(namespace)) {
+                Path namespaceRoot = baseDir.resolve(namespace);
+                boolean gitHasContent = java.nio.file.Files.isDirectory(namespaceRoot.resolve(FLOWS_DIR)) || java.nio.file.Files.isDirectory(namespaceRoot.resolve(FILES_DIR));
 
                 if (gitHasContent) {
                     try {
-                        kestraClient.namespaces().createNamespace(tenantId, new Namespace().id(ns));
-                        kestraNamespaces.add(ns);
+                        kestraClient.namespaces().createNamespace(tenantId, new Namespace().id(namespace));
+                        kestraNamespaces.add(namespace);
                     } catch (Exception ignored) {
                     }
                 }
             }
 
-            List<FlowWithSource> kestraFlows = fetchFlowsFromKestra(kestraClient, runContext, ns);
-            Map<String, byte[]> kestraFiles = listNamespaceFiles(kestraClient, runContext, ns);
+            List<FlowWithSource> kestraFlows = fetchFlowsFromKestra(kestraClient, runContext, namespace);
+            Map<String, byte[]> kestraFiles = listNamespaceFiles(kestraClient, runContext, namespace);
 
             planNamespace(
-                runContext, kestraClient, baseDir, ns,
+                runContext, kestraClient, baseDir, namespace,
                 rSourceOfTruth, rWhenMissingInSource,
                 rOnInvalidSyntax, rProtectedNamespaces,
                 rDryRun, diffs, apply,
@@ -315,9 +315,9 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         Map<String, byte[]> kestraFiles
     ) throws Exception {
 
-        Path nsRoot = baseDir.resolve(namespace);
-        Path flowsDir = nsRoot.resolve(FLOWS_DIR);
-        Path filesDir = nsRoot.resolve(FILES_DIR);
+        Path namespaceRoot = baseDir.resolve(namespace);
+        Path flowsDir = namespaceRoot.resolve(FLOWS_DIR);
+        Path filesDir = namespaceRoot.resolve(FILES_DIR);
 
         var gitFlows = readGitFlows(flowsDir);
         var gitFiles = readGitFiles(filesDir);
@@ -329,17 +329,17 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             rWhenMissingInSource, rProtectedNamespaces, rDryRun, diffs, apply);
     }
 
-    private Map<String, byte[]> listNamespaceFiles(KestraClient kestraClient, RunContext runContext, String ns) {
+    private Map<String, byte[]> listNamespaceFiles(KestraClient kestraClient, RunContext runContext, String namespace) {
         try {
             var filesApi = kestraClient.files();
             String tenantId = runContext.flowInfo().tenantId();
 
             Map<String, byte[]> files = new HashMap<>();
-            collectFilesRecursive(filesApi, tenantId, ns, null, files);
+            collectFilesRecursive(filesApi, tenantId, namespace, null, files);
 
             return files;
         } catch (Exception e) {
-            throw new KestraRuntimeException("Unable to list namespace files for " + ns + ": " + e.getMessage(), e);
+            throw new KestraRuntimeException("Unable to list namespace files for " + namespace + ": " + e.getMessage(), e);
         }
     }
 
@@ -363,13 +363,13 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             } else if ("file".equalsIgnoreCase(String.valueOf(child.getType()))) {
                 File file = filesApi.getFileContent(namespace, fullPath, tenantId);
                 try (InputStream is = new FileInputStream(file)) {
-                    filesOut.put(normalizeNsPath(fullPath), is.readAllBytes());
+                    filesOut.put(normalizeNamespacePath(fullPath), is.readAllBytes());
                 }
             }
         }
     }
 
-    private String normalizeNsPath(String path) {
+    private String normalizeNamespacePath(String path) {
         return path.replace("\\", "/");
     }
 
@@ -522,7 +522,8 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             if (inGit && !inKestra) {
                 if (rSourceOfTruth == SourceOfTruth.GIT) {
                     diffs.add(DiffLine.added(filePath.toString(), rel, Kind.FILE));
-                    if (!rDryRun) apply.add(() -> putNamespaceFile(kestraClient, runContext, rel, gitFiles.get(rel)));
+                    if (!rDryRun)
+                        apply.add(() -> putNamespaceFile(kestraClient, runContext, rel, gitFiles.get(rel), namespace));
                 } else {
                     switch (rWhenMissingInSource) {
                         case KEEP -> diffs.add(DiffLine.unchanged(filePath.toString(), rel, Kind.FILE));
@@ -550,7 +551,8 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                                 runContext.logger().warn("Protected namespace, skipping delete for FILE {}", rel);
                             } else {
                                 diffs.add(DiffLine.deletedKestra(filePath.toString(), rel, Kind.FILE));
-                                if (!rDryRun) apply.add(() -> deleteNamespaceFile(kestraClient, runContext, rel));
+                                if (!rDryRun)
+                                    apply.add(() -> deleteNamespaceFile(kestraClient, runContext, rel, namespace));
                             }
                         }
                         case FAIL -> throw new KestraRuntimeException(
@@ -562,16 +564,16 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             }
 
             if (inGit) {
-                byte[] g = gitFiles.get(rel);
-                byte[] k = kestraFiles.get(rel);
-                if (Arrays.equals(g, k)) {
+                byte[] gitFile = gitFiles.get(rel);
+                byte[] kestraFile = kestraFiles.get(rel);
+                if (Arrays.equals(gitFile, kestraFile)) {
                     diffs.add(DiffLine.unchanged(filePath.toString(), rel, Kind.FILE));
                 } else if (rSourceOfTruth == SourceOfTruth.GIT) {
                     diffs.add(DiffLine.updatedKestra(filePath.toString(), rel, Kind.FILE));
-                    if (!rDryRun) apply.add(() -> putNamespaceFile(kestraClient, runContext, rel, g));
+                    if (!rDryRun) apply.add(() -> putNamespaceFile(kestraClient, runContext, rel, gitFile, namespace));
                 } else {
                     diffs.add(DiffLine.updatedGit(filePath.toString(), rel, Kind.FILE));
-                    if (!rDryRun) apply.add(() -> writeGitBinaryFile(filePath, k));
+                    if (!rDryRun) apply.add(() -> writeGitBinaryFile(filePath, kestraFile));
                 }
             }
         }
@@ -848,11 +850,10 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         }
     }
 
-    private void putNamespaceFile(KestraClient kestraClient, RunContext runContext, String rel, byte[] bytes) {
+    private void putNamespaceFile(KestraClient kestraClient, RunContext runContext, String rel, byte[] bytes, String namespace) {
         try {
             File temp = File.createTempFile("tmp", null);
             Files.write(temp.toPath(), bytes);
-            String namespace = runContext.flowInfo().namespace();
             String tenant = runContext.flowInfo().tenantId();
 
             var filesApi = kestraClient.files();
@@ -863,18 +864,18 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                 filesApi.createNamespaceDirectory(namespace, tenant, directory);
             }
 
-            filesApi.createNamespaceFile(namespace, normalizeNsPath(rel), tenant, temp);
+            filesApi.createNamespaceFile(namespace, normalizeNamespacePath(rel), tenant, temp);
         } catch (Exception e) {
             throw new KestraRuntimeException("Failed to put namespace file: " + rel, e);
         }
     }
 
-    private void deleteNamespaceFile(KestraClient kestraClient, RunContext runContext, String rel) {
+    private void deleteNamespaceFile(KestraClient kestraClient, RunContext runContext, String rel, String namespace) {
         try {
             var filesApi = kestraClient.files();
             filesApi.deleteFileDirectory(
-                runContext.flowInfo().namespace(),
-                normalizeNsPath(rel),
+                namespace,
+                normalizeNamespacePath(rel),
                 runContext.flowInfo().tenantId()
             );
         } catch (Exception e) {
@@ -882,19 +883,20 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         }
     }
 
-    private static boolean isProtected(String ns, List<String> protectedNs) {
-        if (ns == null) return false;
-        return protectedNs.stream().anyMatch(p -> p.equals(ns) || ns.startsWith(p + "."));
+    private static boolean isProtected(String namespace, List<String> protectedNamespace) {
+        if (namespace == null) return false;
+        return protectedNamespace.stream().anyMatch(p -> p.equals(namespace) || namespace.startsWith(p + "."));
     }
 
     private static String normalizeYaml(String yaml) {
         return yaml == null ? null : yaml.replace("\r\n", "\n").trim();
     }
 
-    private void handleInvalid(RunContext rc, OnInvalidSyntax mode, String what, Exception e) {
+    private void handleInvalid(RunContext runContext, OnInvalidSyntax mode, String what, Exception e) {
         switch (mode) {
-            case SKIP -> rc.logger().info("Skipping invalid {}", what);
-            case WARN -> rc.logger().warn("{} couldn't be synced due to invalid syntax: {}", what, e.getMessage());
+            case SKIP -> runContext.logger().info("Skipping invalid {}", what);
+            case WARN ->
+                runContext.logger().warn("{} couldn't be synced due to invalid syntax: {}", what, e.getMessage());
             case FAIL -> throw new KestraRuntimeException("Invalid syntax for " + what + ": " + e.getMessage(), e);
         }
     }
@@ -925,11 +927,11 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         if (!Files.exists(baseDir)) return out;
 
         try (var stream = Files.list(baseDir)) {
-            for (Path nsDir : (Iterable<Path>) stream::iterator) {
-                if (!Files.isDirectory(nsDir)) continue;
-                boolean isNamespace = Files.isDirectory(nsDir.resolve(FLOWS_DIR)) || Files.isDirectory(nsDir.resolve(FILES_DIR));
+            for (Path namespaceDir : (Iterable<Path>) stream::iterator) {
+                if (!Files.isDirectory(namespaceDir)) continue;
+                boolean isNamespace = Files.isDirectory(namespaceDir.resolve(FLOWS_DIR)) || Files.isDirectory(namespaceDir.resolve(FILES_DIR));
                 if (isNamespace) {
-                    out.add(nsDir.getFileName().toString());
+                    out.add(namespaceDir.getFileName().toString());
                 }
             }
         }

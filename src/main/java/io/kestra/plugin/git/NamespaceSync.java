@@ -154,7 +154,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     @Schema(title = "The commit author name (defaults to username if null).")
     private Property<String> authorName;
 
-    // Directory names (namespace-first structure: <ns>/<kind>/<id>.yaml)
+    // Directory names (namespace-first structure: <namespace>/<kind>/<id>.yaml)
     private static final String FLOWS_DIR = "flows";
     private static final String FILES_DIR = "files";
 
@@ -192,10 +192,10 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         var baseDir = (rGitDirectory == null || rGitDirectory.isBlank()) ? repoWorktree : repoWorktree.resolve(rGitDirectory);
 
         // Read Git content (namespace-first) then filter to target namespace (no recursion)
-        GitTree gitFlowsAll = readGitTreeNamespaceFirst(baseDir, FLOWS_DIR);
+        GitTree gitFlowsAll = readGitTreeNamespaceFirst(baseDir);
         GitTree gitFlows = filterTreeByNamespace(gitFlowsAll, rNamespace);
 
-        // Read Git namespace files (<ns>/files/**)
+        // Read Git namespace files (<namespace>/files/**)
         Map<String, byte[]> gitFiles = readGitNamespaceFiles(baseDir, rNamespace);
 
         if (rSourceOfTruth == SourceOfTruth.KESTRA) {
@@ -204,13 +204,13 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
         // Fetch Kestra state limited to target namespace only
         KestraState kestraState = loadKestraState(runContext, rNamespace);
-        Map<String, byte[]> nsFiles = listNamespaceFiles(runContext, rNamespace);
+        Map<String, byte[]> namespaceFiles = listNamespaceFiles(runContext, rNamespace);
 
         List<DiffLine> diff = new ArrayList<>();
         List<Runnable> apply = new ArrayList<>();
 
         planFlows(runContext, baseDir, gitFlows, kestraState, rSourceOfTruth, rWhenMissingInSource, rOnInvalidSyntax, rProtectedNamespaces, rDryRun, diff, apply);
-        planNamespaceFiles(runContext, baseDir, rNamespace, gitFiles, nsFiles, rSourceOfTruth, rWhenMissingInSource, rProtectedNamespaces, rDryRun, diff, apply);
+        planNamespaceFiles(runContext, baseDir, rNamespace, gitFiles, namespaceFiles, rSourceOfTruth, rWhenMissingInSource, rProtectedNamespaces, rDryRun, diff, apply);
 
         if (!rDryRun) {
             for (Runnable r : apply) r.run();
@@ -255,7 +255,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
     private void planFlows(RunContext rc, Path baseDir, GitTree gitTree, KestraState kes,
                            SourceOfTruth rSource, WhenMissingInSource rMissing, OnInvalidSyntax rInvalid,
-                           List<String> protectedNs, boolean rDryRun,
+                           List<String> protectedNamespace, boolean rDryRun,
                            List<DiffLine> diff, List<Runnable> apply) {
         FlowService fs = flowService(rc);
         Map<String, GitNode> gitByKey = gitTree.nodes;
@@ -266,7 +266,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         for (String key : keys) {
             GitNode gitNode = gitByKey.get(key);
             FlowWithSource kestraFlowWithSource = kesByKey.get(key);
-            String ns = namespaceFromKey(key);
+            String namespace = namespaceFromKey(key);
             String fileRel = nodeToYamlPath(FLOWS_DIR, gitNode, key);
 
             if (gitNode != null && kestraFlowWithSource == null) {
@@ -283,7 +283,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                     switch (rMissing) {
                         case KEEP -> diff.add(DiffLine.unchanged(fileRel, key, Kind.FLOW));
                         case DELETE -> {
-                            if (isProtected(ns, protectedNs)) {
+                            if (isProtected(namespace, protectedNamespace)) {
                                 rc.logger().warn("Protected namespace, skipping delete in Git for FLOW {}", key);
                                 diff.add(DiffLine.unchanged(fileRel, key, Kind.FLOW));
                             } else {
@@ -300,14 +300,14 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                     String rel = fileRelFromKey(FLOWS_DIR, key);
                     diff.add(DiffLine.added(rel, key, Kind.FLOW));
                     if (!rDryRun) apply.add(() -> {
-                        ensureNamespaceFolders(baseDir, ns);
+                        ensureNamespaceFolders(baseDir, namespace);
                         writeGitFile(baseDir, rel, kestraFlowWithSource.getSource());
                     });
                 } else {
                     switch (rMissing) {
                         case KEEP -> diff.add(DiffLine.unchanged(fileRelFromKey(FLOWS_DIR, key), key, Kind.FLOW));
                         case DELETE -> {
-                            if (isProtected(ns, protectedNs)) {
+                            if (isProtected(namespace, protectedNamespace)) {
                                 rc.logger().warn("Protected namespace, skipping delete for FLOW {}", key);
                                 break;
                             }
@@ -341,36 +341,36 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         }
     }
 
-    private void planNamespaceFiles(RunContext rc, Path baseDir, String ns, Map<String, byte[]> gitFiles,
+    private void planNamespaceFiles(RunContext rc, Path baseDir, String namespace, Map<String, byte[]> gitFiles,
                                     Map<String, byte[]> kestraFiles, SourceOfTruth rSource, WhenMissingInSource rMissing,
-                                    List<String> protectedNs, boolean rDryRun, List<DiffLine> diff, List<Runnable> apply) {
+                                    List<String> protectedNamespace, boolean rDryRun, List<DiffLine> diff, List<Runnable> apply) {
 
         Set<String> paths = union(gitFiles.keySet(), kestraFiles.keySet());
         for (String rel : paths) {
             boolean inGit = gitFiles.containsKey(rel);
             boolean inKestra = kestraFiles.containsKey(rel);
-            String fileRel = ns + "/" + FILES_DIR + "/" + rel;
+            String fileRel = namespace + "/" + FILES_DIR + "/" + rel;
 
             if (inGit && !inKestra) {
                 if (rSource == SourceOfTruth.GIT) {
-                    diff.add(DiffLine.added(fileRel, ns + ":" + rel, Kind.FILE));
+                    diff.add(DiffLine.added(fileRel, namespace + ":" + rel, Kind.FILE));
                     if (!rDryRun) apply.add(() -> {
-                        putNamespaceFile(rc, ns, rel, gitFiles.get(rel));
+                        putNamespaceFile(rc, namespace, rel, gitFiles.get(rel));
                     });
                 } else {
                     switch (rMissing) {
-                        case KEEP -> diff.add(DiffLine.unchanged(fileRel, ns + ":" + rel, Kind.FILE));
+                        case KEEP -> diff.add(DiffLine.unchanged(fileRel, namespace + ":" + rel, Kind.FILE));
                         case DELETE -> {
-                            if (isProtected(ns, protectedNs)) {
-                                rc.logger().warn("Protected namespace, skipping delete in Git for FILE {}:{}", ns, rel);
-                                diff.add(DiffLine.unchanged(fileRel, ns + ":" + rel, Kind.FILE));
+                            if (isProtected(namespace, protectedNamespace)) {
+                                rc.logger().warn("Protected namespace, skipping delete in Git for FILE {}:{}", namespace, rel);
+                                diff.add(DiffLine.unchanged(fileRel, namespace + ":" + rel, Kind.FILE));
                             } else {
-                                diff.add(DiffLine.deletedGit(fileRel, ns + ":" + rel, Kind.FILE));
+                                diff.add(DiffLine.deletedGit(fileRel, namespace + ":" + rel, Kind.FILE));
                                 if (!rDryRun) apply.add(() -> deleteGitFile(baseDir, fileRel));
                             }
                         }
                         case FAIL ->
-                            throw new KestraRuntimeException("Sync failed: FILE missing in KESTRA but present in Git: " + ns + ":" + rel);
+                            throw new KestraRuntimeException("Sync failed: FILE missing in KESTRA but present in Git: " + namespace + ":" + rel);
                     }
                 }
                 continue;
@@ -378,37 +378,37 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
             if (!inGit && inKestra) {
                 if (rSource == SourceOfTruth.KESTRA) {
-                    diff.add(DiffLine.added(fileRel, ns + ":" + rel, Kind.FILE));
+                    diff.add(DiffLine.added(fileRel, namespace + ":" + rel, Kind.FILE));
                     if (!rDryRun) apply.add(() -> writeGitBinaryFile(baseDir, fileRel, kestraFiles.get(rel)));
                 } else {
                     switch (rMissing) {
-                        case KEEP -> diff.add(DiffLine.unchanged(fileRel, ns + ":" + rel, Kind.FILE));
+                        case KEEP -> diff.add(DiffLine.unchanged(fileRel, namespace + ":" + rel, Kind.FILE));
                         case DELETE -> {
-                            if (isProtected(ns, protectedNs)) {
-                                rc.logger().warn("Protected namespace, skipping delete for FILE {}:{}", ns, rel);
+                            if (isProtected(namespace, protectedNamespace)) {
+                                rc.logger().warn("Protected namespace, skipping delete for FILE {}:{}", namespace, rel);
                                 break;
                             }
-                            diff.add(DiffLine.deletedKestra(fileRel, ns + ":" + rel, Kind.FILE));
-                            if (!rDryRun) apply.add(() -> deleteNamespaceFile(rc, ns, rel));
+                            diff.add(DiffLine.deletedKestra(fileRel, namespace + ":" + rel, Kind.FILE));
+                            if (!rDryRun) apply.add(() -> deleteNamespaceFile(rc, namespace, rel));
                         }
                         case FAIL ->
-                            throw new KestraRuntimeException("Sync failed: FILE missing in Git but present in KESTRA: " + ns + ":" + rel);
+                            throw new KestraRuntimeException("Sync failed: FILE missing in Git but present in KESTRA: " + namespace + ":" + rel);
                     }
                 }
                 continue;
             }
 
             if (inGit) {
-                byte[] g = gitFiles.get(rel);
-                byte[] k = kestraFiles.get(rel);
-                if (Arrays.equals(g, k)) {
-                    diff.add(DiffLine.unchanged(fileRel, ns + ":" + rel, Kind.FILE));
+                byte[] gitFile = gitFiles.get(rel);
+                byte[] kestraFile = kestraFiles.get(rel);
+                if (Arrays.equals(gitFile, kestraFile)) {
+                    diff.add(DiffLine.unchanged(fileRel, namespace + ":" + rel, Kind.FILE));
                 } else if (rSource == SourceOfTruth.GIT) {
-                    diff.add(DiffLine.updatedKestra(fileRel, ns + ":" + rel, Kind.FILE));
-                    if (!rDryRun) apply.add(() -> putNamespaceFile(rc, ns, rel, g));
-                } else { // KESTRA
-                    diff.add(DiffLine.updatedGit(fileRel, ns + ":" + rel, Kind.FILE));
-                    if (!rDryRun) apply.add(() -> writeGitBinaryFile(baseDir, fileRel, k));
+                    diff.add(DiffLine.updatedKestra(fileRel, namespace + ":" + rel, Kind.FILE));
+                    if (!rDryRun) apply.add(() -> putNamespaceFile(rc, namespace, rel, gitFile));
+                } else {
+                    diff.add(DiffLine.updatedGit(fileRel, namespace + ":" + rel, Kind.FILE));
+                    if (!rDryRun) apply.add(() -> writeGitBinaryFile(baseDir, fileRel, kestraFile));
                 }
             }
         }
@@ -424,21 +424,21 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     private record KestraState(Map<String, FlowWithSource> flows) {
     }
 
-    private KestraState loadKestraState(RunContext rc, String rootNs) {
+    private KestraState loadKestraState(RunContext rc, String rootNamespace) {
         FlowService fs = flowService(rc);
         String tenant = rc.flowInfo().tenantId();
 
-        Map<String, FlowWithSource> flowsWithSource = fs.findByNamespaceWithSource(tenant, rootNs).stream()
+        Map<String, FlowWithSource> flowsWithSource = fs.findByNamespaceWithSource(tenant, rootNamespace).stream()
             .collect(Collectors.toMap(f -> key(f.getNamespace(), f.getId()), Function.identity(), (a, b) -> a));
 
         return new KestraState(flowsWithSource);
     }
 
-    private GitTree readGitTreeNamespaceFirst(Path baseDir, String kind) throws IOException {
+    private GitTree readGitTreeNamespaceFirst(Path baseDir) throws IOException {
         GitTree tree = new GitTree();
         if (baseDir == null || !Files.exists(baseDir)) return tree;
 
-        Pattern p = Pattern.compile("(.+?)/" + Pattern.quote(kind) + "/([^/]+)\\.(ya?ml|yml)$");
+        Pattern p = Pattern.compile("(.+?)/" + Pattern.quote(FLOWS_DIR) + "/([^/]+)\\.(ya?ml|yml)$");
 
         try (Stream<Path> paths = Files.walk(baseDir, MAX_VALUE)) {
             paths.filter(Files::isRegularFile)
@@ -448,27 +448,27 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                     String unix = relPath.toString().replace(File.separatorChar, '/');
                     Matcher m = p.matcher(unix);
                     if (!m.matches()) return;
-                    String nsPath = m.group(1);
+                    String namespacePath = m.group(1);
                     String id = stripExt(new File(m.group(2)).getName());
-                    String ns = nsPath.replace('/', '.');
+                    String namespace = namespacePath.replace('/', '.');
                     String yaml = Files.readString(abs, StandardCharsets.UTF_8);
-                    String compositeKey = key(ns, id);
-                    tree.nodes.put(compositeKey, new GitNode(ns, id, yaml, unix));
+                    String compositeKey = key(namespace, id);
+                    tree.nodes.put(compositeKey, new GitNode(namespace, id, yaml, unix));
                 }));
         }
         return tree;
     }
 
-    private Map<String, byte[]> readGitNamespaceFiles(Path baseDir, String ns) throws IOException {
+    private Map<String, byte[]> readGitNamespaceFiles(Path baseDir, String namespace) throws IOException {
         Map<String, byte[]> out = new HashMap<>();
         if (baseDir == null || !Files.exists(baseDir)) return out;
-        Path nsFilesRoot = baseDir.resolve(ns).resolve(FILES_DIR);
-        if (!Files.exists(nsFilesRoot)) return out;
+        Path namespaceFilesRoot = baseDir.resolve(namespace).resolve(FILES_DIR);
+        if (!Files.exists(namespaceFilesRoot)) return out;
 
-        try (Stream<Path> paths = Files.walk(nsFilesRoot, MAX_VALUE)) {
+        try (Stream<Path> paths = Files.walk(namespaceFilesRoot, MAX_VALUE)) {
             paths.filter(Files::isRegularFile)
                 .forEach(throwConsumer(p -> {
-                    Path rel = nsFilesRoot.relativize(p);
+                    Path rel = namespaceFilesRoot.relativize(p);
                     byte[] content = Files.readAllBytes(p);
                     String relUnix = rel.toString().replace(File.separatorChar, '/');
                     out.put(relUnix, content);
@@ -477,13 +477,13 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         return out;
     }
 
-    private Map<String, byte[]> listNamespaceFiles(RunContext runContext, String ns) {
+    private Map<String, byte[]> listNamespaceFiles(RunContext runContext, String namespace) {
         try {
-            var entries = runContext.storage().namespace(ns).all(true);
+            var entries = runContext.storage().namespace(namespace).all(true);
 
             List<String> normalized = entries.stream()
                 .map(NamespaceFile::path)
-                .map(this::normalizeNsPath)
+                .map(this::normalizeNamespacePath)
                 .toList();
 
             Set<String> directories = new HashSet<>();
@@ -507,11 +507,11 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
             return out;
         } catch (Exception e) {
-            throw new KestraRuntimeException("Unable to list namespace files for " + ns + ": " + e.getMessage(), e);
+            throw new KestraRuntimeException("Unable to list namespace files for " + namespace + ": " + e.getMessage(), e);
         }
     }
 
-    private String normalizeNsPath(String path) {
+    private String normalizeNamespacePath(String path) {
         String p = path.replace("\\", "/");
         if (p.startsWith(FILES_DIR + "/")) {
             return p.substring(FILES_DIR.length() + 1);
@@ -527,9 +527,9 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         }
     }
 
-    private void putNamespaceFile(RunContext runContext, String ns, String rel, byte[] bytes) {
+    private void putNamespaceFile(RunContext runContext, String namespace, String rel, byte[] bytes) {
         try (InputStream in = new ByteArrayInputStream(bytes)) {
-            runContext.storage().namespace(ns).putFile(Path.of(rel), in);
+            runContext.storage().namespace(namespace).putFile(Path.of(rel), in);
         } catch (IOException | URISyntaxException e) {
             throw new KestraRuntimeException(e);
         }
@@ -537,14 +537,14 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
     private void deleteNamespaceFile(RunContext runContext, String namespace, String file) {
         try {
-            var nsStore = runContext.storage().namespace(namespace);
+            var namespaceStore = runContext.storage().namespace(namespace);
             Path storagePath = NamespaceFile.of(namespace, Path.of(file)).storagePath();
 
             try {
-                nsStore.delete(storagePath);
+                namespaceStore.delete(storagePath);
             } catch (IOException e1) {
                 try {
-                    nsStore.delete(Path.of("files").resolve(file));
+                    namespaceStore.delete(Path.of("files").resolve(file));
                 } catch (IOException e2) {
                     e2.addSuppressed(e1);
                     throw e2;
@@ -555,22 +555,22 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         }
     }
 
-    private GitTree filterTreeByNamespace(GitTree src, String rootNs) {
+    private GitTree filterTreeByNamespace(GitTree src, String rootNamespace) {
         GitTree out = new GitTree();
         src.nodes.forEach((k, v) -> {
-            if (v.namespace.equals(rootNs)) {
+            if (v.namespace.equals(rootNamespace)) {
                 out.nodes.put(k, v);
             }
         });
         return out;
     }
 
-    private void ensureNamespaceFolders(Path baseDir, String ns) {
+    private void ensureNamespaceFolders(Path baseDir, String namespace) {
         if (baseDir == null) return;
-        Path nsRoot = baseDir.resolve(ns);
+        Path namespaceRoot = baseDir.resolve(namespace);
         for (String d : List.of(FLOWS_DIR, FILES_DIR)) {
             try {
-                Files.createDirectories(nsRoot.resolve(d));
+                Files.createDirectories(namespaceRoot.resolve(d));
             } catch (IOException ignored) {
             }
         }
@@ -580,9 +580,9 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         flowService(rc).delete(flow);
     }
 
-    private static boolean isProtected(String ns, List<String> protectedNs) {
-        if (ns == null) return false;
-        return protectedNs.stream().anyMatch(p -> p.equals(ns) || ns.startsWith(p + "."));
+    private static boolean isProtected(String namespace, List<String> protectedNamespace) {
+        if (namespace == null) return false;
+        return protectedNamespace.stream().anyMatch(p -> p.equals(namespace) || namespace.startsWith(p + "."));
     }
 
     private static String normalizeYaml(String yaml) {
@@ -615,9 +615,9 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     }
 
     private static String fileRelFromKey(String kind, String key) {
-        String ns = namespaceFromKey(key);
+        String namespace = namespaceFromKey(key);
         String id = idFromKey(key);
-        Path rel = Path.of(ns).resolve(kind).resolve(id + ".yaml");
+        Path rel = Path.of(namespace).resolve(kind).resolve(id + ".yaml");
         return rel.toString().replace(File.separatorChar, '/');
     }
 
