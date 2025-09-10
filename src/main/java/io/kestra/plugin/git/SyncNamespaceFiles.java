@@ -27,8 +27,13 @@ import java.util.Optional;
 @Schema(
     title = "Sync Namespace Files from Git to Kestra.",
     description = """
-        This task syncs Namespace Files from a given Git branch to a Kestra namespace. If the delete property is set to true, any Namespace Files available in kestra but not present in the gitDirectory will be deleted, allowing to maintain Git as a single source of truth for your Namespace Files. Check the Version Control with Git documentation for more details.
-        Using this task, you can push one or more Namespace Files from a given kestra namespace to Git. Check the [Version Control with Git](https://kestra.io/docs/developer-guide/git) documentation for more details.
+        This task syncs Namespace Files from a given Git branch to a Kestra namespace.
+    
+        If the `delete` property is set to true, any Namespace Files available in Kestra but not present in the `gitDirectory` will be deleted, allowing to maintain Git as a single source of truth for your Namespace Files. Check the Version Control with Git documentation for more details.
+        
+    
+        Using this task, you can push one or more Namespace Files from a given kestra namespace to Git. Check the [Version Control with Git](https://kestra.io/docs/version-control-cicd) documentation for more details.
+    
         If you don't want some files from Git to be synced, you can add them to a `.kestraignore` file at the root of your `gitDirectory` folder — that file works the same way as `.gitignore`."""
 )
 @Plugin(
