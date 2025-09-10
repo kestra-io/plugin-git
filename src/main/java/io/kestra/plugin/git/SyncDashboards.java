@@ -33,7 +33,7 @@ import java.util.regex.Pattern;
     title = "Sync dashboards from Git to Kestra.",
     description = """
         This task syncs dashboards from a given Git branch to Kestra.
-        If the `delete` property is set to true, any dashboard available in Kestra but not present in the `gitDirectory` will be deleted, considering Git as a single source of truth for your dashboards.
+        If the `delete` property is set to true, any dashboard available in Kestra but not present in the `gitDirectory` will be deleted, maintaining Git as the single source of truth for your dashboards.
         Check the [Version Control with Git](https://kestra.io/docs/version-control-cicd/git) documentation for more details.
         """
 )
