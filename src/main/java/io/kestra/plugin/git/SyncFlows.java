@@ -34,7 +34,7 @@ import java.util.regex.Pattern;
 @Schema(
     title = "Sync flows from Git to Kestra.",
     description = """
-        This task syncs flows from a given Git branch to a Kestra `namespace`. If the `delete` property is set to true, any flow available in kestra but not present in the `gitDirectory` will be deleted, considering Git as a single source of truth for your flows. Check the [Version Control with Git](https://kestra.io/docs/version-control-cicd/git) documentation for more details."""
+        This task syncs flows from a given Git branch to a Kestra `namespace`. If the `delete` property is set to true, any flow available in Kestra but not present in the `gitDirectory` will be deleted, maintaining Git as the single source of truth for your flows. Check the [Version Control with Git](https://kestra.io/docs/version-control-cicd/git) documentation for more details."""
 )
 @Plugin(
     examples = {
