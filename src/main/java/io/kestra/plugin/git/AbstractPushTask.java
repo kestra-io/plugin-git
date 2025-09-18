@@ -68,7 +68,7 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         title = "If `true`, the task will only output modifications without pushing any file to Git yet. If `false` (default), all listed files will be pushed to Git immediately."
     )
     @Builder.Default
-    private Property<Boolean> dryRun = Property.of(false);
+    private Property<Boolean> dryRun = Property.ofValue(false);
 
     @Schema(
         title = "The commit author email",

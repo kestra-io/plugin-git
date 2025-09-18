@@ -118,7 +118,7 @@ public class SyncFlowTest extends AbstractGitTest {
             .branch(new Property<>("{{branch}}"))
             .targetNamespace(new Property<>(TARGET_NAMESPACE))
             .flowPath(new Property<>("to_clone/_flows/first-flow.yml"))
-            .dryRun(Property.of(true))
+            .dryRun(Property.ofValue(true))
             .build();
 
         SyncFlow.Output output = task.run(runContext);

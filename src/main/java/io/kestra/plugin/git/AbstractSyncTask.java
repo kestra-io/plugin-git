@@ -98,7 +98,7 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
     }
 
     protected Property<Boolean> traverseDirectories() {
-        return Property.of(true);
+        return Property.ofValue(true);
     }
 
     protected boolean mustKeep(RunContext runContext, T instanceResource) {

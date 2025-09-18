@@ -162,7 +162,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         description = "A directory name (e.g., `dir` to add `dir/file1` and `dir/file2`) can also be given to add all files in the directory, recursively. File globs (e.g., `*.py`) are not yet supported."
     )
     @Builder.Default
-    private Property<List<String>> addFilesPattern = Property.of(List.of("."));
+    private Property<List<String>> addFilesPattern = Property.ofValue(List.of("."));
 
     @Schema(title = "Commit author")
     @PluginProperty
@@ -211,7 +211,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
 
             if (branchExists) {
                 cloneHead.toBuilder()
-                    .branch(Property.of(branch))
+                    .branch(Property.ofValue(branch))
                     .build()
                     .run(runContext);
             } else {
@@ -365,20 +365,20 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         )
         @Builder.Default
         @JsonInclude(JsonInclude.Include.NON_NULL)
-        private Property<Boolean> enabled = Property.of(true);
+        private Property<Boolean> enabled = Property.ofValue(true);
 
         @Schema(
             title = "Whether flows from child namespaces should be included"
         )
         @Builder.Default
         @JsonInclude(JsonInclude.Include.NON_NULL)
-        private Property<Boolean> childNamespaces = Property.of(true);
+        private Property<Boolean> childNamespaces = Property.ofValue(true);
 
         @Schema(
             title = "To which directory flows should be pushed (relative to `directory`)"
         )
         @Builder.Default
-        private Property<String> gitDirectory = Property.of("_flows");
+        private Property<String> gitDirectory = Property.ofValue("_flows");
     }
 
     @Builder

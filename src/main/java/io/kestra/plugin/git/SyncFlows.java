@@ -111,7 +111,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         title = "The branch from which flows will be synced to Kestra"
     )
     @Builder.Default
-    private Property<String> branch = Property.of("main");
+    private Property<String> branch = Property.ofValue("main");
 
     @Schema(
         title = "The target namespace to which flows from the `gitDirectory` should be synced",
@@ -149,28 +149,28 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             - flows from the `_flows/marketing/crm` subdirectory will be synced to the `prod.marketing.crm` namespace."""
     )
     @Builder.Default
-    private Property<String> gitDirectory = Property.of("_flows");
+    private Property<String> gitDirectory = Property.ofValue("_flows");
 
     @Schema(
         title = "Whether you want to sync flows from child namespaces as well",
         description = "It’s `false` by default so that we sync only flows from the explicitly declared `gitDirectory` without traversing child directories. If set to `true`, flows from subdirectories in Git will be synced to child namespace in Kestra using the dot notation `.` for each subdirectory in the folder structure."
     )
     @Builder.Default
-    private Property<Boolean> includeChildNamespaces = Property.of(false);
+    private Property<Boolean> includeChildNamespaces = Property.ofValue(false);
 
     @Schema(
         title = "Whether you want to delete flows present in Kestra but not present in Git",
         description = "It’s `false` by default to avoid destructive behavior. Use this property with caution because when set to `true` and `includeChildNamespaces` is also set to `true`, this task will delete all flows from the `targetNamespace` and all its child namespaces that are not present in Git rather than only overwriting the changes."
     )
     @Builder.Default
-    private Property<Boolean> delete = Property.of(false);
+    private Property<Boolean> delete = Property.ofValue(false);
 
     @Schema(
         title = "Ignore flows when they have validation failure",
         description = "Due to breaking changes, some flows may not be valid anymore by the time of the synchronisation. To avoid synchronizing flows that are no longer valid, set this property to true."
     )
     @Builder.Default
-    private Property<Boolean> ignoreInvalidFlows = Property.of(false);
+    private Property<Boolean> ignoreInvalidFlows = Property.ofValue(false);
 
     @Getter(AccessLevel.NONE)
     private FlowService flowService;

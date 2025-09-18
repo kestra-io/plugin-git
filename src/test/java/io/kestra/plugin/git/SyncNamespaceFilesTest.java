@@ -98,7 +98,7 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
                 .branch(new Property<>("{{branch}}"))
                 .gitDirectory(new Property<>("{{gitDirectory}}"))
                 .namespace(new Property<>("{{namespace}}"))
-                .delete(Property.of(true))
+                .delete(Property.ofValue(true))
                 .build();
         SyncNamespaceFiles.Output syncOutput = task.run(runContext);
 
@@ -229,8 +229,8 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
                 .branch(new Property<>("{{branch}}"))
                 .gitDirectory(new Property<>("{{gitDirectory}}"))
                 .namespace(new Property<>("{{namespace}}"))
-                .dryRun(Property.of(true))
-                .delete(Property.of(true))
+                .dryRun(Property.ofValue(true))
+                .delete(Property.ofValue(true))
                 .build();
         SyncNamespaceFiles.Output syncOutput = task.run(runContext);
 

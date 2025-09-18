@@ -77,7 +77,7 @@ public class PushFlowsTest extends AbstractGitTest {
             .sourceNamespace(new Property<>("{{sourceNamespace}}"))
             .targetNamespace(new Property<>("{{targetNamespace}}"))
             .flows("second*")
-            .includeChildNamespaces(Property.of(true))
+            .includeChildNamespaces(Property.ofValue(true))
             .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
@@ -150,7 +150,7 @@ public class PushFlowsTest extends AbstractGitTest {
             .authorEmail(new Property<>("{{email}}"))
             .authorName(new Property<>("{{name}}"))
             .flows("second*")
-            .includeChildNamespaces(Property.of(true))
+            .includeChildNamespaces(Property.ofValue(true))
             .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
@@ -215,9 +215,9 @@ public class PushFlowsTest extends AbstractGitTest {
             .sourceNamespace(new Property<>("{{sourceNamespace}}"))
             .targetNamespace(new Property<>("{{targetNamespace}}"))
             .flows("second*")
-            .includeChildNamespaces(Property.of(true))
+            .includeChildNamespaces(Property.ofValue(true))
             .gitDirectory(new Property<>("{{gitDirectory}}"))
-            .dryRun(Property.of(true))
+            .dryRun(Property.ofValue(true))
             .build();
 
         PushFlows.Output pushOutput = pushFlows.run(runContext);
@@ -263,7 +263,7 @@ public class PushFlowsTest extends AbstractGitTest {
             .authorName(new Property<>("{{name}}"))
             .sourceNamespace(new Property<>("{{sourceNamespace}}"))
             .targetNamespace(new Property<>("{{targetNamespace}}"))
-            .includeChildNamespaces(Property.of(true))
+            .includeChildNamespaces(Property.ofValue(true))
             .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
@@ -364,7 +364,7 @@ public class PushFlowsTest extends AbstractGitTest {
             .authorName(new Property<>("{{name}}"))
             .sourceNamespace(new Property<>("{{sourceNamespace}}"))
             .targetNamespace(new Property<>("{{targetNamespace}}"))
-            .includeChildNamespaces(Property.of(true))
+            .includeChildNamespaces(Property.ofValue(true))
             .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
@@ -444,7 +444,7 @@ public class PushFlowsTest extends AbstractGitTest {
             .sourceNamespace(new Property<>("{{sourceNamespace}}"))
             .targetNamespace(new Property<>("{{targetNamespace}}"))
             .flows(useStringPebbleArray ? "{{ flows }}" : List.of("{{ flow1 }}", "{{ flow2 }}"))
-            .includeChildNamespaces(Property.of(true))
+            .includeChildNamespaces(Property.ofValue(true))
             .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 
@@ -583,7 +583,7 @@ public class PushFlowsTest extends AbstractGitTest {
             .password(new Property<>("{{pat}}"))
             .sourceNamespace(new Property<>("{{sourceNamespace}}"))
             .targetNamespace(new Property<>("{{targetNamespace}}"))
-            .includeChildNamespaces(Property.of(true))
+            .includeChildNamespaces(Property.ofValue(true))
             .gitDirectory(new Property<>("{{gitDirectory}}"))
             .build();
 

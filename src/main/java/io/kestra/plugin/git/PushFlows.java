@@ -141,7 +141,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         description = "If the branch doesn't exist yet, it will be created."
     )
     @Builder.Default
-    private Property<String> branch = Property.of("main");
+    private Property<String> branch = Property.ofValue("main");
 
     @Schema(
         title = "Directory to which flows should be pushed",
@@ -152,7 +152,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
             Note that the targetNamespace (here prod) is specified in the flow code; therefore, kestra will not create the prod directory within _flows. You can use the PushFlows task to push flows from the sourceNamespace, and use SyncFlows to then sync PR-approved flows to the targetNamespace, including all child namespaces."""
     )
     @Builder.Default
-    private Property<String> gitDirectory = Property.of("_flows");
+    private Property<String> gitDirectory = Property.ofValue("_flows");
 
     @Schema(
         title = "The source namespace from which flows should be synced to the `gitDirectory`"
@@ -194,7 +194,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
             | namespace: dev.marketing.crm      | _flows/marketing/crm/flow6.yml | namespace: prod.marketing.crm |"""
     )
     @Builder.Default
-    private Property<Boolean> includeChildNamespaces = Property.of(false);
+    private Property<Boolean> includeChildNamespaces = Property.ofValue(false);
 
     @Schema(
         title = "Git commit message",

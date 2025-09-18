@@ -76,19 +76,19 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
         title = "The branch from which dashboards will be synced to Kestra."
     )
     @Builder.Default
-    private Property<String> branch = Property.of("main");
+    private Property<String> branch = Property.ofValue("main");
 
     @Schema(
         title = "Directory from which dashboards should be synced."
     )
     @Builder.Default
-    private Property<String> gitDirectory = Property.of("_dashboards");
+    private Property<String> gitDirectory = Property.ofValue("_dashboards");
 
     @Schema(
         title = "Whether you want to delete dashboards present in kestra but not present in Git."
     )
     @Builder.Default
-    private Property<Boolean> delete = Property.of(false);
+    private Property<Boolean> delete = Property.ofValue(false);
 
     private DashboardRepositoryInterface repository(RunContext runContext) {
         return ((DefaultRunContext) runContext).getApplicationContext().getBean(DashboardRepositoryInterface.class);
@@ -97,7 +97,7 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
     @Override
     public Property<String> fetchedNamespace() {
         // Dashboards are not linked to namespaces
-        return Property.of("");
+        return Property.ofValue("");
     }
 
     @Override

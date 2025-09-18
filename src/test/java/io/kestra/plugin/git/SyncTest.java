@@ -164,8 +164,8 @@ class SyncTest extends AbstractGitTest {
             .username(new Property<>(pat))
             .password(new Property<>(pat))
             .branch(new Property<>(BRANCH))
-            .gitDirectory(Property.of(clonedGitDirectory))
-            .namespaceFilesDirectory(Property.of(destinationDirectory))
+            .gitDirectory(Property.ofValue(clonedGitDirectory))
+            .namespaceFilesDirectory(Property.ofValue(destinationDirectory))
             .build();
         task.run(runContextFactory.of(Map.of("flow", Map.of(
             "namespace", NAMESPACE,
@@ -348,8 +348,8 @@ class SyncTest extends AbstractGitTest {
             .username(new Property<>(pat))
             .password(new Property<>(pat))
             .branch(new Property<>(BRANCH))
-            .gitDirectory(Property.of("to_clone"))
-            .dryRun(Property.of(true))
+            .gitDirectory(Property.ofValue("to_clone"))
+            .dryRun(Property.ofValue(true))
             .build();
         RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Collections.emptyMap());
         task.run(runContext);

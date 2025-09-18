@@ -145,9 +145,9 @@ public class SyncFlowsTest extends AbstractGitTest {
             .branch(new Property<>("{{branch}}"))
             .gitDirectory(new Property<>("{{gitDirectory}}"))
             .targetNamespace(new Property<>("{{namespace}}"))
-            .delete(Property.of(true))
-            .includeChildNamespaces(Property.of(true))
-            .ignoreInvalidFlows(Property.of(true))
+            .delete(Property.ofValue(true))
+            .includeChildNamespaces(Property.ofValue(true))
+            .ignoreInvalidFlows(Property.ofValue(true))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 
@@ -229,7 +229,7 @@ public class SyncFlowsTest extends AbstractGitTest {
             .branch(new Property<>("{{branch}}"))
             .gitDirectory(new Property<>("{{gitDirectory}}"))
             .targetNamespace(new Property<>("{{namespace}}"))
-            .includeChildNamespaces(Property.of(true))
+            .includeChildNamespaces(Property.ofValue(true))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 
@@ -316,8 +316,8 @@ public class SyncFlowsTest extends AbstractGitTest {
             .branch(new Property<>("{{branch}}"))
             .gitDirectory(new Property<>("{{gitDirectory}}"))
             .targetNamespace(new Property<>("{{namespace}}"))
-            .delete(Property.of(true))
-            .includeChildNamespaces(Property.of(false))
+            .delete(Property.ofValue(true))
+            .includeChildNamespaces(Property.ofValue(false))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 
@@ -402,9 +402,9 @@ public class SyncFlowsTest extends AbstractGitTest {
             .branch(new Property<>("{{branch}}"))
             .gitDirectory(new Property<>("{{gitDirectory}}"))
             .targetNamespace(new Property<>("{{namespace}}"))
-            .delete(Property.of(true))
-            .includeChildNamespaces(Property.of(true))
-            .dryRun(Property.of(true))
+            .delete(Property.ofValue(true))
+            .includeChildNamespaces(Property.ofValue(true))
+            .dryRun(Property.ofValue(true))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 

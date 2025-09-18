@@ -150,7 +150,7 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             .namespace(new Property<>("{{namespace}}"))
             .files("second*")
             .gitDirectory(new Property<>("{{gitDirectory}}"))
-            .dryRun(Property.of(true))
+            .dryRun(Property.ofValue(true))
             .build();
 
         PushNamespaceFiles.Output pushOutput = pushNamespaceFiles.run(runContext);

@@ -58,7 +58,7 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
 
     @Schema(title = "The branch to clone from")
     @Builder.Default
-    private Property<String> branch = Property.of("main");
+    private Property<String> branch = Property.ofValue("main");
 
     @Override
     public Property<String> getBranch() {
@@ -75,7 +75,7 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
 
     @Schema(title = "If true, the task will only log the action without actually syncing the flow.")
     @Builder.Default
-    private Property<Boolean> dryRun = Property.of(Boolean.FALSE);
+    private Property<Boolean> dryRun = Property.ofValue(Boolean.FALSE);
 
     @Override
     public Output run(RunContext runContext) throws Exception {
@@ -85,7 +85,7 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
         GitService gitService = new GitService(this);
         FlowService flowService = ((DefaultRunContext) runContext).getApplicationContext().getBean(FlowService.class);
 
-        Git git = gitService.cloneBranch(runContext, runContext.render(this.getBranch()).as(String.class).orElse(null), Property.of(Boolean.FALSE));
+        Git git = gitService.cloneBranch(runContext, runContext.render(this.getBranch()).as(String.class).orElse(null), Property.ofValue(Boolean.FALSE));
         Path cloneDir = git.getRepository().getWorkTree().toPath();
 
         String renderedFlowPath = runContext.render(this.flowPath).as(String.class).orElseThrow();

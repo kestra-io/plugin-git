@@ -111,7 +111,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         description = "If the branch doesn’t exist yet, it will be created. If not set, the task will push the files to the `kestra` branch."
     )
     @Builder.Default
-    private Property<String> branch = Property.of("main");
+    private Property<String> branch = Property.ofValue("main");
 
     @Schema(
         title = "The namespace from which files should be pushed to the `gitDirectory`"
@@ -133,7 +133,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
             | requirements.txt      | _files/requirements.txt      |"""
     )
     @Builder.Default
-    private Property<String> gitDirectory = Property.of("_files");
+    private Property<String> gitDirectory = Property.ofValue("_files");
 
     @Schema(
         title = "Which Namespace Files should be included in the commit",

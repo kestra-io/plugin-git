@@ -28,12 +28,12 @@ import java.util.Optional;
     title = "Sync Namespace Files from Git to Kestra.",
     description = """
         This task syncs Namespace Files from a given Git branch to a Kestra namespace.
-    
+
         If the `delete` property is set to true, any Namespace Files available in Kestra but not present in the `gitDirectory` will be deleted. This allows you to maintain Git as the single source of truth for your Namespace Files. Check the Version Control with Git documentation for more details.
-        
-    
+
+
         Using this task, you can push one or more Namespace Files from a given Kestra namespace to Git. Check the [Version Control with Git](https://kestra.io/docs/version-control-cicd) documentation for more details.
-    
+
         If you don't want some files from Git to be synced, you can add them to a `.kestraignore` file at the root of your `gitDirectory` folder — that file works the same way as `.gitignore`."""
 )
 @Plugin(
@@ -108,7 +108,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
         title = "The branch from which Namespace files will be synced to Kestra -- defaults to `main`."
     )
     @Builder.Default
-    private Property<String> branch = Property.of("main");
+    private Property<String> branch = Property.ofValue("main");
 
     @Schema(
         title = "The namespace from which files should be synced from the `gitDirectory` to Kestra"
@@ -121,14 +121,14 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
         description = "If not set, this task assumes your branch includes a directory named `_files`"
     )
     @Builder.Default
-    private Property<String> gitDirectory = Property.of("_files");
+    private Property<String> gitDirectory = Property.ofValue("_files");
 
     @Schema(
         title = "Whether you want to delete Namespace files present in Kestra but not present in Git",
         description = "It’s `false` by default to avoid destructive behavior. Use with caution because when set to `true`, this task will delete all Namespace files which are not present in Git."
     )
     @Builder.Default
-    private Property<Boolean> delete = Property.of(false);
+    private Property<Boolean> delete = Property.ofValue(false);
 
     @Override
     public Property<String> fetchedNamespace() {

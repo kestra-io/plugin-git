@@ -73,11 +73,11 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
 public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
     @Schema(title = "The branch to which dashboards should be committed and pushed")
     @Builder.Default
-    private Property<String> branch = Property.of("main");
+    private Property<String> branch = Property.ofValue("main");
 
     @Schema(title = "Directory to which dashboards should be pushed")
     @Builder.Default
-    private Property<String> gitDirectory = Property.of("_dashboards");
+    private Property<String> gitDirectory = Property.ofValue("_dashboards");
 
     @Schema(
         title = "List of glob patterns or a single one that declares which dashboards should be included in the Git commit",
@@ -104,7 +104,7 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
     @Override
     public Property<String> fetchedNamespace() {
         // Dashboards are not linked to namespaces
-        return Property.of("");
+        return Property.ofValue("");
     }
 
     protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path flowDirectory, List<String> globs) throws IllegalVariableEvaluationException {

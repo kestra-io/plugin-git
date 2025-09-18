@@ -78,7 +78,7 @@ public class SyncDashboardsTest extends AbstractGitTest {
             .password(new Property<>("{{pat}}"))
             .branch(new Property<>("{{branch}}"))
             .gitDirectory(new Property<>("{{gitDirectory}}"))
-            .delete(Property.of(delete))
+            .delete(Property.ofValue(delete))
             .build();
 
         SyncDashboards.Output syncOutput = task.run(runContext);
@@ -138,8 +138,8 @@ public class SyncDashboardsTest extends AbstractGitTest {
             .password(new Property<>("{{pat}}"))
             .branch(new Property<>("{{branch}}"))
             .gitDirectory(new Property<>("{{gitDirectory}}"))
-            .delete(Property.of(delete))
-            .dryRun(Property.of(true))
+            .delete(Property.ofValue(delete))
+            .dryRun(Property.ofValue(true))
             .build();
 
         SyncDashboards.Output syncOutput = task.run(runContext);

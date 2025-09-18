@@ -1,6 +1,6 @@
 package io.kestra.plugin.git;
 
-import io.kestra.core.models.flows.Flow;
+import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.flows.GenericFlow;
 import io.kestra.core.models.property.Property;
@@ -13,7 +13,6 @@ import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.IdUtils;
-import io.kestra.core.junit.annotations.KestraTest;
 import jakarta.inject.Inject;
 import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.Git;
@@ -38,6 +37,7 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
+@SuppressWarnings("removal")
 @KestraTest
 class PushTest extends AbstractGitTest {
     public static final String BRANCH = "ci";
@@ -60,10 +60,10 @@ class PushTest extends AbstractGitTest {
         Clone clone = Clone.builder()
             .id("clone")
             .type(Clone.class.getName())
-            .url(new Property<>(repositoryUrl))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(BRANCH))
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
             .build();
 
         RunContext cloneRunContext = runContextFactory.of();
@@ -82,15 +82,15 @@ class PushTest extends AbstractGitTest {
             .id("push")
             .type(Push.class.getName())
             .flows(Push.FlowFiles.builder()
-                .enabled(Property.of(false))
+                .enabled(Property.ofValue(false))
                 .build())
-            .commitMessage(Property.of("Push from CI - Clone then push"))
+            .commitMessage(Property.ofValue("Push from CI - Clone then push"))
             .inputFiles(Map.of(
                 INPUT_FILE_NAME, expectedInputFileContent
             ))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(BRANCH))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
             .build();
         Push.Output pushOutput = push.run(cloneRunContext);
 
@@ -121,10 +121,10 @@ class PushTest extends AbstractGitTest {
         Clone clone = Clone.builder()
             .id("clone")
             .type(Clone.class.getName())
-            .url(new Property<>(repositoryUrl))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(BRANCH))
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
             .build();
 
         RunContext cloneRunContext = runContextFactory.of();
@@ -136,12 +136,12 @@ class PushTest extends AbstractGitTest {
             .id("push")
             .type(Push.class.getName())
             .flows(Push.FlowFiles.builder()
-                .enabled(Property.of(false))
+                .enabled(Property.ofValue(false))
                 .build())
-            .commitMessage(Property.of("Push from CI - Clone then push"))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(otherBranch))
+            .commitMessage(Property.ofValue("Push from CI - Clone then push"))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(otherBranch))
             .build();
         Push.Output pushOutput = push.run(cloneRunContext);
 
@@ -185,26 +185,26 @@ class PushTest extends AbstractGitTest {
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
-            .url(new Property<>(repositoryUrl))
-            .commitMessage(new Property<>("Push from CI - {{description}}"))
+            .url(Property.ofValue(repositoryUrl))
+            .commitMessage(Property.ofValue("Push from CI - {{description}}"))
             .flows(Push.FlowFiles.builder()
-                .enabled(Property.of(false))
+                .enabled(Property.ofValue(false))
                 .build())
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
             .inputFiles(Map.of(
                 INPUT_FILE_NAME, expectedInputFileContent,
                 shouldNotBeCommitted, "should not be committed"
             ))
             .namespaceFiles(NamespaceFiles.builder()
-                .enabled(Property.of(true))
+                .enabled(Property.ofValue(true))
                 .build()
             )
-            .addFilesPattern(Property.of(List.of(
+            .addFilesPattern(Property.ofValue(List.of(
                 INPUT_FILE_NAME,
                 namespaceFileName
             )))
-            .branch(new Property<>(BRANCH))
+            .branch(Property.ofValue(BRANCH))
             .build();
 
         push.run(runContext);
@@ -212,10 +212,10 @@ class PushTest extends AbstractGitTest {
         Clone clone = Clone.builder()
             .id("clone")
             .type(Clone.class.getName())
-            .url(new Property<>(repositoryUrl))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(BRANCH))
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
             .build();
 
         Clone.Output cloneOutput = clone.run(runContextFactory.of());
@@ -235,10 +235,10 @@ class PushTest extends AbstractGitTest {
         Clone clone = Clone.builder()
             .id("clone")
             .type(Clone.class.getName())
-            .url(new Property<>(repositoryUrl))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(branchName))
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(branchName))
             .build();
 
         Assertions.assertThrows(TransportException.class, () -> clone.run(runContextFactory.of()));
@@ -247,17 +247,17 @@ class PushTest extends AbstractGitTest {
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
-            .url(new Property<>(repositoryUrl))
+            .url(Property.ofValue(repositoryUrl))
             .inputFiles(Map.of(
                 toDeleteFileName, "some content"
             ))
             .flows(Push.FlowFiles.builder()
-                .enabled(Property.of(false))
+                .enabled(Property.ofValue(false))
                 .build())
-            .commitMessage(Property.of("Branch creation"))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(branchName))
+            .commitMessage(Property.ofValue("Branch creation"))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(branchName))
             .build();
         push.run(runContextFactory.of());
 
@@ -285,27 +285,27 @@ class PushTest extends AbstractGitTest {
         Clone clone = Clone.builder()
             .id("clone")
             .type(Clone.class.getName())
-            .url(new Property<>(repositoryUrl))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(branchName))
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(branchName))
             .build();
 
         String toDeleteFileName = "to_delete.txt";
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
-            .url(new Property<>(repositoryUrl))
+            .url(Property.ofValue(repositoryUrl))
             .inputFiles(Map.of(
                 toDeleteFileName, "some content"
             ))
             .flows(Push.FlowFiles.builder()
-                .enabled(Property.of(false))
+                .enabled(Property.ofValue(false))
                 .build())
-            .commitMessage(Property.of("Branch creation"))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(branchName))
+            .commitMessage(Property.ofValue("Branch creation"))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(branchName))
             .build();
         RunContext runContext = runContextFactory.of();
         Push.Output firstPush = push.run(runContext);
@@ -343,21 +343,21 @@ class PushTest extends AbstractGitTest {
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
-            .url(new Property<>(repositoryUrl))
-            .commitMessage(Property.of("Push from CI - One-task push with specified directory"))
+            .url(Property.ofValue(repositoryUrl))
+            .commitMessage(Property.ofValue("Push from CI - One-task push with specified directory"))
             .flows(Push.FlowFiles.builder()
-                .enabled(Property.of(false))
+                .enabled(Property.ofValue(false))
                 .build())
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .directory(Property.of(directory))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .directory(Property.ofValue(directory))
             .inputFiles(Map.of(
                 "not_included_file.txt", "not included",
                 INPUT_FILE_NAME, "not included neither",
                 directory + "/" + INPUT_FILE_NAME, expectedInputFileContent,
                 directory + "/" + nestedFilePath, expectedNestedInputFileContent
             ))
-            .branch(new Property<>(BRANCH))
+            .branch(Property.ofValue(BRANCH))
             .build();
 
         push.run(runContext);
@@ -365,10 +365,10 @@ class PushTest extends AbstractGitTest {
         Clone clone = Clone.builder()
             .id("clone")
             .type(Clone.class.getName())
-            .url(new Property<>(repositoryUrl))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(BRANCH))
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
             .build();
 
         Clone.Output cloneOutput = clone.run(runContextFactory.of());
@@ -399,11 +399,11 @@ class PushTest extends AbstractGitTest {
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
-            .url(new Property<>(repositoryUrl))
-            .commitMessage(new Property<>("Push from CI - {{description}}"))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(branchName))
+            .url(Property.ofValue(repositoryUrl))
+            .commitMessage(Property.ofValue("Push from CI - {{description}}"))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(branchName))
             .build();
 
         try {
@@ -412,10 +412,10 @@ class PushTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(new Property<>(repositoryUrl))
-                .username(new Property<>(pat))
-                .password(new Property<>(pat))
-                .branch(new Property<>(branchName))
+                .url(Property.ofValue(repositoryUrl))
+                .username(Property.ofValue(pat))
+                .password(Property.ofValue(pat))
+                .branch(Property.ofValue(branchName))
                 .build();
 
             Clone.Output cloneOutput = clone.run(runContextFactory.of());
@@ -453,18 +453,18 @@ class PushTest extends AbstractGitTest {
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
-            .url(new Property<>(repositoryUrl))
-            .commitMessage(new Property<>("Push from CI - {{description}}"))
+            .url(Property.ofValue(repositoryUrl))
+            .commitMessage(Property.ofValue("Push from CI - {{description}}"))
             .flows(Push.FlowFiles.builder()
-                .childNamespaces(Property.of(false))
+                .childNamespaces(Property.ofValue(false))
                 .build())
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
             .author(Push.Author.builder()
-                .name(new Property<>(gitUserName))
-                .email(new Property<>(gitUserEmail))
+                .name(Property.ofValue(gitUserName))
+                .email(Property.ofValue(gitUserEmail))
                 .build())
-            .branch(new Property<>(branchName))
+            .branch(Property.ofValue(branchName))
             .build();
 
         try {
@@ -473,10 +473,10 @@ class PushTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(new Property<>(repositoryUrl))
-                .username(new Property<>(pat))
-                .password(new Property<>(pat))
-                .branch(new Property<>(branchName))
+                .url(Property.ofValue(repositoryUrl))
+                .username(Property.ofValue(pat))
+                .password(Property.ofValue(pat))
+                .branch(Property.ofValue(branchName))
                 .build();
 
             Clone.Output cloneOutput = clone.run(runContextFactory.of());
@@ -512,16 +512,16 @@ class PushTest extends AbstractGitTest {
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
-            .url(new Property<>(repositoryUrl))
-            .commitMessage(new Property<>("Push from CI - {{description}}"))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
+            .url(Property.ofValue(repositoryUrl))
+            .commitMessage(Property.ofValue("Push from CI - {{description}}"))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
             .author(Push.Author.builder()
-                .email(new Property<>(gitUserEmail))
+                .email(Property.ofValue(gitUserEmail))
                 .build())
-            .branch(new Property<>(branchName))
+            .branch(Property.ofValue(branchName))
             .flows(Push.FlowFiles.builder()
-                .gitDirectory(Property.of("my-flows"))
+                .gitDirectory(Property.ofValue("my-flows"))
                 .build())
             .build();
 
@@ -531,10 +531,10 @@ class PushTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(new Property<>(repositoryUrl))
-                .username(new Property<>(pat))
-                .password(new Property<>(pat))
-                .branch(new Property<>(branchName))
+                .url(Property.ofValue(repositoryUrl))
+                .username(Property.ofValue(pat))
+                .password(Property.ofValue(pat))
+                .branch(Property.ofValue(branchName))
                 .build();
 
             Clone.Output cloneOutput = clone.run(runContextFactory.of());
