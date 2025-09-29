@@ -11,6 +11,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
+import org.eclipse.jgit.api.Git;
 
 import java.io.FileInputStream;
 import java.io.InputStream;
@@ -55,9 +56,9 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
 
                   - id: push
                     type: io.kestra.plugin.git.PushExecutionFiles
-                       files:
-                         - "*.csv"
-                         - "*.json"
+                    files:
+                      - "*.csv"
+                      - "*.json"
                     gitDirectory: analytics
                     url: https://github.com/company/data-pipeline
                     username: git_user
