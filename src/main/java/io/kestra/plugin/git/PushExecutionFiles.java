@@ -148,29 +148,6 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
     }
 
     @Override
-    public Output run(RunContext runContext) throws Exception {
-        List<String> renderedGlobs = switch (this.globs()) {
-            case List<?> globList -> ((List<String>) globList).stream().map(throwFunction(runContext::render)).toList();
-            case String globString -> List.of(runContext.render(globString));
-            case null, default -> List.of();
-        };
-
-        Map<Path, Supplier<InputStream>> contentByPath = this.instanceResourcesContentByPath(runContext, runContext.workingDir().path(), renderedGlobs);
-
-        if (contentByPath.isEmpty()) {
-            var rFailIfMissing = runContext.render(this.errorOnMissing).as(Boolean.class).orElse(false);
-            if (rFailIfMissing) {
-                throw new IllegalArgumentException("No files matched the provided patterns: " + this.files);
-            } else {
-                runContext.logger().info("No files to push, skipping Git operations.");
-                return Output.builder().build();
-            }
-        }
-
-        return super.run(runContext);
-    }
-
-    @Override
     @SuppressWarnings("unchecked")
     protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path baseDirectory, List<String> globs) throws Exception {
         Map<Path, Supplier<InputStream>> contentByPath;
@@ -246,7 +223,7 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
                 if (failIfMissing) {
                     throw new IllegalArgumentException("No output files found in this execution.");
                 } else {
-                    runContext.logger().warn("No files, filesMap, or outputFiles found — skipping push.");
+                    runContext.logger().warn("No files, filesMap, or outputFiles found - skipping push.");
                     return Map.of();
                 }
             }
