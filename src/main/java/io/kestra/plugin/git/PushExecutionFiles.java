@@ -57,8 +57,7 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
                   - id: push
                     type: io.kestra.plugin.git.PushExecutionFiles
                     files:
-                      - "*.csv"
-                      - "*.json"
+                      - "*.txt"
                     gitDirectory: analytics
                     url: https://github.com/company/data-pipeline
                     username: git_user
@@ -92,7 +91,6 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
                     password: "{{ secret('GITHUB_TOKEN') }}"
                     branch: logs
                     commitMessage: "Archive log for run {{ execution.id }}"
-
                 """
         )
     }
@@ -164,18 +162,13 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
             renderedGlobs
         );
 
-
         if (contentByPath.isEmpty()) {
             Boolean failIfMissing = runContext.render(this.errorOnMissing).as(Boolean.class).orElse(false);
             if (failIfMissing) {
                 throw new IllegalArgumentException("No files matched the provided patterns: " + this.files);
             } else {
                 runContext.logger().info("No files to push, skipping Git operations.");
-                return Output.builder()
-                    .commitId(null)
-                    .commitURL(null)
-                    .files(null)
-                    .build();
+                return Output.builder().build();
             }
         }
 
