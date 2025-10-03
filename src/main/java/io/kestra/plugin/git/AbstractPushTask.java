@@ -401,6 +401,13 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         }
 
         var workTree = git.getRepository().getWorkTree().toPath().toRealPath();
+
+        if (contentByPath.isEmpty()) {
+            runContext.logger().info("No content to push - skipping Git operations.");
+            git.close();
+            return output(Output.builder().build(), null);
+        }
+
         AddCommand add = git.add();
 
         for (Path p : contentByPath.keySet()) {
