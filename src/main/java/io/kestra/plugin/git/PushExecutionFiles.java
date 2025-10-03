@@ -119,8 +119,13 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
     private Object files;
 
     @Schema(
-        title = "Explicit file map of target filename to execution file URI",
-        description = "Useful when pushing files from other tasks' outputs, which expose URIs."
+        title = "A map of key-value pairs where the key is the filename and the value is the URI of the file to upload.",
+        description = "This should be a map of URI, with the key being the filename that will be upload and the value is the URI." +
+            "This property is intended to be used with the output files of other tasks. Many Kestra tasks, incl. all Downloads tasks, " +
+            "output a map of files so that you can directly pass the output property to this task e.g. " +
+            "[outputFiles in the S3 Downloads task](https://kestra.io/plugins/plugin-aws/tasks/s3/io.kestra.plugin.aws.s3.downloads#outputfiles) " +
+            "or the [files in the Archive Decompress task](https://kestra.io/plugins/plugin-compress/tasks/io.kestra.plugin.compress.archivedecompress#files).",
+        anyOf = {Map.class, String.class}
     )
     private Object filesMap;
 
@@ -132,7 +137,7 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
     )
     @Override
     public Property<String> getCommitMessage() {
-        return Optional.ofNullable(this.commitMessage).orElse(new Property<>("Add execution files"));
+        return Optional.ofNullable(this.commitMessage).orElse(new Property<>("Add files from execution {{ execution.id }}"));
     }
 
     @Override
@@ -176,7 +181,6 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
 
         return super.run(runContext);
     }
-
 
     @Override
     @SuppressWarnings("unchecked")
@@ -237,7 +241,7 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
             if (failIfMissing) {
                 throw new IllegalArgumentException("Either files or filesMap must be provided");
             } else {
-                runContext.logger().warn("No files or filesMap provided — skipping push.");
+                runContext.logger().warn("No files or filesMap provided - skipping push.");
                 return Map.of();
             }
         }
