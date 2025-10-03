@@ -237,14 +237,33 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
             }
         }
         else {
-            Boolean failIfMissing = runContext.render(this.errorOnMissing).as(Boolean.class).orElse(false);
-            if (failIfMissing) {
-                throw new IllegalArgumentException("Either files or filesMap must be provided");
+            // we collect all outputFiles from all tasks in the execution
+            Map<String, Object> outputs = (Map<String, Object>) runContext.getVariables().get("outputs");
+
+            if (outputs != null && !outputs.isEmpty()) {
+                contentByPath = outputs.values().stream()
+                    .filter(v -> v instanceof Map && ((Map<?, ?>) v).get("outputFiles") instanceof Map)
+                    .flatMap(v -> ((Map<String, Object>) ((Map<?, ?>) v).get("outputFiles")).entrySet().stream())
+                    .collect(Collectors.toMap(
+                        e -> baseDirectory.resolve(e.getKey()),
+                        throwFunction(e -> throwSupplier(() -> {
+                            URI sourceFileURI = URI.create((String) e.getValue());
+                            return runContext.storage().getFile(sourceFileURI);
+                        }))
+                    ));
+
+                runContext.logger().info("No files or filesMap provided - pushing all execution output files instead.");
             } else {
-                runContext.logger().warn("No files or filesMap provided - skipping push.");
-                return Map.of();
+                Boolean failIfMissing = runContext.render(this.errorOnMissing).as(Boolean.class).orElse(false);
+                if (failIfMissing) {
+                    throw new IllegalArgumentException("No output files found in this execution.");
+                } else {
+                    runContext.logger().warn("No files, filesMap, or outputFiles found — skipping push.");
+                    return Map.of();
+                }
             }
         }
+
 
         if (contentByPath.isEmpty()) {
             Boolean failIfMissing = runContext.render(this.errorOnMissing).as(Boolean.class).orElse(false);
