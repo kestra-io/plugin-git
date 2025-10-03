@@ -4,10 +4,12 @@ import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.utils.TestsUtils;
 import jakarta.inject.Inject;
 import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.TransportException;
+import org.eclipse.jgit.lib.PersonIdent;
 import org.junit.jupiter.api.Test;
 
 import java.io.File;
@@ -180,4 +182,51 @@ class CloneTest extends AbstractGitTest {
 
         assertThat(repoPath.resolve(".git").toFile().exists(), is(true));
     }
+
+    @Test
+    void cloneAtSpecificTag() throws Exception {
+        // Given a local repo with 2 commits and a tag
+        Path remote = Files.createTempDirectory("git-remote-");
+        Path file1 = remote.resolve("file1.txt");
+
+        String tagName = "v1.0";
+        String tagCommitSha;
+
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(file1, "first\n");
+            git.add().addFilepattern("file1.txt").call();
+            git.commit().setMessage("first").call();
+            tagCommitSha = git.getRepository().resolve("HEAD").name();
+
+            git.tag()
+                .setName(tagName)
+                .setMessage("Release " + tagName)
+                .setTagger(new PersonIdent("Test User", "test@example.com"))
+                .call();
+
+            Files.writeString(file1, "second\n");
+            git.add().addFilepattern("file1.txt").call();
+            git.commit().setMessage("second").call();
+        }
+
+        RunContext runContext = runContextFactory.of();
+
+        Clone task = Clone.builder()
+            .url(Property.ofValue(remote.toUri().toString()))
+            .tag(Property.ofValue(tagName))
+            .build();
+
+        Clone.Output out = task.run(runContext);
+        Path repoPath = Path.of(out.getDirectory());
+
+        try (Git cloned = Git.open(repoPath.toFile())) {
+            String headCommit = cloned.getRepository().findRef("HEAD").getObjectId().name();
+
+            assertThat(headCommit, is(tagCommitSha));
+        }
+
+        String content = Files.readString(repoPath.resolve("file1.txt"));
+        assertThat(content, is("first\n"));
+    }
+
 }

@@ -11,8 +11,6 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.eclipse.jgit.api.CloneCommand;
 import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.lib.ObjectId;
-import org.eclipse.jgit.transport.RefSpec;
 import org.slf4j.Logger;
 
 import java.nio.file.Path;
@@ -135,6 +133,9 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     )
     private Property<String> commit;
 
+    @Schema(title = "Tag to checkout -- ignored if `commit` is provided.")
+    private Property<String> tag;
+
     @Override
     public Clone.Output run(RunContext runContext) throws Exception {
         Logger logger = runContext.logger();
@@ -153,15 +154,15 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
             .setURI(url)
             .setDirectory(path.toFile());
 
-        // If a specific commit is requested, we must not do a shallow clone;
-        // otherwise the target commit might not be present.
+        // If a specific commit or tag is requested, we must not do a shallow clone;
+        // otherwise the target may not be present.
         boolean hasCommit = this.commit != null;
+        boolean hasTag = this.tag != null;
 
-        if (!hasCommit) {
+        if (!hasCommit && !hasTag) {
             if (this.branch != null) {
                 cloneCommand.setBranch(runContext.render(this.branch).as(String.class).orElse(null));
             }
-
             var rDepth = runContext.render(this.depth).as(Integer.class).orElse(1);
             if (this.depth != null) {
                 cloneCommand.setDepth(rDepth);
@@ -180,39 +181,14 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
             applyGitConfig(git.getRepository(), runContext);
 
             if (hasCommit) {
-                String sha = runContext.render(this.commit).as(String.class).orElseThrow();
-
-                // Ensure we have a full history in case the repo was shallow by default on the remote
-                // or if the requested SHA is deep in history.
-                try {
-                    // Fetch all branches and tags to guarantee the target commit is available locally.
-                    git.fetch()
-                        .setRefSpecs(
-                            new RefSpec("+refs/heads/*:refs/remotes/origin/*"),
-                            new RefSpec("+refs/tags/*:refs/tags/*")
-                        )
-                        .call();
-                } catch (Exception fetchEx) {
-                    logger.warn("Fetch before checkout failed: {}", fetchEx.getMessage());
-                }
-
-                ObjectId target;
-                try {
-                    target = git.getRepository().resolve(sha);
-                    if (target == null) {
-                        throw new IllegalArgumentException("Cannot resolve commit SHA: " + sha);
-                    }
-                    git.checkout().setName(target.name()).call();
-                    logger.info("Checked out commit {} (detached HEAD)", target.name());
-                } catch (Exception e) {
-                    throw new IllegalStateException("Failed to checkout commit " + sha + ": " + e.getMessage(), e);
-                }
+                var rSha = runContext.render(this.commit).as(String.class).orElseThrow();
+                checkoutCommit(git, rSha, logger);
+            } else if (hasTag) {
+                var rTagName = runContext.render(this.tag).as(String.class).orElseThrow();
+                checkoutTag(git, rTagName, logger);
             } else if (this.branch != null) {
-                // If a branch was provided, ensure we're on it (useful when depth is set)
-                String targetBranch = runContext.render(this.branch).as(String.class).orElse(null);
-                if (targetBranch != null) {
-                    git.checkout().setName(targetBranch).call();
-                }
+                var rTargetBranch = runContext.render(this.branch).as(String.class).orElse(null);
+                checkoutBranch(git, rTargetBranch, logger);
             }
 
             return Output.builder()
