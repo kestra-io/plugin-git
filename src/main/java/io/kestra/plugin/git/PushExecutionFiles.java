@@ -11,7 +11,6 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
-import org.eclipse.jgit.api.Git;
 
 import java.io.FileInputStream;
 import java.io.InputStream;
@@ -156,15 +155,11 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
             case null, default -> List.of();
         };
 
-        Map<Path, Supplier<InputStream>> contentByPath = this.instanceResourcesContentByPath(
-            runContext,
-            runContext.workingDir().path(),
-            renderedGlobs
-        );
+        Map<Path, Supplier<InputStream>> contentByPath = this.instanceResourcesContentByPath(runContext, runContext.workingDir().path(), renderedGlobs);
 
         if (contentByPath.isEmpty()) {
-            Boolean failIfMissing = runContext.render(this.errorOnMissing).as(Boolean.class).orElse(false);
-            if (failIfMissing) {
+            var rFailIfMissing = runContext.render(this.errorOnMissing).as(Boolean.class).orElse(false);
+            if (rFailIfMissing) {
                 throw new IllegalArgumentException("No files matched the provided patterns: " + this.files);
             } else {
                 runContext.logger().info("No files to push, skipping Git operations.");
@@ -183,7 +178,7 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
         if (filesMap != null) {
             Map<String, Object> readFilesMap;
             if (filesMap instanceof String stringValue) {
-                String rendered = runContext.render(stringValue);
+                var rendered = runContext.render(stringValue);
                 readFilesMap = JacksonMapper.ofJson().readValue(rendered, Map.class);
             } else {
                 readFilesMap = (Map<String, Object>) filesMap;
@@ -257,14 +252,10 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
             }
         }
 
-
         if (contentByPath.isEmpty()) {
-            Boolean failIfMissing = runContext.render(this.errorOnMissing).as(Boolean.class).orElse(false);
+            var failIfMissing = runContext.render(this.errorOnMissing).as(Boolean.class).orElse(false);
             if (failIfMissing) {
                 throw new IllegalArgumentException("No files matched the provided patterns: " + globs);
-            } else {
-                runContext.logger().info("No execution files matched patterns {}, skipping push.", globs);
-                return Map.of();
             }
         }
 
