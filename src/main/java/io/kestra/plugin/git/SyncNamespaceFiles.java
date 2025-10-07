@@ -105,7 +105,7 @@ import java.util.Optional;
 )
 public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles.Output> {
     @Schema(
-        title = "The branch from which Namespace files will be synced to Kestra -- defaults to `main`."
+        title = "The branch from which Namespace files will be synced to Kestra – defaults to `main`."
     )
     @Builder.Default
     private Property<String> branch = Property.ofValue("main");

@@ -118,7 +118,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     private Property<String> directory;
 
     @Schema(
-        title = "The branch to checkout -- ignored if \"commit\" is provided."
+        title = "The branch to checkout – ignored if \"commit\" is provided."
     )
     private Property<String> branch;
 
@@ -128,12 +128,12 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     private Property<Integer> depth = Property.ofValue(1);
 
     @Schema(
-        title = "Commit SHA1 to checkout (detached HEAD) -- works also with a shortened SHA1.",
+        title = "Commit SHA1 to checkout (detached HEAD) – works also with a shortened SHA1.",
         description = "If set, the repository is cloned and the specified commit is checked out. This takes precedence over `branch` and disables shallow cloning to ensure the commit is present."
     )
     private Property<String> commit;
 
-    @Schema(title = "Tag to checkout -- ignored if `commit` is provided.")
+    @Schema(title = "Tag to checkout – ignored if `commit` is provided.")
     private Property<String> tag;
 
     @Override
