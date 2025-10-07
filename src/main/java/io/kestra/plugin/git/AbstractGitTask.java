@@ -57,7 +57,7 @@ public abstract class AbstractGitTask extends Task {
     @Schema(title = "The username or organization")
     protected Property<String> username;
 
-    @Schema(title = "The password or Personal Access Token (PAT) -- when you authenticate the task with a PAT, any flows or files pushed to Git from Kestra will be pushed from the user associated with that PAT. This way, you don't need to configure the commit author (the `authorName` and `authorEmail` properties).")
+    @Schema(title = "The password or Personal Access Token (PAT) – when you authenticate the task with a PAT, any flows or files pushed to Git from Kestra will be pushed from the user associated with that PAT. This way, you don't need to configure the commit author (the `authorName` and `authorEmail` properties).")
     protected Property<String> password;
 
     @Schema(

@@ -158,7 +158,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
     private Object inputFiles;
 
     @Schema(
-        title = "Patterns of files to add to the commit -- default is `.` which means all files.",
+        title = "Patterns of files to add to the commit – default is `.` which means all files.",
         description = "A directory name (e.g., `dir` to add `dir/file1` and `dir/file2`) can also be given to add all files in the directory, recursively. File globs (e.g., `*.py`) are not yet supported."
     )
     @Builder.Default
