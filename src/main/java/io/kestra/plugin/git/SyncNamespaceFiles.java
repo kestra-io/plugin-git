@@ -49,13 +49,13 @@ import java.util.Optional;
                   - id: git
                     type: io.kestra.plugin.git.SyncNamespaceFiles
                     namespace: prod
-                    gitDirectory: _files # optional; set to _files by default
-                    delete: true # optional; by default, it's set to false to avoid destructive behavior
+                    gitDirectory: _files
+                    delete: true
                     url: https://github.com/kestra-io/flows
                     branch: main
                     username: git_username
                     password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
-                    dryRun: true  # if true, the task will only log which flows from Git will be added/modified or deleted in kestra without making any changes in kestra backend yet
+                    dryRun: true
 
                 triggers:
                   - id: every_minute

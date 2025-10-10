@@ -48,15 +48,15 @@ import java.util.regex.Pattern;
                 tasks:
                   - id: git
                     type: io.kestra.plugin.git.SyncFlows
-                    gitDirectory: flows # optional; set to _flows by default
-                    targetNamespace: git # required
-                    includeChildNamespaces: true # optional; by default, it's set to false to allow explicit definition
-                    delete: true # optional; by default, it's set to false to avoid destructive behavior
-                    url: https://github.com/kestra-io/flows # required
+                    gitDirectory: flows
+                    targetNamespace: git
+                    includeChildNamespaces: true
+                    delete: true
+                    url: https://github.com/kestra-io/flows
                     branch: main
                     username: git_username
                     password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
-                    dryRun: true  # if true, the task will only log which flows from Git will be added/modified or deleted in kestra without making any changes in kestra backend yet
+                    dryRun: true
 
                 triggers:
                   - id: every_full_hour
