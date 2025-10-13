@@ -39,6 +39,31 @@ import java.util.Optional;
 @Plugin(
     examples = {
         @Example(
+            title = "Sync Namespace Files from a Git repository. This flow can run either on a schedule (using the Schedule trigger) or anytime you push a change to a given Git branch (using the Webhook trigger).",
+            full = true,
+            code = """
+                id: sync_from_git
+                namespace: system
+
+                tasks:
+                  - id: git
+                    type: io.kestra.plugin.git.SyncNamespaceFiles
+                    namespace: prod
+                    gitDirectory: _files
+                    delete: true
+                    url: https://github.com/kestra-io/flows
+                    branch: main
+                    username: git_username
+                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                    dryRun: true
+
+                triggers:
+                  - id: every_minute
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "*/1 * * * *"
+                """
+        ),
+        @Example(
             title = "Sync all flows and scripts for selected namespaces from Git to Kestra every full hour. Note that this is a [System Flow](https://kestra.io/docs/concepts/system-flows), so make sure to adjust the Scope to SYSTEM in the UI filter to see this flow or its executions.",
             full = true,
             code = """
@@ -74,31 +99,6 @@ import java.util.Optional;
                   - id: every_full_hour
                     type: io.kestra.plugin.core.trigger.Schedule
                     cron: "0 * * * *"
-                """
-        ),
-        @Example(
-            title = "Sync Namespace Files from a Git repository. This flow can run either on a schedule (using the Schedule trigger) or anytime you push a change to a given Git branch (using the Webhook trigger).",
-            full = true,
-            code = """
-                id: sync_from_git
-                namespace: system
-
-                tasks:
-                  - id: git
-                    type: io.kestra.plugin.git.SyncNamespaceFiles
-                    namespace: prod
-                    gitDirectory: _files # optional; set to _files by default
-                    delete: true # optional; by default, it's set to false to avoid destructive behavior
-                    url: https://github.com/kestra-io/flows
-                    branch: main
-                    username: git_username
-                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
-                    dryRun: true  # if true, the task will only log which flows from Git will be added/modified or deleted in kestra without making any changes in kestra backend yet
-
-                triggers:
-                  - id: every_minute
-                    type: io.kestra.plugin.core.trigger.Schedule
-                    cron: "*/1 * * * *"
                 """
         )
     }
