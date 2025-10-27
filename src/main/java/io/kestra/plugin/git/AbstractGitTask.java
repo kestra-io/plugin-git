@@ -21,9 +21,11 @@ import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.diff.Edit;
 import org.eclipse.jgit.diff.EditList;
+import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.lib.StoredConfig;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.eclipse.jgit.treewalk.EmptyTreeIterator;
 
 import javax.net.ssl.*;
 import java.io.*;
@@ -352,12 +354,17 @@ public abstract class AbstractGitTask extends Task {
              DiffFormatter diffFormatter = new DiffFormatter(new ByteArrayOutputStream())) {
 
             diffFormatter.setRepository(git.getRepository());
-            var diff = git.diff().setCached(true).call();
+
+            // we check if the HEAD is null to handle the initial commit, if it is null we use an empty tree iterator
+            var diff = git.diff().setCached(true);
+            if (git.getRepository().resolve(Constants.HEAD) == null) {
+                diff.setOldTree(new EmptyTreeIterator());
+            }
 
             ObjectMapper mapper = new ObjectMapper();
             JsonFactory factory = mapper.getFactory();
             try (JsonGenerator generator = factory.createGenerator(diffWriter)) {
-                for (DiffEntry de : diff) {
+                for (DiffEntry de : diff.call()) {
                     EditList editList = diffFormatter.toFileHeader(de).toEditList();
                     int additions = 0, deletions = 0, changes = 0;
 

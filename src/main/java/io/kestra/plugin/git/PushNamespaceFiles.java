@@ -40,6 +40,31 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
 @Plugin(
     examples = {
         @Example(
+            title = "Push all saved Namespace Files from the dev namespace to a Git repository every 15 minutes.",
+            full = true,
+            code = """
+                id: push_to_git
+                namespace: system
+
+                tasks:
+                  - id: commit_and_push
+                    type: io.kestra.plugin.git.PushNamespaceFiles
+                    namespace: dev
+                    files: "**"
+                    gitDirectory: _files
+                    url: https://github.com/kestra-io/scripts
+                    username: git_username
+                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                    branch: dev
+                    commitMessage: "add namespace files"
+                    dryRun: true
+                triggers:
+                  - id: schedule_push_to_git
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "*/15 * * * *"
+                """
+        ),
+        @Example(
             title = "Release all flows and scripts from selected namespaces to a Git repository every Thursday at 11:00 AM. Adjust the `values` list to include the namespaces for which you want to push your code to Git. This [System Flow](https://kestra.io/docs/concepts/system-flows) will create two commits per namespace: one for the flows and one for the scripts.",
             full = true,
             code = """
@@ -75,32 +100,6 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
                   - id: schedule_push_to_git
                     type: io.kestra.plugin.core.trigger.Schedule
                     cron: "0 11 * * 4"
-                """
-        ),
-        @Example(
-            title = "Push all saved Namespace Files from the dev namespace to a Git repository every 15 minutes.",
-            full = true,
-            code = """
-                id: push_to_git
-                namespace: system
-
-                tasks:
-                  - id: commit_and_push
-                    type: io.kestra.plugin.git.PushNamespaceFiles
-                    namespace: dev
-                    files: "**"  # optional list of glob patterns; by default, all files are pushed
-                    gitDirectory: _files # optional path in Git where Namespace Files should be pushed
-                    url: https://github.com/kestra-io/scripts # required string
-                    username: git_username # required string needed for Auth with Git
-                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
-                    branch: dev # optional, uses "kestra" by default
-                    commitMessage: "add namespace files" # optional string
-                    dryRun: true  # if true, you'll see what files will be added, modified or deleted based on the state in Git without overwriting the files yet
-
-                triggers:
-                  - id: schedule_push_to_git
-                    type: io.kestra.plugin.core.trigger.Schedule
-                    cron: "*/15 * * * *"
                 """
         )
     }
