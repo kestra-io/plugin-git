@@ -106,7 +106,10 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
     public enum OnInvalidSyntax {SKIP, WARN, FAIL}
 
-    @Schema(title = "The branch to read from / write to (required).")
+    @Schema(
+        title = "The branch to read from / write to (required).",
+        description = "Branch prefixed with `origin/` or `refs/heads/` are not supported."
+    )
     @NotNull
     private Property<String> branch;
 

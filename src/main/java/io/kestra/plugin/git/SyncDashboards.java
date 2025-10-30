@@ -170,7 +170,7 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
     }
 
     @Override
-    protected List<Dashboard> fetchResources(RunContext runContext, String renderedNamespace) throws IllegalVariableEvaluationException {
+    protected List<Dashboard> fetchResources(RunContext runContext, String renderedNamespace) {
         return repository(runContext).findAll(runContext.flowInfo().tenantId());
     }
 
