@@ -27,10 +27,6 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
     @NotNull
     private Auth auth;
 
-    @Schema(title = "The tenant ID to use for the request, defaults to the current tenant.")
-    @Setter
-    protected Property<String> tenantId;
-
     protected KestraClient kestraClient(RunContext runContext) throws IllegalVariableEvaluationException {
         // use the kestraUrl property if set, otherwise the config value, or else the default
         String rKestraUrl = runContext.render(kestraUrl).as(String.class)
