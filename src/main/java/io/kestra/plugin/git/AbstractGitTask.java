@@ -24,7 +24,10 @@ import org.eclipse.jgit.diff.EditList;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.lib.StoredConfig;
+import org.eclipse.jgit.transport.HttpTransport;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.eclipse.jgit.transport.http.HttpConnectionFactory;
+import org.eclipse.jgit.transport.http.apache.HttpClientConnectionFactory;
 import org.eclipse.jgit.treewalk.EmptyTreeIterator;
 
 import javax.net.ssl.*;
@@ -92,6 +95,11 @@ public abstract class AbstractGitTask extends Task {
     )
     protected Property<Map<String, Object>> gitConfig;
 
+    protected void configureHttpTransport() {
+        HttpConnectionFactory apacheFactory = new HttpClientConnectionFactory();
+        HttpTransport.setConnectionFactory(apacheFactory);
+    }
+    
     /**
      * Configure a secure SSLContext based on either:
      * - the JVM default truststore ("JVM" key), or

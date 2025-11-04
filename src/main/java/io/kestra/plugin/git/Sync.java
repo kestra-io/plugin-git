@@ -110,7 +110,9 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
         String namespace = flowProps.get("namespace");
         String tenantId = flowProps.get("tenantId");
         boolean dryRun = this.dryRun != null && runContext.render(this.dryRun).as(Boolean.class).orElse(false);
-
+        
+        configureHttpTransport();
+        
         // we add this method to configure ssl to allow self signed certs
         configureEnvironmentWithSsl(runContext);
 
