@@ -1,6 +1,5 @@
 package io.kestra.plugin.git;
 
-import com.jcraft.jsch.Session;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.property.Property;
@@ -12,12 +11,6 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.eclipse.jgit.api.CloneCommand;
 import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.transport.HttpTransport;
-import org.eclipse.jgit.transport.SshSessionFactory;
-import org.eclipse.jgit.transport.http.HttpConnectionFactory;
-import org.eclipse.jgit.transport.http.apache.HttpClientConnectionFactory;
-import org.eclipse.jgit.transport.ssh.jsch.JschConfigSessionFactory;
-import org.eclipse.jgit.transport.ssh.jsch.OpenSshConfig;
 import org.slf4j.Logger;
 
 import java.nio.file.Path;
@@ -155,7 +148,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
             path = runContext.workingDir().resolve(Path.of(directory));
         }
         
-        configureHttpTransport();
+        configureHttpTransport(runContext);
         
         // we add this method to configure ssl to allow self signed certs
         configureEnvironmentWithSsl(runContext);
