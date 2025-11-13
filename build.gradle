@@ -56,6 +56,7 @@ dependencies {
     // git
     api 'org.eclipse.jgit:org.eclipse.jgit:7.4.0.202509020913-r'
     api 'org.eclipse.jgit:org.eclipse.jgit.ssh.jsch:7.4.0.202509020913-r'
+    api "org.eclipse.jgit:org.eclipse.jgit.http.apache:7.4.0.202509020913-r"
 }
 
 

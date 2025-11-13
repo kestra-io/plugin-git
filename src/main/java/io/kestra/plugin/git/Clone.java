@@ -138,6 +138,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
     @Override
     public Clone.Output run(RunContext runContext) throws Exception {
+        
         Logger logger = runContext.logger();
         String url = runContext.render(this.url).as(String.class).orElse(null);
 
@@ -146,7 +147,9 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
             String directory = runContext.render(this.directory).as(String.class).orElseThrow();
             path = runContext.workingDir().resolve(Path.of(directory));
         }
-
+        
+        configureHttpTransport(runContext);
+        
         // we add this method to configure ssl to allow self signed certs
         configureEnvironmentWithSsl(runContext);
 
