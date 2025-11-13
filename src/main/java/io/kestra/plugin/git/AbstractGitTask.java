@@ -27,7 +27,6 @@ import org.eclipse.jgit.lib.StoredConfig;
 import org.eclipse.jgit.transport.HttpTransport;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.eclipse.jgit.transport.http.HttpConnection;
-import org.eclipse.jgit.transport.http.HttpConnectionFactory;
 import org.eclipse.jgit.transport.http.apache.HttpClientConnection;
 import org.eclipse.jgit.transport.http.apache.HttpClientConnectionFactory;
 import org.eclipse.jgit.treewalk.EmptyTreeIterator;
@@ -35,8 +34,6 @@ import org.eclipse.jgit.treewalk.EmptyTreeIterator;
 import javax.net.ssl.*;
 import java.io.*;
 import java.net.Proxy;
-import java.net.ProxySelector;
-import java.net.SocketAddress;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -86,11 +83,10 @@ public abstract class AbstractGitTask extends Task {
         description = "Equivalent to `git config http.sslCAInfo <path>`. Use this for self-signed/internal CAs."
     )
     protected Property<String> trustedCaPemPath;
-    
+
     @Schema(title = "Specify whether to disable proxy.")
-    protected Property<Boolean> noproxy;
-    
-    
+    protected Property<Boolean> noProxy;
+
     @Schema(title = "The initial Git branch")
     public abstract Property<String> getBranch();
 
@@ -106,20 +102,20 @@ public abstract class AbstractGitTask extends Task {
     protected Property<Map<String, Object>> gitConfig;
 
     protected void configureHttpTransport(RunContext runContext) throws Exception {
-        final boolean noproxy = this.noproxy != null && runContext.render(this.noproxy).as(Boolean.class).orElse(false);
-        runContext.logger().debug("Configured with noproxy: {}", noproxy);
-        HttpTransport.setConnectionFactory(new HttpClientConnectionFactory(){
+        final boolean rNoProxy = this.noProxy != null && runContext.render(this.noProxy).as(Boolean.class).orElse(false);
+        runContext.logger().debug("Configured with rNoProxy: {}", rNoProxy);
+        HttpTransport.setConnectionFactory(new HttpClientConnectionFactory() {
             @Override
             public HttpConnection create(URL url, Proxy proxy) throws IOException {
-                if (noproxy) {
+                if (rNoProxy) {
                     return new HttpClientConnection(url.toString(), Proxy.NO_PROXY);
                 } else {
-                    return  super.create(url, proxy);
+                    return super.create(url, proxy);
                 }
             }
         });
     }
-    
+
     /**
      * Configure a secure SSLContext based on either:
      * - the JVM default truststore ("JVM" key), or
