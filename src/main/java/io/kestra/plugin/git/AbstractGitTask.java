@@ -9,10 +9,7 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.plugin.git.services.SshTransportConfigCallback;
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.AllArgsConstructor;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.SneakyThrows;
+import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.TransportCommand;
@@ -90,6 +87,14 @@ public abstract class AbstractGitTask extends Task {
     @Schema(title = "The initial Git branch")
     public abstract Property<String> getBranch();
 
+    @Schema(title = "Connect timeout in milliseconds for HTTP connections.")
+    @Builder.Default
+    protected Property<Integer> connectTimeout = Property.ofValue(10000);
+
+    @Schema(title = "Read timeout in milliseconds for HTTP connections.")
+    @Builder.Default
+    protected Property<Integer> readTimeout = Property.ofValue(60000);
+
     @Schema(
         title = "Git configuration to apply to the repository",
         description = """
@@ -102,15 +107,25 @@ public abstract class AbstractGitTask extends Task {
     protected Property<Map<String, Object>> gitConfig;
 
     protected void configureHttpTransport(RunContext runContext) throws Exception {
+
         final boolean rNoProxy = this.noProxy != null && runContext.render(this.noProxy).as(Boolean.class).orElse(false);
+        final Integer rConnectTimeout = runContext.render(this.connectTimeout).as(Integer.class).orElse(10000);
+        final Integer rReadTimeout = runContext.render(this.readTimeout).as(Integer.class).orElse(60000);
+
         runContext.logger().debug("Configured with rNoProxy: {}", rNoProxy);
         HttpTransport.setConnectionFactory(new HttpClientConnectionFactory() {
             @Override
             public HttpConnection create(URL url, Proxy proxy) throws IOException {
                 if (rNoProxy) {
-                    return new HttpClientConnection(url.toString(), Proxy.NO_PROXY);
+                    HttpClientConnection httpClientConnection = new HttpClientConnection(url.toString(), Proxy.NO_PROXY);
+                    httpClientConnection.setConnectTimeout(rConnectTimeout);
+                    httpClientConnection.setReadTimeout(rReadTimeout);
+                    return httpClientConnection;
                 } else {
-                    return super.create(url, proxy);
+                    HttpConnection httpConnection = super.create(url, proxy);
+                    httpConnection.setConnectTimeout(rConnectTimeout);
+                    httpConnection.setReadTimeout(rReadTimeout);
+                    return httpConnection;
                 }
             }
         });
