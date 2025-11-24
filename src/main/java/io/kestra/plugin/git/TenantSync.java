@@ -262,11 +262,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             update.setUpdate(true).addFilepattern(addPattern).call();
 
             if (rSourceOfTruth == SourceOfTruth.GIT) {
-                List<DiffLine> changedDiffs = diffs.stream()
-                    .filter(d -> d.getAction() != Action.UNCHANGED)
-                    .toList();
-
-                diffFile = DiffLine.writeIonFile(runContext, changedDiffs);
+                diffFile = DiffLine.writeIonFile(runContext, diffs);
             } else {
                 diffFile = createIonDiff(runContext, git);
             }

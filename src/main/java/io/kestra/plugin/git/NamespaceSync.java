@@ -243,11 +243,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         if (!rDryRun) {
             try {
                 if (rSourceOfTruth == SourceOfTruth.GIT) {
-                    List<DiffLine> changedDiffs = diffs.stream()
-                        .filter(d -> d.getAction() != Action.UNCHANGED)
-                        .toList();
-
-                    diffFile = DiffLine.writeIonFile(runContext, changedDiffs);
+                    diffFile = DiffLine.writeIonFile(runContext, diffs);
                 } else {
                     diffFile = createIonDiff(runContext, git);
                 }
