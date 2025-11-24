@@ -261,7 +261,15 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             AddCommand update = git.add();
             update.setUpdate(true).addFilepattern(addPattern).call();
 
-            diffFile = createIonDiff(runContext, git);
+            if (rSourceOfTruth == SourceOfTruth.GIT) {
+                List<DiffLine> changedDiffs = diffs.stream()
+                    .filter(d -> d.getAction() != Action.UNCHANGED)
+                    .toList();
+
+                diffFile = DiffLine.writeIonFile(runContext, changedDiffs);
+            } else {
+                diffFile = createIonDiff(runContext, git);
+            }
 
             try {
                 PersonIdent author = author(runContext);
@@ -279,7 +287,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                         )::contains)
                         .findFirst();
                     if (rejection.isPresent()) {
-                        throw new KestraRuntimeException(pr.getMessages());
+                        throw new KestraRuntimeException(pr.getMessages().replace("\0", "").trim());
                     }
                 }
 

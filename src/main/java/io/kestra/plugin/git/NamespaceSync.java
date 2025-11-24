@@ -242,7 +242,15 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
         if (!rDryRun) {
             try {
-                diffFile = createIonDiff(runContext, git);
+                if (rSourceOfTruth == SourceOfTruth.GIT) {
+                    List<DiffLine> changedDiffs = diffs.stream()
+                        .filter(d -> d.getAction() != Action.UNCHANGED)
+                        .toList();
+
+                    diffFile = DiffLine.writeIonFile(runContext, changedDiffs);
+                } else {
+                    diffFile = createIonDiff(runContext, git);
+                }
 
                 PersonIdent author = author(runContext);
                 git.commit().setAllowEmpty(false).setMessage(rCommitMessage).setAuthor(author).call();
@@ -254,7 +262,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                         .filter(Arrays.asList(REJECTED_NONFASTFORWARD, REJECTED_NODELETE, REJECTED_REMOTE_CHANGED, REJECTED_OTHER_REASON)::contains)
                         .findFirst();
                     if (rejection.isPresent()) {
-                        throw new KestraRuntimeException(pr.getMessages());
+                        throw new KestraRuntimeException(pr.getMessages().replace("\0", "").trim());
                     }
                 }
 
