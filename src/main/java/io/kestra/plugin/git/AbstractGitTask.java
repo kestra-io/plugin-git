@@ -487,8 +487,12 @@ public abstract class AbstractGitTask extends Task {
 
         @SneakyThrows
         public static URI writeIonFile(RunContext runContext, List<DiffLine> diffs) {
-            byte[] ionContent = JacksonMapper.ofIon().writeValueAsBytes(diffs);
-            try (ByteArrayInputStream input = new ByteArrayInputStream(ionContent)) {
+            List<DiffLine> changed = diffs.stream()
+                .filter(d -> d.getAction() != Action.UNCHANGED)
+                .toList();
+
+            byte[] ion = JacksonMapper.ofIon().writeValueAsBytes(changed);
+            try (ByteArrayInputStream input = new ByteArrayInputStream(ion)) {
                 return runContext.storage().putFile(input, "diffs.ion");
             }
         }
