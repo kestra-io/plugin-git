@@ -112,7 +112,7 @@ public abstract class AbstractGitTask extends Task {
         final Integer rConnectTimeout = runContext.render(this.connectTimeout).as(Integer.class).orElse(10000);
         final Integer rReadTimeout = runContext.render(this.readTimeout).as(Integer.class).orElse(60000);
 
-        runContext.logger().debug("Configured with rNoProxy: {}", rNoProxy);
+        runContext.logger().debug("Configured with noProxy: {}", rNoProxy);
         HttpTransport.setConnectionFactory(new HttpClientConnectionFactory() {
             @Override
             public HttpConnection create(URL url, Proxy proxy) throws IOException {
