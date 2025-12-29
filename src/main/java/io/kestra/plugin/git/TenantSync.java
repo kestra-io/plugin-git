@@ -12,10 +12,7 @@ import io.kestra.plugin.git.services.GitService;
 import io.kestra.sdk.KestraClient;
 import io.kestra.sdk.api.FilesApi;
 import io.kestra.sdk.internal.ApiException;
-import io.kestra.sdk.model.FileAttributes;
-import io.kestra.sdk.model.Namespace;
-import io.kestra.sdk.model.PagedResultsDashboard;
-import io.kestra.sdk.model.PagedResultsNamespace;
+import io.kestra.sdk.model.*;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.annotation.Nullable;
 import jakarta.validation.constraints.NotNull;
@@ -370,7 +367,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             if ("directory".equalsIgnoreCase(String.valueOf(child.getType()))) {
                 collectFilesRecursive(filesApi, tenantId, namespace, fullPath, filesOut);
             } else if ("file".equalsIgnoreCase(String.valueOf(child.getType()))) {
-                File file = filesApi.getFileContent(namespace, fullPath, tenantId);
+                File file = filesApi.fileContent(namespace, fullPath, tenantId, null);
                 try (InputStream is = new FileInputStream(file)) {
                     filesOut.put(normalizeNamespacePath(fullPath), is.readAllBytes());
                 }
@@ -417,9 +414,9 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                         apply.add(() -> {
                             try {
                                 kestraClient(runContext).flows().importFlows(
+                                    OnInvalidSyntax.FAIL.equals(rOnInvalidSyntax),
                                     runContext.flowInfo().tenantId(),
-                                    toNamedTempFile(flowId + ".yaml", gitYaml),
-                                    Map.of()
+                                    toNamedTempFile(flowId + ".yaml", gitYaml)
                                 );
                             } catch (Exception e) {
                                 handleInvalid(runContext, rOnInvalidSyntax, "FLOW " + flowId, e);
@@ -488,6 +485,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                         apply.add(() -> {
                             try {
                                 kestraClient(runContext).flows().importFlows(
+                                    OnInvalidSyntax.FAIL.equals(rOnInvalidSyntax),
                                     runContext.flowInfo().tenantId(),
                                     toNamedTempFile(flowId + ".yaml", gitYaml),
                                     Map.of()
@@ -708,11 +706,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             // Export all flows from Kestra for the given namespace (including sub-namespaces)
             byte[] zippedFlows = kestraClient.flows().exportFlowsByQuery(
                 runContext.flowInfo().tenantId(),
-                null, // ids
-                null,       // q
-                null,       // sort
-                namespace,  // filter by namespace (includes children)
-                null        // other params
+                List.of(new QueryFilter().field(QueryFilterField.NAMESPACE).operation(QueryFilterOp.EQUALS).value(namespace))
             );
 
             List<FlowWithSource> flows = new ArrayList<>();

@@ -166,7 +166,7 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
 
     public O run(RunContext runContext) throws Exception {
         configureHttpTransport(runContext);
-        
+
         // we add this method to configure ssl to allow self signed certs
         configureEnvironmentWithSsl(runContext);
 
