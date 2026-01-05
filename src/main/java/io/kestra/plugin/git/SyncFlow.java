@@ -79,9 +79,9 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
 
     @Override
     public Output run(RunContext runContext) throws Exception {
-        
+
         configureHttpTransport(runContext);
-        
+
         // we add this method to configure ssl to allow self signed certs
         configureEnvironmentWithSsl(runContext);
 
