@@ -11,6 +11,7 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.services.FlowService;
+import io.kestra.sdk.KestraClient;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -195,9 +196,28 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     }
 
     @Override
-    protected Flow simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, FlowProcessingException {
+    protected Flow simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, FlowProcessingException, IllegalVariableEvaluationException {
         if (inputStream == null) {
             return null;
+        }
+
+        String flowSource = SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream);
+
+        var flowValidated = flowService.validate(runContext.flowInfo().tenantId(), flowSource).getFirst();
+
+        if (flowValidated.getConstraints() != null) {
+            var ref = uri.getPath();
+
+            if (ref.startsWith("/")) {
+                ref = ref.substring(1);
+            }
+
+            if (runContext.render(this.ignoreInvalidFlows).as(Boolean.class).orElse(false)) {
+                runContext.logger().warn("Ignoring invalid flow {}: {}", ref, flowValidated.getConstraints());
+                return null;
+            }
+
+            throw new FlowProcessingException("Invalid flow: " + ref +  " : " + flowValidated.getConstraints());
         }
 
         return flowService(runContext).importFlow(runContext.flowInfo().tenantId(), SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream), true);
@@ -217,14 +237,31 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     }
 
     @Override
-    protected Flow writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, FlowProcessingException {
+    protected Flow writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, FlowProcessingException, IllegalVariableEvaluationException {
         if (inputStream == null) {
             return null;
         }
 
         String flowSource = SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream);
 
-        return flowService(runContext).importFlow(runContext.flowInfo().tenantId(), flowSource);
+        var flowValidated = flowService.validate(runContext.flowInfo().tenantId(), flowSource).getFirst();
+
+        if (flowValidated.getConstraints() != null) {
+            var ref = uri.getPath();
+
+            if (ref.startsWith("/")) {
+                ref = ref.substring(1);
+            }
+
+            if (runContext.render(this.ignoreInvalidFlows).as(Boolean.class).orElse(false)) {
+                runContext.logger().warn("Ignoring invalid flow {}: {}", ref, flowValidated.getConstraints());
+                return null;
+            }
+
+            throw new FlowProcessingException("Invalid flow: " + ref +  " imported from Git: " + flowValidated.getConstraints());
+        }
+
+        return flowService(runContext).importFlow(runContext.flowInfo().tenantId(), flowSource, false);
     }
 
     private static String replaceNamespace(String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
@@ -239,6 +276,10 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     @Override
     protected SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, Flow flowBeforeUpdate, Flow flowAfterUpdate) {
         if (resourceUri != null && resourceUri.toString().endsWith("/")) {
+            return null;
+        }
+
+        if (flowBeforeUpdate == null && flowAfterUpdate == null) {
             return null;
         }
 
