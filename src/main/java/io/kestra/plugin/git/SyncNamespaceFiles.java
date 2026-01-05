@@ -152,7 +152,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
         try {
             return inputStream == null ?
                 URI.create(namespace.createDirectory(Path.of(uri.getPath())) + "/") :
-                namespace.putFile(Path.of(uri.getPath()), inputStream).uri();
+                namespace.putFile(Path.of(uri.getPath()), inputStream).getFirst().uri();
         } catch (URISyntaxException e) {
             throw new IOException(e);
         }
@@ -187,7 +187,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
 
     @Override
     protected List<URI> fetchResources(RunContext runContext, String renderedNamespace) throws IOException {
-        return runContext.storage().namespace(renderedNamespace).all(true)
+        return runContext.storage().namespace(renderedNamespace).all(null, true)
             .stream()
             .map(namespaceFile -> namespaceFile.uri())
             .toList();
