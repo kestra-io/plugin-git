@@ -1,6 +1,7 @@
 package io.kestra.plugin.git;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import io.kestra.core.exceptions.FlowProcessingException;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.FlowId;
 import io.kestra.core.models.flows.FlowWithSource;
@@ -16,6 +17,7 @@ import io.kestra.core.utils.Rethrow;
 import io.kestra.core.junit.annotations.KestraTest;
 import jakarta.inject.Inject;
 import org.apache.commons.io.IOUtils;
+import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -440,6 +442,104 @@ public class SyncFlowsTest extends AbstractGitTest {
         });
 
         assertThat(exception.getMessage(), containsString("The directory 'nonexistent/path' was not found"));
+    }
+
+    @Test
+    void shouldIgnoreInvalidFlowFromGit() throws Exception {
+        Path repoDir = Files.createTempDirectory("git-test");
+        Git git = Git.init().setDirectory(repoDir.toFile()).call();
+
+        Path flowsDir = repoDir.resolve("_flows");
+        Files.createDirectories(flowsDir);
+
+        Files.writeString(
+            flowsDir.resolve("invalid-flow.yaml"),
+            """
+            id: invalid-flow
+            namespace: my.namespace
+
+            tasks:
+              - id: bad
+                type: unknown.type
+            """
+        );
+
+        git.add().addFilepattern(".").call();
+        git.commit().setMessage("Add invalid flow").call();
+
+        RunContext runContext = runContextFactory.of(Map.of(
+            "flow", Map.of(
+                "tenantId", TENANT_ID,
+                "namespace", NAMESPACE,
+                "id", FLOW_ID
+            ),
+            "url", repoDir.toUri().toString(),
+            "branch", "master",
+            "gitDirectory", "_flows",
+            "namespace", NAMESPACE
+        ));
+
+        SyncFlows task = SyncFlows.builder()
+            .url(new Property<>("{{url}}"))
+            .branch(new Property<>("{{branch}}"))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .targetNamespace(new Property<>("{{namespace}}"))
+            .ignoreInvalidFlows(Property.ofValue(true))
+            .build();
+
+        SyncFlows.Output output = task.run(runContext);
+
+        List<Flow> flows = flowRepositoryInterface.findByNamespace(TENANT_ID, NAMESPACE);
+        assertThat(flows.stream().map(Flow::getId).toList(), not(hasItem("invalid-flow")));
+
+        assertThat(runContext.storage().getFile(output.diffFileUri()).toString(), not(containsString("\"flowId\":\"invalid-flow\"")));
+    }
+
+    @Test
+    void shouldThrowOnInvalidFlowFromGit() throws Exception {
+        Path repoDir = Files.createTempDirectory("git-test");
+        Git git = Git.init().setDirectory(repoDir.toFile()).call();
+
+        Path flowsDir = repoDir.resolve("_flows");
+        Files.createDirectories(flowsDir);
+
+        Files.writeString(
+            flowsDir.resolve("demo-invalid-flow.yaml"),
+            """
+            id: invalid-flow-demo
+            namespace: my.namespace
+
+            tasks:
+              - id: bad
+                type: unknown.type
+            """
+        );
+
+        git.add().addFilepattern(".").call();
+        git.commit().setMessage("Add invalid flow").call();
+
+        RunContext runContext = runContextFactory.of(Map.of(
+            "flow", Map.of(
+                "tenantId", TENANT_ID,
+                "namespace", NAMESPACE,
+                "id", FLOW_ID
+            ),
+            "url", repoDir.toUri().toString(),
+            "branch", "master",
+            "gitDirectory", "_flows",
+            "namespace", NAMESPACE
+        ));
+
+        SyncFlows task = SyncFlows.builder()
+            .url(new Property<>("{{url}}"))
+            .branch(new Property<>("{{branch}}"))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .targetNamespace(new Property<>("{{namespace}}"))
+            .build();
+
+        FlowProcessingException ex = assertThrows(FlowProcessingException.class, () -> task.run(runContext));
+
+        assertThat(ex.getMessage(), containsString("demo-invalid-flow"));
     }
 
     private List<Map<String, Object>> defaultCaseDiffs(boolean includeSubNamespaces, Map<String, Object>... additionalDiffs) {

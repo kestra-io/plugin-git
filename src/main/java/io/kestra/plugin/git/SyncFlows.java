@@ -220,7 +220,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             throw new FlowProcessingException("Invalid flow: " + ref +  " : " + flowValidated.getConstraints());
         }
 
-        return flowService(runContext).importFlow(runContext.flowInfo().tenantId(), SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream), true);
+        return flowService(runContext).importFlow(runContext.flowInfo().tenantId(), flowSource, true);
     }
 
     @Override
