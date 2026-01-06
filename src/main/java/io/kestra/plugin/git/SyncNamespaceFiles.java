@@ -151,7 +151,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
 
         try {
             return inputStream == null ?
-                URI.create(namespace.createDirectory(Path.of(uri.getPath())) + "/") :
+                URI.create(namespace.createDirectory(Path.of(uri.getPath())).uri() + "/") :
                 namespace.putFile(Path.of(uri.getPath()), inputStream).getFirst().uri();
         } catch (URISyntaxException e) {
             throw new IOException(e);
