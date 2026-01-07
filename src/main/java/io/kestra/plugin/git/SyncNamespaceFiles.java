@@ -103,7 +103,7 @@ import java.util.Optional;
         )
     }
 )
-public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles.Output> {
+public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncNamespaceFiles.Output> {
     @Schema(
         title = "The branch from which Namespace files will be synced to Kestra – defaults to `main`."
     )
@@ -136,30 +136,30 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     }
 
     @Override
-    protected void deleteResource(RunContext runContext, String renderedNamespace, URI instanceUri) throws IOException {
-        runContext.storage().namespace(renderedNamespace).delete(Path.of(instanceUri.getPath().replace("\\","/")));
+    protected void deleteResource(RunContext runContext, String renderedNamespace, NamespaceFile namespaceFile) throws IOException {
+        runContext.storage().namespace(renderedNamespace).delete(namespaceFile);
     }
 
     @Override
-    protected URI simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) {
-        return NamespaceFile.of(renderedNamespace, uri).uri();
+    protected NamespaceFile simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) {
+        return NamespaceFile.of(renderedNamespace, uri);
     }
 
     @Override
-    protected URI writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, URISyntaxException {
+    protected NamespaceFile writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, URISyntaxException {
         Namespace namespace = runContext.storage().namespace(renderedNamespace);
 
         try {
             return inputStream == null ?
-                URI.create(namespace.createDirectory(Path.of(uri.getPath())).uri() + "/") :
-                namespace.putFile(Path.of(uri.getPath()), inputStream).getFirst().uri();
+                namespace.createDirectory(Path.of(uri.getPath())) :
+                namespace.putFile(Path.of(uri.getPath()), inputStream).getFirst();
         } catch (URISyntaxException e) {
             throw new IOException(e);
         }
     }
 
     @Override
-    protected SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, URI resourceBeforeUpdate, URI resourceAfterUpdate) {
+    protected SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, NamespaceFile resourceBeforeUpdate, NamespaceFile resourceAfterUpdate) {
         SyncState syncState;
         if (resourceUri == null) {
             syncState = SyncState.DELETED;
@@ -186,21 +186,17 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     }
 
     @Override
-    protected List<URI> fetchResources(RunContext runContext, String renderedNamespace) throws IOException {
-        return runContext.storage().namespace(renderedNamespace).all(null, true)
-            .stream()
-            .map(namespaceFile -> namespaceFile.uri())
-            .toList();
+    protected List<NamespaceFile> fetchResources(RunContext runContext, String renderedNamespace) throws IOException {
+        return runContext.storage().namespace(renderedNamespace).all(null, true);
     }
 
     @Override
-    protected URI toUri(String renderedNamespace, URI resource) {
+    protected URI toUri(String renderedNamespace, NamespaceFile resource) {
         if (resource == null) {
             return null;
         }
-        NamespaceFile namespaceFile = NamespaceFile.of(renderedNamespace, WindowsUtils.windowsToUnixURI(resource));
-        String trailingSlash = namespaceFile.isDirectory() ? "/" : "";
-        return URI.create(namespaceFile.path(true).toString().replace("\\", "/") + trailingSlash);
+        String trailingSlash = resource.isDirectory() ? "/" : "";
+        return URI.create(resource.path(true).toString().replace("\\", "/") + trailingSlash);
     }
 
     @Override
