@@ -167,7 +167,7 @@ class PushTest extends AbstractGitTest {
         String namespaceFileName = "namespace_file.txt";
         try(ByteArrayInputStream is = new ByteArrayInputStream(expectedNamespaceFileContent.getBytes())) {
             runContext.storage().namespace(namespace).putFile(
-                Path.of(StorageContext.namespaceFilePrefix(namespace), namespaceFileName),
+                Path.of(namespaceFileName),
                 is
             );
         }
