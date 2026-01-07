@@ -86,7 +86,7 @@ public class GitService {
         RunContext.FlowInfo flowInfo = runContext.flowInfo();
         String namespace = runContext.render(namespaceToAccess).as(String.class).orElse(null);
         if (namespace != null && !namespace.isBlank()) {
-            runContext.acl().allowNamespaces(List.of(namespace, flowInfo.namespace())).check();
+            runContext.acl().allowNamespaces(List.of(namespace)).check();
         }
     }
 }

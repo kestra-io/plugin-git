@@ -199,7 +199,7 @@ class PushTest extends AbstractGitTest {
             .branch(Property.ofValue(BRANCH))
             .build();
 
-        push.run(runContext);
+        var ot = push.run(runContext);
 
         Clone clone = Clone.builder()
             .id("clone")
