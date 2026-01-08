@@ -179,8 +179,6 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
     @Override
     public Output run(RunContext runContext) throws Exception {
-        runContext.logger().info("Hello malay we are inside new plugin");
-
         var gitService = new GitService(this);
 
         var rBranch = runContext.render(this.branch).as(String.class).orElseThrow(() -> new IllegalArgumentException("Branch must be explicitly set."));
@@ -309,7 +307,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                                 throw new FlowProcessingException(flowValidated.getConstraints());
                             }
                             fs.importFlow(tenant, gitNode.rawYaml, false);
-                            } catch (FlowProcessingException e) {
+                        } catch (FlowProcessingException e) {
                             handleInvalid(rc, rInvalid, "FLOW " + key, e);
                         }
                     });
@@ -362,12 +360,10 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                     diff.add(DiffLine.updatedKestra(fileRel, key, Kind.FLOW));
                     if (!rDryRun) apply.add(() -> {
                         try {
-                            rc.logger().info("we are calling validate");
                             var flowValidated = fs.validate(rc.flowInfo().tenantId(), gitNode.rawYaml).getFirst();
-                            rc.logger().info("we are calling validate again{} ",  flowValidated.getConstraints());
 
                             if (flowValidated.getConstraints() != null) {
-                                throw new FlowProcessingException("Invalid flow: " + gitNode.id +  " : " + flowValidated.getConstraints());
+                                throw new FlowProcessingException(  flowValidated.getConstraints());
                             }
 
                             fs.importFlow(tenant, gitNode.rawYaml, false);
