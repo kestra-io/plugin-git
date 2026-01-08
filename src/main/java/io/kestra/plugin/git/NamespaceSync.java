@@ -363,7 +363,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                             var flowValidated = fs.validate(rc.flowInfo().tenantId(), gitNode.rawYaml).getFirst();
 
                             if (flowValidated.getConstraints() != null) {
-                                throw new FlowProcessingException(  flowValidated.getConstraints());
+                                throw new FlowProcessingException(flowValidated.getConstraints());
                             }
 
                             fs.importFlow(tenant, gitNode.rawYaml, false);
