@@ -1,5 +1,6 @@
 package io.kestra.plugin.git;
 
+import io.kestra.core.exceptions.FlowProcessingException;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
@@ -328,7 +329,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         var gitFlows = readGitFlows(flowsDir);
         var gitFiles = readGitFiles(filesDir);
 
-        planFlows(runContext, flowsDir, gitFlows, kestraFlows, namespace, rSourceOfTruth,
+        planFlows(kestraClient, runContext, flowsDir, gitFlows, kestraFlows, namespace, rSourceOfTruth,
             rWhenMissingInSource, rOnInvalidSyntax, rProtectedNamespaces, rDryRun, diffs, apply);
 
         planNamespaceFiles(runContext, kestraClient, filesDir, gitFiles, kestraFiles, namespace, rSourceOfTruth,
@@ -380,7 +381,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
     }
 
     private void planFlows(
-        RunContext runContext,
+        KestraClient kestraClient, RunContext runContext,
         Path flowsDir,
         Map<String, String> gitFlows,
         List<FlowWithSource> kestraFlows,
@@ -413,7 +414,13 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                     if (!rDryRun) {
                         apply.add(() -> {
                             try {
-                                kestraClient(runContext).flows().importFlows(
+                                var flowValidated = kestraClient.flows().validateFlows(runContext.flowInfo().tenantId(), gitYaml).getFirst();
+
+                                if (flowValidated.getConstraints() != null) {
+                                    throw new FlowProcessingException(flowValidated.getConstraints());
+                                }
+
+                                kestraClient.flows().importFlows(
                                     OnInvalidSyntax.FAIL.equals(rOnInvalidSyntax),
                                     runContext.flowInfo().tenantId(),
                                     toNamedTempFile(flowId + ".yaml", gitYaml)
@@ -456,7 +463,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                                 if (!rDryRun) {
                                     apply.add(() -> {
                                         try {
-                                            kestraClient(runContext).flows()
+                                            kestraClient.flows()
                                                 .deleteFlow(namespace, flowId, tenantId);
                                         } catch (Exception e) {
                                             handleInvalid(runContext, rOnInvalidSyntax, "FLOW " + flowId, e);
@@ -484,7 +491,13 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                     if (!rDryRun) {
                         apply.add(() -> {
                             try {
-                                kestraClient(runContext).flows().importFlows(
+                                var flowValidated = kestraClient.flows().validateFlows(runContext.flowInfo().tenantId(), gitYaml).getFirst();
+
+                                if (flowValidated.getConstraints() != null) {
+                                    throw new FlowProcessingException(flowValidated.getConstraints());
+                                }
+
+                                kestraClient.flows().importFlows(
                                     OnInvalidSyntax.FAIL.equals(rOnInvalidSyntax),
                                     runContext.flowInfo().tenantId(),
                                     toNamedTempFile(flowId + ".yaml", gitYaml),

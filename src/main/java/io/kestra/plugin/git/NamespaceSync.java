@@ -301,6 +301,11 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                     diff.add(DiffLine.added(fileRel, key, Kind.FLOW));
                     if (!rDryRun) apply.add(() -> {
                         try {
+                            var flowValidated = fs.validate(rc.flowInfo().tenantId(), gitNode.rawYaml).getFirst();
+
+                            if (flowValidated.getConstraints() != null) {
+                                throw new FlowProcessingException(flowValidated.getConstraints());
+                            }
                             fs.importFlow(tenant, gitNode.rawYaml, false);
                         } catch (FlowProcessingException e) {
                             handleInvalid(rc, rInvalid, "FLOW " + key, e);
@@ -355,6 +360,12 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                     diff.add(DiffLine.updatedKestra(fileRel, key, Kind.FLOW));
                     if (!rDryRun) apply.add(() -> {
                         try {
+                            var flowValidated = fs.validate(rc.flowInfo().tenantId(), gitNode.rawYaml).getFirst();
+
+                            if (flowValidated.getConstraints() != null) {
+                                throw new FlowProcessingException(flowValidated.getConstraints());
+                            }
+
                             fs.importFlow(tenant, gitNode.rawYaml, false);
                         } catch (FlowProcessingException e) {
                             handleInvalid(rc, rInvalid, "FLOW " + key, e);
