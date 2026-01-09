@@ -175,19 +175,10 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
             syncState = SyncState.OVERWRITTEN;
         }
 
-        NamespaceFile resource;
-
-        if (syncState == SyncState.OVERWRITTEN || syncState == SyncState.DELETED) {
-            resource = resourceBeforeUpdate;
-        } else {
-            resource = resourceAfterUpdate;
-        }
-
-        String kestraPath = null;
-        if (resource != null) {
-            kestraPath = resource.uri().getPath().replace("\\", "/");
-        }
-
+        String kestraPath = Optional.ofNullable(this.toUri(
+            renderedNamespace,
+            resourceAfterUpdate == null ? resourceBeforeUpdate : resourceAfterUpdate
+        )).map(URI::getPath).orElse(null);
         SyncResult.SyncResultBuilder<?, ?> builder = SyncResult.builder()
             .syncState(syncState)
             .kestraPath(kestraPath);

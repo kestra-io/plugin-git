@@ -7,8 +7,6 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.storages.Namespace;
-import io.kestra.core.storages.StorageContext;
-import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.KestraIgnore;
 import io.kestra.core.utils.Rethrow;
@@ -41,12 +39,9 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
     @Inject
     private RunContextFactory runContextFactory;
 
-    @Inject
-    private StorageInterface storage;
-
     @BeforeEach
     void init() throws IOException {
-        storage.deleteByPrefix(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE)));
+        runContextFactory.of().storage().namespace(NAMESPACE).delete(Path.of("/"));
     }
 
     @Test

@@ -36,9 +36,6 @@ class PushExecutionFilesTest extends AbstractGitTest {
     @Inject
     private RunContextFactory runContextFactory;
 
-    @Inject
-    private StorageInterface storage;
-
     @Test
     void pushSingleFileWithGlob() throws Exception {
         String namespace = IdUtils.create().toLowerCase();
@@ -67,11 +64,8 @@ class PushExecutionFilesTest extends AbstractGitTest {
 
         String filePath = "report.txt";
         String fileContent = "hello from storage";
-        storage.put(
-            TenantService.MAIN_TENANT,
-            namespace,
-            URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + filePath),
-            new ByteArrayInputStream(fileContent.getBytes(StandardCharsets.UTF_8))
+        runContext.storage().namespace(namespace)
+            .putFile(Path.of(filePath), new ByteArrayInputStream(fileContent.getBytes(StandardCharsets.UTF_8))
         );
 
         PushExecutionFiles push = PushExecutionFiles.builder()
@@ -117,10 +111,8 @@ class PushExecutionFilesTest extends AbstractGitTest {
 
         String filePath = "report.txt";
         String fileContent = "log here";
-        var logURI = storage.put(
-            TenantService.MAIN_TENANT,
-            namespace,
-            URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + filePath),
+        var logURI = runContext.storage().namespace(namespace)
+            .putFile(Path.of(filePath),
             new ByteArrayInputStream(fileContent.getBytes(StandardCharsets.UTF_8))
         );
 
@@ -195,10 +187,8 @@ class PushExecutionFilesTest extends AbstractGitTest {
 
         String filePath = "file.csv";
         String fileContent = "id,val\n1,2";
-        storage.put(
-            TenantService.MAIN_TENANT,
-            namespace,
-            URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + filePath),
+        runContext.storage().namespace(namespace)
+            .putFile(Path.of(filePath),
             new ByteArrayInputStream(fileContent.getBytes(StandardCharsets.UTF_8))
         );
 

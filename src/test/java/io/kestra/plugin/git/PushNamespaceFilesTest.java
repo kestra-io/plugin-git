@@ -47,9 +47,6 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
     @Inject
     private RunContextFactory runContextFactory;
 
-    @Inject
-    private StorageInterface storage;
-
     @Test
     void defaultCase_SingleRegex() throws Exception {
         String tenantId = TenantService.MAIN_TENANT;
@@ -549,12 +546,8 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
         // Put files in namespace storage: one ignored and one included
         String ignoredFilePath = "ignored-file.txt";
         String includedFilePath = "included.txt";
-        storage.put(tenantId, namespace,
-            URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + ignoredFilePath),
-            new ByteArrayInputStream("IGNORED".getBytes(StandardCharsets.UTF_8)));
-        storage.put(tenantId, namespace,
-            URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + includedFilePath),
-            new ByteArrayInputStream("INCLUDED".getBytes(StandardCharsets.UTF_8)));
+        runContext.storage().namespace(namespace).putFile(Path.of(ignoredFilePath), new ByteArrayInputStream("IGNORED".getBytes(StandardCharsets.UTF_8)));
+        runContext.storage().namespace(namespace).putFile(Path.of(includedFilePath), new ByteArrayInputStream("INCLUDED".getBytes(StandardCharsets.UTF_8)));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles-kestraignore")
