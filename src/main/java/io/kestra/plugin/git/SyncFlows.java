@@ -17,6 +17,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.apache.commons.io.IOUtils;
+import org.eclipse.jgit.api.Git;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -213,11 +214,11 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             }
 
             if (runContext.render(this.ignoreInvalidFlows).as(Boolean.class).orElse(false)) {
-                runContext.logger().warn("Ignoring invalid flow {}: {}", ref, flowValidated.getConstraints());
+                runContext.logger().warn("Invalid flow imported from Git ({}): {}", ref, flowValidated.getConstraints());
                 return null;
             }
 
-            throw new FlowProcessingException("Invalid flow: " + ref +  " : " + flowValidated.getConstraints());
+            throw new FlowProcessingException("Invalid flow imported from Git (" + ref + "): " + flowValidated.getConstraints());
         }
 
         return flowService(runContext).importFlow(runContext.flowInfo().tenantId(), flowSource, true);
@@ -254,11 +255,11 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             }
 
             if (runContext.render(this.ignoreInvalidFlows).as(Boolean.class).orElse(false)) {
-                runContext.logger().warn("Ignoring invalid flow {}: {}", ref, flowValidated.getConstraints());
+                runContext.logger().warn("Invalid flow imported from Git ({}): {}", ref, flowValidated.getConstraints());
                 return null;
             }
 
-            throw new FlowProcessingException("Invalid flow: " + ref +  " imported from Git: " + flowValidated.getConstraints());
+            throw new FlowProcessingException("Invalid flow imported from Git (" + ref + "): " + flowValidated.getConstraints());
         }
 
         return flowService(runContext).importFlow(runContext.flowInfo().tenantId(), flowSource, false);
