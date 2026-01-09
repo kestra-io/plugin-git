@@ -180,14 +180,13 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
 
         String nonMatchingFilePath = "first-file.txt";
         String nonMatchingFileContent = "First file";
-        runContext.storage().namespace(namespace).putFile(Path.of( nonMatchingFilePath), new ByteArrayInputStream(nonMatchingFileContent.getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of(nonMatchingFilePath), new ByteArrayInputStream(nonMatchingFileContent.getBytes()));
         String matchingFilePath = "nested/second-file.txt";
         String matchingFileContent = "Second file";
-        runContext.storage().namespace(namespace).putFile(Path.of( matchingFilePath), new ByteArrayInputStream(matchingFileContent.getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of(matchingFilePath), new ByteArrayInputStream(matchingFileContent.getBytes()));
         String fileDeletedAfterSecondPushPath = "second-deleted-after-second-push.txt";
         String fileDeletedAfterSecondPushContent = "File deleted after second push";
-        URI toDeleteURI = URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + fileDeletedAfterSecondPushPath);
-        storage.put(tenantId, namespace, toDeleteURI, new ByteArrayInputStream(fileDeletedAfterSecondPushContent.getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of(fileDeletedAfterSecondPushPath), new ByteArrayInputStream(fileDeletedAfterSecondPushContent.getBytes()));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
@@ -242,7 +241,7 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
                 )
             );
 
-            storage.delete(tenantId, namespace, toDeleteURI);
+            runContext.storage().namespace(namespace).delete(Path.of(fileDeletedAfterSecondPushPath));
             pushOutput = pushNamespaceFiles.toBuilder()
                 .files("second*")
                 .build().run(runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory));

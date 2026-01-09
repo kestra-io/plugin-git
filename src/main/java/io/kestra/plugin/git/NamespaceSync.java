@@ -517,7 +517,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
     private Map<String, byte[]> listNamespaceFiles(RunContext runContext, String namespace) {
         try {
-            var entries = runContext.storage().namespace(namespace).all(null, true);
+            var entries = runContext.storage().namespace(namespace).all();
 
             List<String> normalized = entries.stream()
                 .map(NamespaceFile::path)

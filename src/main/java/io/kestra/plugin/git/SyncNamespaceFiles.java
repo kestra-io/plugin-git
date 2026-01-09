@@ -141,18 +141,23 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
     }
 
     @Override
-    protected NamespaceFile simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) {
-        return NamespaceFile.of(renderedNamespace, uri);
+    protected NamespaceFile
+    simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) {
+        String path = uri.getPath().replaceAll("/$", "");
+        return NamespaceFile.of(renderedNamespace, URI.create(path));
     }
 
     @Override
     protected NamespaceFile writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, URISyntaxException {
         Namespace namespace = runContext.storage().namespace(renderedNamespace);
-
+        NamespaceFile.of(renderedNamespace, uri);
         try {
             return inputStream == null ?
                 namespace.createDirectory(Path.of(uri.getPath())) :
-                namespace.putFile(Path.of(uri.getPath()), inputStream).getFirst();
+                namespace.putFile(Path.of(uri.getPath()), inputStream).stream()
+                    .filter(nf -> !nf.isDirectory())
+                    .findFirst()
+                    .orElseThrow();
         } catch (URISyntaxException e) {
             throw new IOException(e);
         }
@@ -170,10 +175,19 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
             syncState = SyncState.OVERWRITTEN;
         }
 
-        String kestraPath = Optional.ofNullable(this.toUri(
-            renderedNamespace,
-            resourceAfterUpdate == null ? resourceBeforeUpdate : resourceAfterUpdate
-        )).map(URI::getPath).orElse(null);
+        NamespaceFile resource;
+
+        if (syncState == SyncState.OVERWRITTEN || syncState == SyncState.DELETED) {
+            resource = resourceBeforeUpdate;
+        } else {
+            resource = resourceAfterUpdate;
+        }
+
+        String kestraPath = null;
+        if (resource != null) {
+            kestraPath = resource.uri().getPath().replace("\\", "/");
+        }
+
         SyncResult.SyncResultBuilder<?, ?> builder = SyncResult.builder()
             .syncState(syncState)
             .kestraPath(kestraPath);
@@ -187,7 +201,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
 
     @Override
     protected List<NamespaceFile> fetchResources(RunContext runContext, String renderedNamespace) throws IOException {
-        return runContext.storage().namespace(renderedNamespace).all(null, true);
+        return runContext.storage().namespace(renderedNamespace).all();
     }
 
     @Override
