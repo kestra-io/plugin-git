@@ -247,20 +247,7 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
         }
         return diffs;
     }
-
-    @Test
-    void test() throws IOException, URISyntaxException {
-        RunContext runContext = runContextFactory.of();
-
-        var dir = runContext.storage().namespace(NAMESPACE).createDirectory(Path.of("somedit/"));
-        System.out.println("Created dir URI: " + dir.uri());
-        System.out.println("Created dir isDirectory: " + dir.isDirectory());
-
-        var fetched = runContext.storage().namespace(NAMESPACE).all(null, true).getFirst();
-        System.out.println("Fetched dir URI: " + fetched.uri());
-        System.out.println("Fetched dir isDirectory: " + fetched.isDirectory());
-    }
-
+    
     private RunContext runContext() {
         return runContextFactory.of(Map.of(
                 "flow", Map.of(
