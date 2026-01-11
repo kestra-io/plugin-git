@@ -7,6 +7,7 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.core.storages.Namespace;
 import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.tenant.TenantService;
@@ -46,9 +47,6 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
     @Inject
     private RunContextFactory runContextFactory;
 
-    @Inject
-    private StorageInterface storage;
-
     @Test
     void defaultCase_SingleRegex() throws Exception {
         String tenantId = TenantService.MAIN_TENANT;
@@ -59,10 +57,10 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
         RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory);
 
         String firstFilePath = "first-file.txt";
-        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + firstFilePath), new ByteArrayInputStream("First file".getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of( firstFilePath), new ByteArrayInputStream("First file".getBytes()));
         String secondFilePath = "nested/second-file.txt";
         String secondFileContent = "Second file";
-        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of( secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
@@ -132,10 +130,10 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
         RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory);
 
         String firstFilePath = "first-file.txt";
-        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + firstFilePath), new ByteArrayInputStream("First file".getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of( firstFilePath), new ByteArrayInputStream("First file".getBytes()));
         String secondFilePath = "nested/second-file.txt";
         String secondFileContent = "Second file";
-        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of( secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
@@ -179,14 +177,13 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
 
         String nonMatchingFilePath = "first-file.txt";
         String nonMatchingFileContent = "First file";
-        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + nonMatchingFilePath), new ByteArrayInputStream(nonMatchingFileContent.getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of(nonMatchingFilePath), new ByteArrayInputStream(nonMatchingFileContent.getBytes()));
         String matchingFilePath = "nested/second-file.txt";
         String matchingFileContent = "Second file";
-        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + matchingFilePath), new ByteArrayInputStream(matchingFileContent.getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of(matchingFilePath), new ByteArrayInputStream(matchingFileContent.getBytes()));
         String fileDeletedAfterSecondPushPath = "second-deleted-after-second-push.txt";
         String fileDeletedAfterSecondPushContent = "File deleted after second push";
-        URI toDeleteURI = URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + fileDeletedAfterSecondPushPath);
-        storage.put(tenantId, namespace, toDeleteURI, new ByteArrayInputStream(fileDeletedAfterSecondPushContent.getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of(fileDeletedAfterSecondPushPath), new ByteArrayInputStream(fileDeletedAfterSecondPushContent.getBytes()));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
@@ -241,7 +238,7 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
                 )
             );
 
-            storage.delete(tenantId, namespace, toDeleteURI);
+            runContext.storage().namespace(namespace).delete(Path.of(fileDeletedAfterSecondPushPath));
             pushOutput = pushNamespaceFiles.toBuilder()
                 .files("second*")
                 .build().run(runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory));
@@ -284,10 +281,10 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
 
         String firstFilePath = "first-file.txt";
         String firstFileContent = "First file";
-        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + firstFilePath), new ByteArrayInputStream(firstFileContent.getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of(firstFilePath), new ByteArrayInputStream(firstFileContent.getBytes()));
         String secondFilePath = "nested/second-file.txt";
         String secondFileContent = "Second file";
-        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of( secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
@@ -361,12 +358,12 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
 
         String firstFilePath = "first-file.txt";
         String firstFileContent = "First file";
-        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + firstFilePath), new ByteArrayInputStream(firstFileContent.getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of( firstFilePath), new ByteArrayInputStream(firstFileContent.getBytes()));
         String secondFilePath = "nested/second-file.txt";
         String secondFileContent = "Second file";
-        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of( secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
         String thirdFilePath = "third-file.txt";
-        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + thirdFilePath), new ByteArrayInputStream("Third file".getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of( thirdFilePath), new ByteArrayInputStream("Third file".getBytes()));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
@@ -439,7 +436,7 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
 
         RunContext runContext = runContext(tenantId, repositoryUrl, "", "", branch, namespace, gitDirectory);
 
-        storage.put(tenantId, namespace, URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/first-file.txt"), new ByteArrayInputStream("First file".getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of(StorageContext.namespaceFilePrefix(namespace) + "/first-file.txt"), new ByteArrayInputStream("First file".getBytes()));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
@@ -549,12 +546,8 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
         // Put files in namespace storage: one ignored and one included
         String ignoredFilePath = "ignored-file.txt";
         String includedFilePath = "included.txt";
-        storage.put(tenantId, namespace,
-            URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + ignoredFilePath),
-            new ByteArrayInputStream("IGNORED".getBytes(StandardCharsets.UTF_8)));
-        storage.put(tenantId, namespace,
-            URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + includedFilePath),
-            new ByteArrayInputStream("INCLUDED".getBytes(StandardCharsets.UTF_8)));
+        runContext.storage().namespace(namespace).putFile(Path.of(ignoredFilePath), new ByteArrayInputStream("IGNORED".getBytes(StandardCharsets.UTF_8)));
+        runContext.storage().namespace(namespace).putFile(Path.of(includedFilePath), new ByteArrayInputStream("INCLUDED".getBytes(StandardCharsets.UTF_8)));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles-kestraignore")

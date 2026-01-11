@@ -5,7 +5,6 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.storages.StorageContext;
-import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.plugin.git.services.GitService;
@@ -13,7 +12,6 @@ import jakarta.inject.Inject;
 import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
-import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.junit.jupiter.api.Test;
@@ -21,7 +19,6 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,9 +32,6 @@ import static org.hamcrest.Matchers.*;
 class PushExecutionFilesTest extends AbstractGitTest {
     @Inject
     private RunContextFactory runContextFactory;
-
-    @Inject
-    private StorageInterface storage;
 
     @Test
     void pushSingleFileWithGlob() throws Exception {
@@ -67,11 +61,8 @@ class PushExecutionFilesTest extends AbstractGitTest {
 
         String filePath = "report.txt";
         String fileContent = "hello from storage";
-        storage.put(
-            TenantService.MAIN_TENANT,
-            namespace,
-            URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + filePath),
-            new ByteArrayInputStream(fileContent.getBytes(StandardCharsets.UTF_8))
+        runContext.storage().namespace(namespace)
+            .putFile(Path.of(filePath), new ByteArrayInputStream(fileContent.getBytes(StandardCharsets.UTF_8))
         );
 
         PushExecutionFiles push = PushExecutionFiles.builder()
@@ -117,12 +108,10 @@ class PushExecutionFilesTest extends AbstractGitTest {
 
         String filePath = "report.txt";
         String fileContent = "log here";
-        var logURI = storage.put(
-            TenantService.MAIN_TENANT,
-            namespace,
-            URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + filePath),
+        var nsFile = runContext.storage().namespace(namespace)
+            .putFile(Path.of(filePath),
             new ByteArrayInputStream(fileContent.getBytes(StandardCharsets.UTF_8))
-        );
+        ).stream().filter(namespaceFile -> !namespaceFile.isDirectory()).findFirst().orElseThrow();
 
         PushExecutionFiles push = PushExecutionFiles.builder()
             .id("push")
@@ -131,7 +120,7 @@ class PushExecutionFilesTest extends AbstractGitTest {
             .username(Property.ofExpression("{{ pat }}"))
             .password(Property.ofExpression("{{ pat }}"))
             .branch(Property.ofExpression("{{ branch }}"))
-            .filesMap(Map.of("renamed.log", logURI.toString()))
+            .filesMap(Map.of("renamed.log", nsFile.uri().toString()))
             .gitDirectory(Property.ofValue("logs"))
             .commitMessage(Property.ofValue("push log"))
             .build();
@@ -195,10 +184,8 @@ class PushExecutionFilesTest extends AbstractGitTest {
 
         String filePath = "file.csv";
         String fileContent = "id,val\n1,2";
-        storage.put(
-            TenantService.MAIN_TENANT,
-            namespace,
-            URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/" + filePath),
+        runContext.storage().namespace(namespace)
+            .putFile(Path.of(filePath),
             new ByteArrayInputStream(fileContent.getBytes(StandardCharsets.UTF_8))
         );
 

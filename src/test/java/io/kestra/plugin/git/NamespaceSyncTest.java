@@ -10,7 +10,7 @@ import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
-import io.kestra.core.storages.StorageContext;
+import io.kestra.core.storages.NamespaceFile;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.tenant.TenantService;
 import jakarta.inject.Inject;
@@ -55,13 +55,14 @@ public class NamespaceSyncTest extends AbstractGitTest {
 
     @BeforeEach
     void cleanState() throws Exception {
+        RunContext runContext = runContextFactory.of();
+
         flowRepository.findAllForAllTenants()
             .forEach(f -> flowRepository.delete(FlowWithSource.of(f, "")));
 
-        URI prefix = URI.create(StorageContext.namespaceFilePrefix(NAMESPACE));
-        var uris = storageInterface.allByPrefix(TENANT_ID, NAMESPACE, prefix, true);
-        for (URI uri : uris) {
-            storageInterface.delete(TENANT_ID, NAMESPACE, uri);
+        var namespaceFiles = runContext.storage().namespace(NAMESPACE).all();
+        for (NamespaceFile nsFile : namespaceFiles) {
+            runContext.storage().namespace(NAMESPACE).delete(nsFile);
         }
     }
 
