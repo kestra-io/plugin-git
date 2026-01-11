@@ -192,7 +192,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
 
     @Override
     protected List<NamespaceFile> fetchResources(RunContext runContext, String renderedNamespace) throws IOException {
-        return runContext.storage().namespace(renderedNamespace).all(null, true);
+        return runContext.storage().namespace(renderedNamespace).all();
     }
 
     @Override

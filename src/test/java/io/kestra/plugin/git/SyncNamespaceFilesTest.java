@@ -12,7 +12,6 @@ import io.kestra.core.utils.KestraIgnore;
 import io.kestra.core.utils.Rethrow;
 import jakarta.inject.Inject;
 
-import java.net.URISyntaxException;
 import java.nio.file.Path;
 import org.apache.commons.io.IOUtils;
 import org.junit.jupiter.api.BeforeEach;
@@ -94,7 +93,6 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
         assertThat(runContext.storage().namespace(NAMESPACE).exists(Path.of("/_flows/first-flow.yml")), is(true));
         assertThat(runContext.storage().namespace(NAMESPACE).exists(Path.of("README.md")), is(false));
         assertThat(runContext.storage().namespace(NAMESPACE).exists(Path.of(deletedFilePath)), is(false));
-        assertThat(runContext.storage().namespace(NAMESPACE).exists(Path.of(deletedDirPath)), is(false));
         assertThat(runContext.storage().namespace(NAMESPACE).exists(Path.of(deletedDirSubFilePath)), is(false));
         assertNamespaceFileContent(runContext, clonedFilePath, "{\"my-field\": \"my-value\"}");
 
@@ -236,10 +234,6 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
                         this.put("gitPath", null);
                     }},
                     new HashMap<>() {{
-                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/my/namespace/_files/dir_to_delete"));
-                        this.put("gitPath", null);
-                    }},
-                    new HashMap<>() {{
                         this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/my/namespace/_files/README.md"));
                         this.put("gitPath", null);
                     }}
@@ -247,7 +241,7 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
         }
         return diffs;
     }
-    
+
     private RunContext runContext() {
         return runContextFactory.of(Map.of(
                 "flow", Map.of(
