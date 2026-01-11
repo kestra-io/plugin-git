@@ -11,6 +11,8 @@ import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.KestraIgnore;
 import io.kestra.core.utils.Rethrow;
 import jakarta.inject.Inject;
+
+import java.net.URISyntaxException;
 import java.nio.file.Path;
 import org.apache.commons.io.IOUtils;
 import org.junit.jupiter.api.BeforeEach;
@@ -60,7 +62,7 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
             new ByteArrayInputStream(new byte[0])
         );
         String deletedDirPath = "dir_to_delete";
-        runContext.storage().namespace(NAMESPACE).createDirectory(Path.of(deletedDirPath));
+        runContext.storage().namespace(NAMESPACE).createDirectory(Path.of(deletedDirPath + "/"));
 
         String deletedDirSubFilePath = "dir_to_delete/file_to_delete.txt";
         runContext.storage().namespace(NAMESPACE).putFile(
@@ -211,39 +213,52 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
 
     private static List<Map<String, String>> defaultCaseDiffs(boolean withDeleted) {
         ArrayList<Map<String, String>> diffs = new ArrayList<>(List.of(
-                Map.of("gitPath", "to_clone/_flows/", "syncState", "ADDED", "kestraPath", "/kestra/my/namespace/_files/_flows/"),
-                Map.of("gitPath", "to_clone/_flows/nested/", "syncState", "ADDED", "kestraPath", "/kestra/my/namespace/_files/_flows/nested/"),
-                Map.of("gitPath", "to_clone/_flows/nested/namespace/", "syncState", "ADDED", "kestraPath", "/kestra/my/namespace/_files/_flows/nested/namespace/"),
-                Map.of("gitPath", "to_clone/_flows/nested/namespace/nested_flow.yaml", "syncState", "ADDED", "kestraPath", "/kestra/my/namespace/_files/_flows/nested/namespace/nested_flow.yaml"),
-                Map.of("gitPath", "to_clone/_flows/first-flow.yml", "syncState", "ADDED", "kestraPath", "/kestra/my/namespace/_files/_flows/first-flow.yml"),
-                Map.of("gitPath", "to_clone/_flows/unchanged-flow.yaml", "syncState", "ADDED", "kestraPath", "/kestra/my/namespace/_files/_flows/unchanged-flow.yaml"),
-                Map.of("gitPath", "to_clone/_flows/.kestraignore", "syncState", "ADDED", "kestraPath", "/kestra/my/namespace/_files/_flows/.kestraignore"),
-                Map.of("gitPath", "to_clone/_flows/kestra-ignored-flow.yml", "syncState", "ADDED", "kestraPath", "/kestra/my/namespace/_files/_flows/kestra-ignored-flow.yml"),
-                Map.of("gitPath", "to_clone/_flows/second-flow.yml", "syncState", "ADDED", "kestraPath", "/kestra/my/namespace/_files/_flows/second-flow.yml"),
-                Map.of("gitPath", "to_clone/cloned.json", "syncState", "OVERWRITTEN", "kestraPath", "/kestra/my/namespace/_files/cloned.json")
+                Map.of("gitPath", "to_clone/_flows/", "syncState", "ADDED", "kestraPath", "/my/namespace/_files/_flows/"),
+                Map.of("gitPath", "to_clone/_flows/nested/", "syncState", "ADDED", "kestraPath", "/my/namespace/_files/_flows/nested/"),
+                Map.of("gitPath", "to_clone/_flows/nested/namespace/", "syncState", "ADDED", "kestraPath", "/my/namespace/_files/_flows/nested/namespace/"),
+                Map.of("gitPath", "to_clone/_flows/nested/namespace/nested_flow.yaml", "syncState", "ADDED", "kestraPath", "/my/namespace/_files/_flows/nested/namespace/nested_flow.yaml"),
+                Map.of("gitPath", "to_clone/_flows/first-flow.yml", "syncState", "ADDED", "kestraPath", "/my/namespace/_files/_flows/first-flow.yml"),
+                Map.of("gitPath", "to_clone/_flows/unchanged-flow.yaml", "syncState", "ADDED", "kestraPath", "/my/namespace/_files/_flows/unchanged-flow.yaml"),
+                Map.of("gitPath", "to_clone/_flows/.kestraignore", "syncState", "ADDED", "kestraPath", "/my/namespace/_files/_flows/.kestraignore"),
+                Map.of("gitPath", "to_clone/_flows/kestra-ignored-flow.yml", "syncState", "ADDED", "kestraPath", "/my/namespace/_files/_flows/kestra-ignored-flow.yml"),
+                Map.of("gitPath", "to_clone/_flows/second-flow.yml", "syncState", "ADDED", "kestraPath", "/my/namespace/_files/_flows/second-flow.yml"),
+                Map.of("gitPath", "to_clone/cloned.json", "syncState", "OVERWRITTEN", "kestraPath", "/my/namespace/_files/cloned.json")
         ));
 
         if (withDeleted) {
             diffs.addAll(List.of(
                     new HashMap<>() {{
-                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/kestra/my/namespace/_files/file_to_delete.txt"));
+                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/my/namespace/_files/file_to_delete.txt"));
                         this.put("gitPath", null);
                     }},
                     new HashMap<>() {{
-                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/kestra/my/namespace/_files/dir_to_delete/file_to_delete.txt"));
+                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/my/namespace/_files/dir_to_delete/file_to_delete.txt"));
                         this.put("gitPath", null);
                     }},
                     new HashMap<>() {{
-                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/kestra/my/namespace/_files/dir_to_delete/"));
+                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/my/namespace/_files/dir_to_delete"));
                         this.put("gitPath", null);
                     }},
                     new HashMap<>() {{
-                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/kestra/my/namespace/_files/README.md"));
+                        this.putAll(Map.of("syncState", "DELETED", "kestraPath", "/my/namespace/_files/README.md"));
                         this.put("gitPath", null);
                     }}
             ));
         }
         return diffs;
+    }
+
+    @Test
+    void test() throws IOException, URISyntaxException {
+        RunContext runContext = runContextFactory.of();
+
+        var dir = runContext.storage().namespace(NAMESPACE).createDirectory(Path.of("somedit/"));
+        System.out.println("Created dir URI: " + dir.uri());
+        System.out.println("Created dir isDirectory: " + dir.isDirectory());
+
+        var fetched = runContext.storage().namespace(NAMESPACE).all(null, true).getFirst();
+        System.out.println("Fetched dir URI: " + fetched.uri());
+        System.out.println("Fetched dir isDirectory: " + fetched.isDirectory());
     }
 
     private RunContext runContext() {

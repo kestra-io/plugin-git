@@ -6,6 +6,7 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.storages.Namespace;
 import io.kestra.core.storages.NamespaceFile;
+import io.kestra.core.storages.StorageContext;
 import io.kestra.core.utils.WindowsUtils;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
@@ -143,8 +144,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
     @Override
     protected NamespaceFile
     simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) {
-        String path = uri.getPath().replaceAll("/$", "");
-        return NamespaceFile.of(renderedNamespace, URI.create(path));
+        return NamespaceFile.of(renderedNamespace, uri);
     }
 
     @Override
@@ -192,7 +192,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
 
     @Override
     protected List<NamespaceFile> fetchResources(RunContext runContext, String renderedNamespace) throws IOException {
-        return runContext.storage().namespace(renderedNamespace).all();
+        return runContext.storage().namespace(renderedNamespace).all(null, true);
     }
 
     @Override
@@ -200,8 +200,15 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
         if (resource == null) {
             return null;
         }
-        String trailingSlash = resource.isDirectory() ? "/" : "";
-        return URI.create(resource.path(true).toString().replace("\\", "/") + trailingSlash);
+
+        boolean hasTrailingSlash = resource.uri().toString().endsWith("/");
+
+        String path = resource.path();
+        if (hasTrailingSlash && !path.endsWith("/")) {
+            path = path + "/";
+        }
+
+        return NamespaceFile.of(renderedNamespace, path, 1).uri();
     }
 
     @Override
