@@ -47,12 +47,6 @@ class PushTest extends AbstractGitTest {
     private RunContextFactory runContextFactory;
 
     @Inject
-    private RunContextInitializer runContextInitializer;
-
-    @Inject
-    private StorageInterface storageInterface;
-
-    @Inject
     private FlowRepositoryInterface flowRepositoryInterface;
 
     @Test
@@ -172,10 +166,8 @@ class PushTest extends AbstractGitTest {
 
         String namespaceFileName = "namespace_file.txt";
         try(ByteArrayInputStream is = new ByteArrayInputStream(expectedNamespaceFileContent.getBytes())) {
-            storageInterface.put(
-                tenantId,
-                namespace,
-                URI.create(Path.of(StorageContext.namespaceFilePrefix(namespace), namespaceFileName).toString()),
+            runContext.storage().namespace(namespace).putFile(
+                Path.of(namespaceFileName),
                 is
             );
         }
@@ -207,7 +199,7 @@ class PushTest extends AbstractGitTest {
             .branch(Property.ofValue(BRANCH))
             .build();
 
-        push.run(runContext);
+        var ot = push.run(runContext);
 
         Clone clone = Clone.builder()
             .id("clone")

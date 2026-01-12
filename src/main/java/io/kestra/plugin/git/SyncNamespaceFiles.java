@@ -6,6 +6,7 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.storages.Namespace;
 import io.kestra.core.storages.NamespaceFile;
+import io.kestra.core.storages.StorageContext;
 import io.kestra.core.utils.WindowsUtils;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
@@ -103,7 +104,7 @@ import java.util.Optional;
         )
     }
 )
-public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles.Output> {
+public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncNamespaceFiles.Output> {
     @Schema(
         title = "The branch from which Namespace files will be synced to Kestra – defaults to `main`."
     )
@@ -136,30 +137,34 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     }
 
     @Override
-    protected void deleteResource(RunContext runContext, String renderedNamespace, URI instanceUri) throws IOException {
-        runContext.storage().namespace(renderedNamespace).delete(Path.of(instanceUri.getPath().replace("\\","/")));
+    protected void deleteResource(RunContext runContext, String renderedNamespace, NamespaceFile namespaceFile) throws IOException {
+        runContext.storage().namespace(renderedNamespace).delete(namespaceFile);
     }
 
     @Override
-    protected URI simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) {
-        return NamespaceFile.of(renderedNamespace, uri).uri();
+    protected NamespaceFile
+    simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) {
+        return NamespaceFile.of(renderedNamespace, uri);
     }
 
     @Override
-    protected URI writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, URISyntaxException {
+    protected NamespaceFile writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, URISyntaxException {
         Namespace namespace = runContext.storage().namespace(renderedNamespace);
-
+        NamespaceFile.of(renderedNamespace, uri);
         try {
             return inputStream == null ?
-                URI.create(namespace.createDirectory(Path.of(uri.getPath())) + "/") :
-                namespace.putFile(Path.of(uri.getPath()), inputStream).uri();
+                namespace.createDirectory(Path.of(uri.getPath())) :
+                namespace.putFile(Path.of(uri.getPath()), inputStream).stream()
+                    .filter(nf -> !nf.isDirectory())
+                    .findFirst()
+                    .orElseThrow();
         } catch (URISyntaxException e) {
             throw new IOException(e);
         }
     }
 
     @Override
-    protected SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, URI resourceBeforeUpdate, URI resourceAfterUpdate) {
+    protected SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, NamespaceFile resourceBeforeUpdate, NamespaceFile resourceAfterUpdate) {
         SyncState syncState;
         if (resourceUri == null) {
             syncState = SyncState.DELETED;
@@ -186,21 +191,24 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     }
 
     @Override
-    protected List<URI> fetchResources(RunContext runContext, String renderedNamespace) throws IOException {
-        return runContext.storage().namespace(renderedNamespace).all(true)
-            .stream()
-            .map(namespaceFile -> namespaceFile.uri())
-            .toList();
+    protected List<NamespaceFile> fetchResources(RunContext runContext, String renderedNamespace) throws IOException {
+        return runContext.storage().namespace(renderedNamespace).all();
     }
 
     @Override
-    protected URI toUri(String renderedNamespace, URI resource) {
+    protected URI toUri(String renderedNamespace, NamespaceFile resource) {
         if (resource == null) {
             return null;
         }
-        NamespaceFile namespaceFile = NamespaceFile.of(renderedNamespace, WindowsUtils.windowsToUnixURI(resource));
-        String trailingSlash = namespaceFile.isDirectory() ? "/" : "";
-        return URI.create(namespaceFile.path(true).toString().replace("\\", "/") + trailingSlash);
+
+        boolean hasTrailingSlash = resource.uri().toString().endsWith("/");
+
+        String path = resource.path();
+        if (hasTrailingSlash && !path.endsWith("/")) {
+            path = path + "/";
+        }
+
+        return NamespaceFile.of(renderedNamespace, path, 1).uri();
     }
 
     @Override
