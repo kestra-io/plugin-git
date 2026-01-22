@@ -38,7 +38,7 @@ import java.nio.file.Path;
                     tasks:
                       - id: clone
                           type: io.kestra.plugin.git.Clone
-                          url: https://github.com/dbt-labs/jaffle_shop
+                          url: https://github.com/kestra-io/blueprints
                           branch: main
                 """
         ),
@@ -55,7 +55,7 @@ import java.nio.file.Path;
                     tasks:
                       - id: clone
                         type: io.kestra.plugin.git.Clone
-                        url: https://github.com/kestra-io/examples
+                        url: https://github.com/kestra-io/blueprints
                         branch: main
                         username: git_username
                         password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
