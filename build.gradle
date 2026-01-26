@@ -107,7 +107,7 @@ dependencies {
     testImplementation "org.hamcrest:hamcrest-library"
 
     // kestra API client
-    implementation "io.kestra:kestra-api-client:1.0.5"
+    implementation "io.kestra:kestra-api-client:1.0.8"
 }
 
 /**********************************************************************************************************************\
