@@ -5,19 +5,18 @@ import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.flows.Flow;
+import io.kestra.core.models.flows.FlowSource;
 import io.kestra.core.models.flows.FlowWithException;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.services.FlowService;
-import io.kestra.sdk.KestraClient;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.apache.commons.io.IOUtils;
-import org.eclipse.jgit.api.Git;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -204,7 +203,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
         String flowSource = SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream);
 
-        var flowValidated = flowService.validate(runContext.flowInfo().tenantId(), flowSource).getFirst();
+        var flowValidated = flowService.validate(runContext.flowInfo().tenantId(), List.of(new FlowSource(null, flowSource))).getFirst();
 
         if (flowValidated.getConstraints() != null) {
             var ref = uri.getPath();
@@ -245,7 +244,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
         String flowSource = SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream);
 
-        var flowValidated = flowService.validate(runContext.flowInfo().tenantId(), flowSource).getFirst();
+        var flowValidated = flowService.validate(runContext.flowInfo().tenantId(), List.of(new FlowSource(null, flowSource))).getFirst();
 
         if (flowValidated.getConstraints() != null) {
             var ref = uri.getPath();
