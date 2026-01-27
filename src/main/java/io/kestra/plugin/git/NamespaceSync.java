@@ -5,6 +5,7 @@ import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.flows.FlowSource;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
@@ -301,7 +302,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                     diff.add(DiffLine.added(fileRel, key, Kind.FLOW));
                     if (!rDryRun) apply.add(() -> {
                         try {
-                            var flowValidated = fs.validate(rc.flowInfo().tenantId(), gitNode.rawYaml).getFirst();
+                            var flowValidated = fs.validate(rc.flowInfo().tenantId(), List.of(new FlowSource(key, gitNode.rawYaml))).getFirst();
 
                             if (flowValidated.getConstraints() != null) {
                                 throw new FlowProcessingException(flowValidated.getConstraints());
@@ -360,7 +361,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                     diff.add(DiffLine.updatedKestra(fileRel, key, Kind.FLOW));
                     if (!rDryRun) apply.add(() -> {
                         try {
-                            var flowValidated = fs.validate(rc.flowInfo().tenantId(), gitNode.rawYaml).getFirst();
+                            var flowValidated = fs.validate(rc.flowInfo().tenantId(), List.of(new FlowSource(key, gitNode.rawYaml))).getFirst();
 
                             if (flowValidated.getConstraints() != null) {
                                 throw new FlowProcessingException(flowValidated.getConstraints());
