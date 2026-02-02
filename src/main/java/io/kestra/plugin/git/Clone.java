@@ -21,7 +21,8 @@ import java.nio.file.Path;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Clone a Git repository."
+    title = "Clone a Git repository",
+    description = "Clones a repository over HTTP(S) or SSH, optionally checking out a branch, tag, or commit. Defaults to a shallow clone (depth 1) unless a tag or commit is requested; set `cloneSubmodules` to fetch submodules."
 )
 @Plugin(
     examples = {
@@ -122,28 +123,34 @@ import java.nio.file.Path;
 )
 public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Output> {
     @Schema(
-        title = "The optional directory associated with the clone operation",
-        description = "If the directory isn't set, the current directory will be used."
+        title = "Target directory",
+        description = "Subdirectory under the working directory where the repo is cloned; defaults to the working directory root."
     )
     private Property<String> directory;
 
     @Schema(
-        title = "The branch to checkout – ignored if \"commit\" is provided."
+        title = "Branch to checkout",
+        description = "Used only when no commit or tag is specified."
     )
     private Property<String> branch;
 
     @Schema(
-        title = "Creates a shallow clone with a history truncated to the specified number of commits.\nIgnored when `commit` is provided to guarantee the commit is available.")
+        title = "Shallow clone depth",
+        description = "Defaults to 1. Ignored when `commit` or `tag` is set to ensure history is available."
+    )
     @Builder.Default
     private Property<Integer> depth = Property.ofValue(1);
 
     @Schema(
-        title = "Commit SHA1 to checkout (detached HEAD) – works also with a shortened SHA1.",
-        description = "If set, the repository is cloned and the specified commit is checked out. This takes precedence over `branch` and disables shallow cloning to ensure the commit is present."
+        title = "Commit SHA to checkout",
+        description = "Detached HEAD checkout; short SHA allowed. Overrides `branch` and disables shallow clone."
     )
     private Property<String> commit;
 
-    @Schema(title = "Tag to checkout – ignored if `commit` is provided.")
+    @Schema(
+        title = "Tag to checkout",
+        description = "Ignored when `commit` is set; performs a full fetch to reach the tag."
+    )
     private Property<String> tag;
 
     @Override
@@ -220,7 +227,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     @Getter
     public static class Output implements io.kestra.core.models.tasks.Output {
         @Schema(
-            title = "The path where the repository is cloned"
+            title = "Path where the repository is cloned"
         )
         private final String directory;
     }

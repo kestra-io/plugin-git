@@ -65,27 +65,27 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
     protected Property<String> commitMessage;
 
     @Schema(
-        title = "If `true`, the task will only output modifications without pushing any file to Git yet. If `false` (default), all listed files will be pushed to Git immediately."
+        title = "Dry run only",
+        description = "When true, writes a diff file without pushing. Default false pushes immediately."
     )
     @Builder.Default
     private Property<Boolean> dryRun = Property.ofValue(false);
 
     @Schema(
-        title = "The commit author email",
-        description = "If null, no author will be set on this commit."
+        title = "Commit author email",
+        description = "If null, no author is set."
     )
     private Property<String> authorEmail;
 
     @Schema(
-        title = "The commit author name",
-        description = "If null, the username will be used instead.",
-        defaultValue = "`username`"
+        title = "Commit author name",
+        description = "Defaults to `username` when empty."
     )
     private Property<String> authorName;
 
     @Schema(
-        title = "Whether to delete flows/files from Git that are no longer present in Kestra",
-        description = "If `true` (default), files present in Git but not in Kestra will be deleted from the Git repository."
+        title = "Delete removed resources",
+        description = "If true (default), removes Git files that no longer exist in Kestra."
     )
     @Builder.Default
     private Property<Boolean> delete = Property.ofValue(true);

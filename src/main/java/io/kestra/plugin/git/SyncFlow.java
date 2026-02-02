@@ -28,7 +28,8 @@ import java.util.regex.Pattern;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Sync a single flow from a Git repository to a Kestra namespace."
+    title = "Sync a single flow from Git",
+    description = "Imports one flow YAML from a Git branch into a target namespace. Flow namespace is rewritten to `targetNamespace`. Supports dry-run to validate without saving."
 )
 @Plugin(
     examples = {
@@ -56,7 +57,10 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
 
     public static final Pattern NAMESPACE_FINDER_PATTERN = Pattern.compile("(?m)^\\s*namespace:\\s*(.*)$");
 
-    @Schema(title = "The branch to clone from")
+    @Schema(
+        title = "Branch to clone",
+        description = "Defaults to `main`."
+    )
     @Builder.Default
     private Property<String> branch = Property.ofValue("main");
 
@@ -65,15 +69,24 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
         return this.branch;
     }
 
-    @Schema(title = "The target namespace where the flow will be synced")
+    @Schema(
+        title = "Target namespace",
+        description = "Replaces any namespace declared in the flow file."
+    )
     @NotNull
     private Property<String> targetNamespace;
 
-    @Schema(title = "The full path to the flow YAML file within the Git repository")
+    @Schema(
+        title = "Flow file path",
+        description = "Relative path to the flow YAML inside the repository."
+    )
     @NotNull
     private Property<String> flowPath;
 
-    @Schema(title = "If true, the task will only log the action without actually syncing the flow.")
+    @Schema(
+        title = "Dry run only",
+        description = "When true, validates and logs without importing."
+    )
     @Builder.Default
     private Property<Boolean> dryRun = Property.ofValue(Boolean.FALSE);
 
