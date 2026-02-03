@@ -46,12 +46,8 @@ import static io.kestra.core.utils.Rethrow.*;
 @Deprecated(since = "1.0.0", forRemoval = true)
 @Schema(
     deprecated = true,
-    title = "Synchronizes the code for Namespace Files and flows based on the current state in Git.",
-    description = "Replaced by [SyncFlows](https://kestra.io/plugins/plugin-git/tasks/io.kestra.plugin.git.syncflows) and [SyncNamespaceFiles](https://kestra.io/plugins/plugin-git/tasks/io.kestra.plugin.git.syncnamespacefiles). Files located in `gitDirectory` will be synced with namespace files under `namespaceFilesDirectory` folder. " +
-        "Any file not present in the `gitDirectory` but present in `namespaceFilesDirectory` will be deleted from namespace files to ensure that Git remains a single source of truth for your workflow and application code. " +
-        "If you don't want some files from Git to be synced, you can add them to a `.kestraignore` file at the root of your `gitDirectory` folder — that file works the same way as `.gitignore`. \n\n" +
-        "If there is a `_flows` folder under the `gitDirectory` folder, any file within it will be parsed and imported as a flow under the namespace declared in the task. It's important to keep in mind that all flows **must be located within the same directory without any nested directories**. If you want to deploy all flows to kestra from Git using the Git Sync pattern, you have to place all your flows in the `_flows` directory. Adding namespace folders will result in an error and that's expected. Flows are not equivalent to Namespace Files — while Namespace Files can be stored in arbitrarily nested folders stored in Internal Storage, Flows are just metadata. Flows are sent to Kestra's API and stored in the database backend. This is why they follow a different deployment pattern and cannot be stored in nested folders in Git. \n\n" +
-        "Another important aspect is that the namespace defined in the flow code **might get overwritten (!)** if the namespace defined within Git doesn't match the namespace or a child namespace defined in the Git Sync task. All Git deployments, both the Git Sync and Kestra's CI/CD integrations, operate on a namespace level to ensure namespace-level governance of permissions, secrets, and to allow separation of resources. If you leverage multiple namespaces in a monorepo, you can create multiple flows, each using the Git Sync task to sync specific Git directories to the desired namespaces."
+    title = "Deprecated: sync flows and Namespace Files",
+    description = "Superseded by SyncFlows and SyncNamespaceFiles. Syncs `_flows` (flows) plus other files from `gitDirectory` into a namespace, deleting extras unless excluded via `.kestraignore`. Flow files must live directly under `_flows` (no nesting)."
 )
 @Plugin(
     examples = {
@@ -87,19 +83,22 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
     public static final Pattern FLOW_ID_FINDER_PATTERN = Pattern.compile("(?m)^id: (.*)$");
 
     @Schema(
-        title = "Git directory to sync code from – if not specified, all files from a Git repository will be synchronized."
+        title = "Git directory to sync from",
+        description = "Defaults to repo root; `_flows` within it is used for flows."
     )
     private Property<String> gitDirectory;
 
     @Schema(
-        title = "Namespace files directory to which files from Git should be synced – it defaults to the root directory of the namespace."
+        title = "Target namespace files directory",
+        description = "Optional subpath under the namespace; defaults to namespace root."
     )
     private Property<String> namespaceFilesDirectory;
 
     private Property<String> branch;
 
     @Schema(
-        title = "If true, the task will only display modifications without syncing any files yet. If false (default), all namespace files and flows will be overwritten based on the state in Git."
+        title = "Dry run only",
+        description = "When true, logs planned additions/updates/deletions without applying."
     )
     private Property<Boolean> dryRun;
 

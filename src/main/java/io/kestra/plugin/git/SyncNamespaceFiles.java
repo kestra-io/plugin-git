@@ -26,16 +26,8 @@ import java.util.Optional;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Sync Namespace Files from Git to Kestra.",
-    description = """
-        This task syncs Namespace Files from a given Git branch to a Kestra namespace.
-
-        If the `delete` property is set to true, any Namespace Files available in Kestra but not present in the `gitDirectory` will be deleted. This allows you to maintain Git as the single source of truth for your Namespace Files. Check the Version Control with Git documentation for more details.
-
-
-        Using this task, you can push one or more Namespace Files from a given Kestra namespace to Git. Check the [Version Control with Git](https://kestra.io/docs/version-control-cicd) documentation for more details.
-
-        If you don't want some files from Git to be synced, you can add them to a `.kestraignore` file at the root of your `gitDirectory` folder — that file works the same way as `.gitignore`."""
+    title = "Sync Namespace Files from Git",
+    description = "Imports Namespace Files from a Git branch into a Kestra namespace. Can delete files missing in Git, honors `.kestraignore`, and supports dry-run diff output."
 )
 @Plugin(
     examples = {
@@ -106,27 +98,29 @@ import java.util.Optional;
 )
 public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncNamespaceFiles.Output> {
     @Schema(
-        title = "The branch from which Namespace files will be synced to Kestra – defaults to `main`."
+        title = "Branch to sync",
+        description = "Defaults to `main`."
     )
     @Builder.Default
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
-        title = "The namespace from which files should be synced from the `gitDirectory` to Kestra"
+        title = "Target namespace",
+        description = "Namespace receiving the files; defaults to the current flow namespace."
     )
     @Builder.Default
     private Property<String> namespace = new Property<>("{{ flow.namespace }}");
 
     @Schema(
-        title = "Directory from which Namespace files should be synced",
-        description = "If not set, this task assumes your branch includes a directory named `_files`"
+        title = "Git directory for Namespace Files",
+        description = "Relative path containing files; defaults to `_files`."
     )
     @Builder.Default
     private Property<String> gitDirectory = Property.ofValue("_files");
 
     @Schema(
-        title = "Whether you want to delete Namespace files present in Kestra but not present in Git",
-        description = "It’s `false` by default to avoid destructive behavior. Use with caution because when set to `true`, this task will delete all Namespace files which are not present in Git."
+        title = "Delete files missing in Git",
+        description = "Default false. When true, removes Namespace Files absent from Git."
     )
     @Builder.Default
     private Property<Boolean> delete = Property.ofValue(false);
@@ -222,10 +216,8 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
     @Getter
     public static class Output extends AbstractSyncTask.Output {
         @Schema(
-            title = "A file containing all changes applied (or not in case of dry run) from Git",
-            description = """
-                The output format is a ION file with one row per file, each row containing the number of added, deleted, and changed lines.
-                A row looks as follows: `{changes:"3",file:"path/to/my/script.py",deletions:"-5",additions:"+10"}`"""
+            title = "Diff of synced Namespace Files",
+            description = "ION file listing per-file sync actions (added, deleted, overwritten)."
         )
         private URI files;
 

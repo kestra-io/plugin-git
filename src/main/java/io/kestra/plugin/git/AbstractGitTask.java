@@ -56,52 +56,68 @@ public abstract class AbstractGitTask extends Task {
     private static final AtomicReference<String> SSL_CONFIGURED_KEY = new AtomicReference<>(null);
     private static final Object SSL_CONFIG_LOCK = new Object();
 
-    @Schema(title = "The URI to clone from")
+    @Schema(
+        title = "Repository URL",
+        description = "HTTP(S) or SSH URI used for clone and push operations."
+    )
     protected Property<String> url;
 
-    @Schema(title = "The username or organization")
+    @Schema(
+        title = "Username or organization",
+        description = "Used for HTTP basic authentication and as a fallback commit author."
+    )
     protected Property<String> username;
 
-    @Schema(title = "The password or Personal Access Token (PAT) – when you authenticate the task with a PAT, any flows or files pushed to Git from Kestra will be pushed from the user associated with that PAT. This way, you don't need to configure the commit author (the `authorName` and `authorEmail` properties).")
+    @Schema(
+        title = "Password or personal access token",
+        description = "Supplies HTTP credentials. When a PAT is used, pushes are recorded under that PAT’s user without needing `authorName` and `authorEmail`."
+    )
     protected Property<String> password;
 
     @Schema(
-        title = "PEM-format private key content that is paired with a public key registered on Git",
-        description = "To generate an ECDSA PEM format key from OpenSSH, use the following command: `ssh-keygen -t ecdsa -b 256 -m PEM`. " +
-            "You can then set this property with your private key content and put your public key on Git."
+        title = "PEM private key",
+        description = "PEM-formatted private key matching a public key registered on the Git server. Generate with `ssh-keygen -t ecdsa -b 256 -m PEM`."
     )
     protected Property<String> privateKey;
 
-    @Schema(title = "The passphrase for the `privateKey`")
+    @Schema(title = "Passphrase for `privateKey`")
     protected Property<String> passphrase;
 
     @Schema(
-        title = "Optional path to a PEM-encoded CA certificate to trust (in addition to the JVM default truststore)",
-        description = "Equivalent to `git config http.sslCAInfo <path>`. Use this for self-signed/internal CAs."
+        title = "Extra trusted CA PEM path",
+        description = "Optional PEM-encoded CA bundle added to the JVM truststore; equivalent to `git config http.sslCAInfo <path>` for self-signed or internal CAs."
     )
     protected Property<String> trustedCaPemPath;
 
-    @Schema(title = "Specify whether to disable proxy.")
+    @Schema(
+        title = "Disable proxy for HTTP",
+        description = "When true, forces direct connections instead of using the JVM proxy settings."
+    )
     protected Property<Boolean> noProxy;
 
-    @Schema(title = "The initial Git branch")
+    @Schema(title = "Initial Git branch")
     public abstract Property<String> getBranch();
 
-    @Schema(title = "Connect timeout in milliseconds for HTTP connections.")
+    @Schema(
+        title = "HTTP connect timeout (ms)",
+        description = "Default 10000 ms."
+    )
     @Builder.Default
     protected Property<Integer> connectTimeout = Property.ofValue(10000);
 
-    @Schema(title = "Read timeout in milliseconds for HTTP connections.")
+    @Schema(
+        title = "HTTP read timeout (ms)",
+        description = "Default 60000 ms."
+    )
     @Builder.Default
     protected Property<Integer> readTimeout = Property.ofValue(60000);
 
     @Schema(
-        title = "Git configuration to apply to the repository",
+        title = "Git configuration overrides",
         description = """
-            Map of Git config keys and values, applied after clone
-                few examples:
-                - 'core.fileMode': false -> ignore file permission changes
-                - 'core.autocrlf': false -> prevent line ending conversion
+            Map of git config keys and values applied after clone, e.g.:
+            - core.fileMode: false (ignore permission flips)
+            - core.autocrlf: false (preserve line endings)
             """
     )
     protected Property<Map<String, Object>> gitConfig;

@@ -33,9 +33,8 @@ import java.util.regex.Pattern;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Sync flows from Git to Kestra.",
-    description = """
-        This task syncs flows from a given Git branch to a Kestra `namespace`. If the `delete` property is set to true, any flow available in Kestra but not present in the `gitDirectory` will be deleted, maintaining Git as the single source of truth for your flows. Check the [Version Control with Git](https://kestra.io/docs/version-control-cicd/git) documentation for more details."""
+    title = "Sync flows from Git",
+    description = "Imports flows from a Git branch into `targetNamespace`, optionally traversing child namespaces. Can rewrite namespaces to `targetNamespace`, delete missing flows when `delete` is true, and emit a diff on dry-run."
 )
 @Plugin(
     examples = {
@@ -109,66 +108,43 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     public static final Pattern NAMESPACE_FINDER_PATTERN = Pattern.compile("(?m)^namespace: (.*)$");
 
     @Schema(
-        title = "The branch from which flows will be synced to Kestra"
+        title = "Branch to sync",
+        description = "Defaults to `main`."
     )
     @Builder.Default
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
-        title = "The target namespace to which flows from the `gitDirectory` should be synced",
-        description = """
-            If the top-level namespace specified in the flow source code is different than the `targetNamespace`, it will be overwritten by this target namespace. This facilitates moving between environments and projects. If `includeChildNamespaces` property is set to true, the top-level namespace in the source code will also be overwritten by the `targetNamespace` in children namespaces.
-
-            For example, if the `targetNamespace` is set to `prod` and `includeChildNamespaces` property is set to `true`, then:
-            - `namespace: dev` in flow source code will be overwritten by `namespace: prod`,
-            - `namespace: dev.marketing.crm` will be overwritten by `namespace: prod.marketing.crm`.
-
-            See the table below for a practical explanation:
-
-            | Source namespace in the flow code |       Git directory path       |  Synced to target namespace   |
-            | --------------------------------- | ------------------------------ | ----------------------------- |
-            | namespace: dev                    | _flows/flow1.yml               | namespace: prod               |
-            | namespace: dev                    | _flows/flow2.yml               | namespace: prod               |
-            | namespace: dev.marketing          | _flows/marketing/flow3.yml     | namespace: prod.marketing     |
-            | namespace: dev.marketing          | _flows/marketing/flow4.yml     | namespace: prod.marketing     |
-            | namespace: dev.marketing.crm      | _flows/marketing/crm/flow5.yml | namespace: prod.marketing.crm |
-            | namespace: dev.marketing.crm      | _flows/marketing/crm/flow6.yml | namespace: prod.marketing.crm |
-            """
+        title = "Target namespace",
+        description = "Flows are rewritten to this namespace (and nested namespaces when applicable)."
     )
     @NotNull
     private Property<String> targetNamespace;
 
     @Schema(
-        title = "Directory from which flows should be synced",
-        description = """
-            If not set, this task assumes your branch has a Git directory named `_flows` (equivalent to the default `gitDirectory` of the [PushFlows](https://kestra.io/docs/how-to-guides/pushflows) task).
-
-            If `includeChildNamespaces` property is set to `true`, this task will push all flows from nested subdirectories into their corresponding child namespaces, e.g. if `targetNamespace` is set to `prod`, then:
-
-            - flows from the `_flows` directory will be synced to the `prod` namespace,
-            - flows from the `_flows/marketing` subdirectory in Git will be synced to the `prod.marketing` namespace,
-            - flows from the `_flows/marketing/crm` subdirectory will be synced to the `prod.marketing.crm` namespace."""
+        title = "Git directory for flows",
+        description = "Relative path containing flow YAML; defaults to `_flows`. Subdirectories map to child namespaces when `includeChildNamespaces` is true."
     )
     @Builder.Default
     private Property<String> gitDirectory = Property.ofValue("_flows");
 
     @Schema(
-        title = "Whether you want to sync flows from child namespaces as well",
-        description = "It’s `false` by default so that we sync only flows from the explicitly declared `gitDirectory` without traversing child directories. If set to `true`, flows from subdirectories in Git will be synced to child namespace in Kestra using the dot notation `.` for each subdirectory in the folder structure."
+        title = "Include child namespaces",
+        description = "Default false. When true, subdirectories under `gitDirectory` are synced to corresponding child namespaces."
     )
     @Builder.Default
     private Property<Boolean> includeChildNamespaces = Property.ofValue(false);
 
     @Schema(
-        title = "Whether you want to delete flows present in Kestra but not present in Git",
-        description = "It’s `false` by default to avoid destructive behavior. Use this property with caution because when set to `true` and `includeChildNamespaces` is also set to `true`, this task will delete all flows from the `targetNamespace` and all its child namespaces that are not present in Git rather than only overwriting the changes."
+        title = "Delete flows missing in Git",
+        description = "Default false to avoid destructive syncs. When true (and especially with `includeChildNamespaces`), removes flows not present in Git."
     )
     @Builder.Default
     private Property<Boolean> delete = Property.ofValue(false);
 
     @Schema(
-        title = "Ignore flows when they have validation failure",
-        description = "Due to breaking changes, some flows may not be valid anymore by the time of the synchronisation. To avoid synchronizing flows that are no longer valid, set this property to true."
+        title = "Ignore invalid flows",
+        description = "If true, skips flows that fail validation instead of failing the task."
     )
     @Builder.Default
     private Property<Boolean> ignoreInvalidFlows = Property.ofValue(false);
@@ -352,11 +328,8 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     @Getter
     public static class Output extends AbstractSyncTask.Output {
         @Schema(
-            title = "A file containing all changes applied (or not in case of dry run) from Git",
-            description = """
-                The output format is a ION file with one row per synced flow, each row containing the information whether the flow would be added, deleted, or overwritten in Kestra by the state of what's in Git.
-
-                A row looks as follows: `{gitPath:"flows/flow1.yml",syncState:"ADDED",flowId:"flow1",namespace:"prod",revision:1}`"""
+            title = "Diff of synced flows",
+            description = "ION file listing per-flow sync actions (added, deleted, overwritten, updated)."
         )
         private URI flows;
 

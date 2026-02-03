@@ -23,7 +23,7 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
     @Schema(title = "Kestra API URL. If null, uses 'kestra.url' from [configuration](https://kestra.io/docs/configuration#kestra-url). If that is also null, defaults to 'http://localhost:8080'.")
     private Property<String> kestraUrl;
 
-    @Schema(title = "Authentication information.")
+    @Schema(title = "Authentication information")
     @NotNull
     private Auth auth;
 

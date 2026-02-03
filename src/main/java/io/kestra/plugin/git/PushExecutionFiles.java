@@ -30,8 +30,8 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
 @NoArgsConstructor
 @Getter
 @Schema(
-    title = "Commit and push execution output files to a Git repository.",
-    description = "This task pushes one or more files produced by a task execution directly to Git."
+    title = "Push execution files to Git",
+    description = "Stages execution output files from the working directory or storage and pushes them to Git under `gitDirectory` (default `_outputs`). Branch is created if missing; use `dryRun` to only generate the diff."
 )
 @Plugin(
     examples = {
@@ -96,36 +96,36 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
 )
 public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Output> {
     @Schema(
-        title = "The branch to which files should be committed and pushed",
-        description = "If the branch doesn’t exist yet, it will be created."
+        title = "Branch to push files",
+        description = "Defaults to `main`; created if absent."
     )
     @Builder.Default
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
-        title = "Directory in the Git repository where files should be pushed",
-        description = "Defaults to `_outputs`."
+        title = "Destination directory",
+        description = "Relative path inside the repository; defaults to `_outputs`."
     )
     @Builder.Default
     private Property<String> gitDirectory = Property.ofValue("_outputs");
 
     @Schema(
-        title = "Glob pattern(s) to select execution output files from the working directory",
-        description = "If provided, will match files relative to the execution working directory."
+        title = "Glob pattern(s) for execution files",
+        description = "Matches files relative to the execution working directory."
     )
     private Object files;
 
     @Schema(
-        title = "A map of key-value pairs where the key is the filename and the value is the URI of the file to upload.",
-        description = "This should be a map of URIs, with the key being the filename that will be upload and the value is the URI." +
-            "This property is intended to be used with the output files of other tasks. Many Kestra tasks, incl. all Downloads tasks, " +
-            "output a map of files so that you can directly pass the output property to this task e.g., " +
-            "[outputFiles in the S3 Downloads task](https://kestra.io/plugins/plugin-aws/tasks/s3/io.kestra.plugin.aws.s3.downloads#outputfiles) " +
-            "or the [files in the Archive Decompress task](https://kestra.io/plugins/plugin-compress/tasks/io.kestra.plugin.compress.archivedecompress#files).",
+        title = "Explicit file map",
+        description = "Map of destination filename to source file URI (string or JSON map). Useful for wiring outputFiles from other tasks.",
         anyOf = {Map.class, String.class}
     )
     private Object filesMap;
 
+    @Schema(
+        title = "Fail when no files are found",
+        description = "If true, raises an error when nothing matches `files` or `filesMap`; default false logs a warning and skips."
+    )
     @Builder.Default
     private Property<Boolean> errorOnMissing = Property.ofValue(false);
 
