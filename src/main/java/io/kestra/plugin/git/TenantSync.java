@@ -9,6 +9,7 @@ import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.YamlParser;
 import io.kestra.plugin.git.services.GitService;
 import io.kestra.sdk.KestraClient;
 import io.kestra.sdk.api.FilesApi;
@@ -34,6 +35,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
 
@@ -242,7 +245,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                 }
             }
 
-            List<FlowWithSource> kestraFlows = fetchFlowsFromKestra(kestraClient, runContext, namespace);
+            List<FlowWithSource> kestraFlows = fetchFlowsFromKestra(kestraClient, runContext, namespace, rOnInvalidSyntax);
             Map<String, byte[]> kestraFiles = listNamespaceFiles(kestraClient, runContext, namespace);
 
             planNamespace(
@@ -728,7 +731,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         }
     }
 
-    private List<FlowWithSource> fetchFlowsFromKestra(KestraClient kestraClient, RunContext runContext, String namespace) {
+    private List<FlowWithSource> fetchFlowsFromKestra(KestraClient kestraClient, RunContext runContext, String namespace, OnInvalidSyntax rOnInvalidSyntax) {
         try {
             // Export all flows from Kestra for the given namespace (including sub-namespaces)
             byte[] zippedFlows = kestraClient.flows().exportFlowsByQuery(
@@ -740,17 +743,24 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
             try (
                 var bais = new ByteArrayInputStream(zippedFlows);
-                var zis = new java.util.zip.ZipInputStream(bais)
+                var zis = new ZipInputStream(bais)
             ) {
-                java.util.zip.ZipEntry entry;
+                ZipEntry entry;
                 while ((entry = zis.getNextEntry()) != null) {
                     if (!entry.getName().endsWith(".yml") && !entry.getName().endsWith(".yaml")) {
                         continue;
                     }
 
-                    String yaml = new String(zis.readAllBytes(), StandardCharsets.UTF_8);
+                    var entryName = entry.getName();
+                    var yaml = new String(zis.readAllBytes(), StandardCharsets.UTF_8);
 
-                    io.kestra.core.models.flows.Flow parsed = io.kestra.core.serializers.YamlParser.parse(yaml, io.kestra.core.models.flows.Flow.class);
+                    io.kestra.core.models.flows.Flow parsed;
+                    try {
+                        parsed = YamlParser.parse(yaml, io.kestra.core.models.flows.Flow.class);
+                    } catch (Exception e) {
+                        handleInvalid(runContext, rOnInvalidSyntax, "FLOW from entry " + entryName, e);
+                        continue;
+                    }
 
                     if (!namespace.equals(parsed.getNamespace())) {
                         continue;
@@ -762,6 +772,9 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
             return flows;
 
+        } catch (KestraRuntimeException e) {
+            // Re-throw KestraRuntimeException from handleInvalid(FAIL) without wrapping
+            throw e;
         } catch (Exception e) {
             throw new KestraRuntimeException("Failed to export flows from Kestra for namespace " + namespace, e);
         }
