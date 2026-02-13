@@ -757,12 +757,17 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                     io.kestra.core.models.flows.Flow parsed;
                     try {
                         parsed = YamlParser.parse(yaml, io.kestra.core.models.flows.Flow.class);
+
+                        if (!namespace.equals(parsed.getNamespace())) {
+                            continue;
+                        }
+
+                        var flowValidated = kestraClient.flows().validateFlows(runContext.flowInfo().tenantId(), yaml).getFirst();
+                        if (flowValidated.getConstraints() != null) {
+                            throw new FlowProcessingException(flowValidated.getConstraints());
+                        }
                     } catch (Exception e) {
                         handleInvalid(runContext, rOnInvalidSyntax, "FLOW from entry " + entryName, e);
-                        continue;
-                    }
-
-                    if (!namespace.equals(parsed.getNamespace())) {
                         continue;
                     }
 
