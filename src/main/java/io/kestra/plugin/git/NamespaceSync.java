@@ -5,6 +5,7 @@ import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.flows.FlowSource;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
@@ -54,8 +55,8 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Unidirectional namespace sync between Kestra and Git.",
-    description = "Create/update is driven by 'sourceOfTruth'; delete/keep/fail is driven by 'whenMissingInSource'."
+    title = "Sync a namespace with Git",
+    description = "Syncs flows and Namespace Files for a single namespace between Git and Kestra. Direction is controlled by `sourceOfTruth`; deletions follow `whenMissingInSource` and respect `protectedNamespaces`. Supports dry-run diff output and optional subdirectory via `gitDirectory`."
 )
 @Plugin(
     priority = Plugin.Priority.SECONDARY,
@@ -115,58 +116,73 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     public enum OnInvalidSyntax {SKIP, WARN, FAIL}
 
     @Schema(
-        title = "The branch to read from / write to (required).",
-        description = "Branch prefixed with `origin/` or `refs/heads/` are not supported."
+        title = "Branch to sync",
+        description = "Required branch name (no `origin/` or `refs/heads/` prefixes); must exist on the remote."
     )
     @NotNull
     private Property<String> branch;
 
     @Schema(
-        title = "Subdirectory inside the repo used to store Kestra code and files; if empty, repo root is used.",
-        description = """
-            This is the base folder in your Git repository where Kestra will look for code and files.
-            If you don't set it, the repo root will be used. Inside that folder, Kestra always expects
-            a structure like <namespace>/flows, <namespace>/files, etc.
-
-            | gitDirectory | namespace       | Expected Git path                        |
-            | ------------ | --------------- | -----------------------------------------|
-            | (not set)    | company         | company/flows/my-flow.yaml               |
-            | monorepo     | system          | monorepo/system/flows/my-flow.yaml       |
-            | projectA     | company.team    | projectA/company.team/flows/my-flow.yaml |"""
+        title = "Git base directory",
+        description = "Optional subfolder in the repo; default is repo root. Within it, files are expected under `<namespace>/flows` and `<namespace>/files`."
     )
     private Property<String> gitDirectory;
 
-    @Schema(title = "Target namespace to sync (required).")
+    @Schema(
+        title = "Namespace to sync",
+        description = "Required; syncs only this namespace (no child namespaces)."
+    )
     @NotNull
     private Property<String> namespace;
 
-    @Schema(title = "Select the source of truth.")
+    @Schema(
+        title = "Source of truth",
+        description = "KESTRA (default) pushes Kestra state to Git; GIT applies Git state into Kestra."
+    )
     @Builder.Default
     private Property<SourceOfTruth> sourceOfTruth = Property.ofValue(SourceOfTruth.KESTRA);
 
-    @Schema(title = "Behavior when an object is missing from the selected source of truth.")
+    @Schema(
+        title = "Handling when missing in source",
+        description = "Default DELETE. Options: DELETE removes from target, KEEP leaves untouched, FAIL stops the run. Protected namespaces override deletions."
+    )
     @Builder.Default
     private Property<WhenMissingInSource> whenMissingInSource = Property.ofValue(WhenMissingInSource.DELETE);
 
-    @Schema(title = "Namespaces protected from deletion regardless of policies.")
+    @Schema(
+        title = "Protected namespaces",
+        description = "List that cannot be deleted even when policy is DELETE; defaults to `system`."
+    )
     @Builder.Default
     private Property<List<String>> protectedNamespaces = Property.ofValue(List.of("system"));
 
-    @Schema(title = "If true, only compute the plan and output a diff without applying changes.")
+    @Schema(
+        title = "Dry run only",
+        description = "When true, produces a diff file without applying changes or pushing."
+    )
     @Builder.Default
     private Property<Boolean> dryRun = Property.ofValue(false);
 
-    @Schema(title = "Behavior when encountering invalid syntax while syncing.")
+    @Schema(
+        title = "On invalid syntax",
+        description = "Default FAIL. Options: SKIP, WARN, FAIL."
+    )
     @Builder.Default
     private Property<OnInvalidSyntax> onInvalidSyntax = Property.ofValue(OnInvalidSyntax.FAIL);
 
-    @Schema(title = "Git commit message when pushing back to Git.")
+    @Schema(
+        title = "Git commit message",
+        description = "Used when committing back to Git; defaults to \"Namespace sync from Kestra\"."
+    )
     private Property<String> commitMessage;
 
-    @Schema(title = "The commit author email.")
+    @Schema(title = "Commit author email")
     private Property<String> authorEmail;
 
-    @Schema(title = "The commit author name (defaults to username if null).")
+    @Schema(
+        title = "Commit author name",
+        description = "Defaults to `username` when not set."
+    )
     private Property<String> authorName;
 
     // Directory names (namespace-first structure: <namespace>/<kind>/<id>.yaml)
@@ -301,6 +317,11 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                     diff.add(DiffLine.added(fileRel, key, Kind.FLOW));
                     if (!rDryRun) apply.add(() -> {
                         try {
+                            var flowValidated = fs.validate(rc.flowInfo().tenantId(), List.of(new FlowSource(key, gitNode.rawYaml))).getFirst();
+
+                            if (flowValidated.getConstraints() != null) {
+                                throw new FlowProcessingException(flowValidated.getConstraints());
+                            }
                             fs.importFlow(tenant, gitNode.rawYaml, false);
                         } catch (FlowProcessingException e) {
                             handleInvalid(rc, rInvalid, "FLOW " + key, e);
@@ -355,6 +376,12 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                     diff.add(DiffLine.updatedKestra(fileRel, key, Kind.FLOW));
                     if (!rDryRun) apply.add(() -> {
                         try {
+                            var flowValidated = fs.validate(rc.flowInfo().tenantId(), List.of(new FlowSource(key, gitNode.rawYaml))).getFirst();
+
+                            if (flowValidated.getConstraints() != null) {
+                                throw new FlowProcessingException(flowValidated.getConstraints());
+                            }
+
                             fs.importFlow(tenant, gitNode.rawYaml, false);
                         } catch (FlowProcessingException e) {
                             handleInvalid(rc, rInvalid, "FLOW " + key, e);
@@ -506,7 +533,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
     private Map<String, byte[]> listNamespaceFiles(RunContext runContext, String namespace) {
         try {
-            var entries = runContext.storage().namespace(namespace).all(true);
+            var entries = runContext.storage().namespace(namespace).all();
 
             List<String> normalized = entries.stream()
                 .map(NamespaceFile::path)
@@ -708,11 +735,11 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         @Schema(title = "A file containing all changes applied (or not in case of dry run) to/from Git.")
         private URI diff;
 
-        @Schema(title = "ID of the commit pushed (if any).")
+        @Schema(title = "ID of the commit pushed (if any)")
         @Nullable
         private String commitId;
 
-        @Schema(title = "URL to the commit (if any).")
+        @Schema(title = "URL to the commit (if any)")
         @Nullable
         private String commitURL;
     }

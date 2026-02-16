@@ -31,11 +31,8 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Commit and push Namespace Files created from Kestra’s UI to Git.",
-    description = """
-        Using this task, you can push one or more Namespace Files from a given kestra namespace to Git. Note that in contrast to `PushFlows`, this task requires pushing code for each namespace separately. You can use the `ForEach` task as shown below to loop over multiple namespaces. Check the [Version Control with Git](https://kestra.io/docs/developer-guide/git) guide for more examples.
-        Git does not guarantee the order of push operations to a remote repository, which can lead to potential conflicts when multiple users or flows attempt to push changes simultaneously.
-        To minimize the risk of data loss and merge conflicts, it is strongly recommended to use sequential workflows or push changes to separate branches."""
+    title = "Push Namespace Files to Git",
+    description = "Exports Namespace Files from a single Kestra namespace into `gitDirectory` (default `_files`) and pushes to Git. Branch is created if missing; use `files` globs to narrow the selection and `dryRun` to emit a diff only. Push sequentially to avoid merge conflicts."
 )
 @Plugin(
     examples = {
@@ -106,41 +103,29 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
 )
 public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Output> {
     @Schema(
-        title = "The branch to which Namespace Files should be committed and pushed",
-        description = "If the branch doesn’t exist yet, it will be created. If not set, the task will push the files to the `kestra` branch."
+        title = "Branch to push Namespace Files",
+        description = "Defaults to `main`; created if absent."
     )
     @Builder.Default
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
-        title = "The namespace from which files should be pushed to the `gitDirectory`"
+        title = "Source namespace",
+        description = "Namespace whose files are exported; defaults to the current flow namespace."
     )
     @Builder.Default
     private Property<String> namespace = new Property<>("{{ flow.namespace }}");
 
     @Schema(
-        title = "Directory to which Namespace Files should be pushed.",
-        description = """
-            If not set, files will be pushed to a Git directory `named _files`. See the table below for an example mapping of Namespace Files to Git paths:
-
-            |  Namespace File Path  |      Git directory path      |
-            | --------------------- | ---------------------------- |
-            | scripts/app.py        | _files/scripts/app.py        |
-            | scripts/etl.py        | _files/scripts/etl.py        |
-            | queries/orders.sql    | _files/queries/orders.sql    |
-            | queries/customers.sql | _files/queries/customers.sql |
-            | requirements.txt      | _files/requirements.txt      |"""
+        title = "Destination directory",
+        description = "Relative path inside the repo; defaults to `_files`. Paths under the namespace are preserved beneath this directory."
     )
     @Builder.Default
     private Property<String> gitDirectory = Property.ofValue("_files");
 
     @Schema(
-        title = "Which Namespace Files should be included in the commit",
-        description = """
-            By default, Kestra will push all Namespace Files from the specified namespace.
-            If you want to push only a specific file or directory (e.g., myfile.py), you can set it explicitly using files: myfile.py.
-            Given that this is a glob pattern string (or a list of glob patterns), you can include as many files as you wish, provided that the user is authorized to access that namespace.
-            Note that each glob pattern try to match the file name OR the relative path starting from `gitDirectory`""",
+        title = "Namespace Files to include",
+        description = "Glob pattern(s); defaults to all (`**`). Matches paths relative to the namespace root.",
         defaultValue = "**"
 
     )
@@ -157,8 +142,8 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     }
 
     @Schema(
-        title = "Fail the task if no files are matched",
-        description = "If true, the task will fail explicitly when no files are matched by the provided 'files' property."
+        title = "Fail when no files are matched",
+        description = "If true, throws when the glob finds no files; otherwise logs and skips."
     )
     @Builder.Default
     private Property<Boolean> errorOnMissing = Property.ofValue(false);

@@ -42,13 +42,15 @@ import static java.lang.Integer.MAX_VALUE;
 public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> extends AbstractCloningTask implements RunnableTask<O> {
 
     @Schema(
-        title = "If `true`, the task will only output modifications without performing any modification to Kestra. If `false` (default), all listed modifications will be applied."
+        title = "Dry run only",
+        description = "When true, writes a diff without applying changes to Kestra."
     )
     @Builder.Default
     private Property<Boolean> dryRun = Property.ofValue(false);
 
     @Schema(
-        title = "If `true` (default), the task will fail if the specified directory doesn't exist. If `false`, missing directories will be skipped."
+        title = "Fail if git directory missing",
+        description = "Default true. If false, skips when the rendered `gitDirectory` path does not exist."
     )
     @Builder.Default
     private Property<Boolean> failOnMissingDirectory = Property.ofValue(true);
@@ -107,9 +109,9 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
 
     protected abstract void deleteResource(RunContext runContext, String renderedNamespace, T instanceResource) throws IOException;
 
-    protected abstract T simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, FlowProcessingException;
+    protected abstract T simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, FlowProcessingException, IllegalVariableEvaluationException;
 
-    protected abstract T writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, URISyntaxException, FlowProcessingException;
+    protected abstract T writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, URISyntaxException, FlowProcessingException, IllegalVariableEvaluationException;
 
     protected abstract SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, T resourceBeforeUpdate, T resourceAfterUpdate) throws IOException;
 
@@ -166,7 +168,7 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
 
     public O run(RunContext runContext) throws Exception {
         configureHttpTransport(runContext);
-        
+
         // we add this method to configure ssl to allow self signed certs
         configureEnvironmentWithSsl(runContext);
 

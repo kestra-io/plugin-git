@@ -6,6 +6,7 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.storages.Namespace;
 import io.kestra.core.storages.NamespaceFile;
+import io.kestra.core.storages.StorageContext;
 import io.kestra.core.utils.WindowsUtils;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
@@ -25,16 +26,8 @@ import java.util.Optional;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Sync Namespace Files from Git to Kestra.",
-    description = """
-        This task syncs Namespace Files from a given Git branch to a Kestra namespace.
-
-        If the `delete` property is set to true, any Namespace Files available in Kestra but not present in the `gitDirectory` will be deleted. This allows you to maintain Git as the single source of truth for your Namespace Files. Check the Version Control with Git documentation for more details.
-
-
-        Using this task, you can push one or more Namespace Files from a given Kestra namespace to Git. Check the [Version Control with Git](https://kestra.io/docs/version-control-cicd) documentation for more details.
-
-        If you don't want some files from Git to be synced, you can add them to a `.kestraignore` file at the root of your `gitDirectory` folder — that file works the same way as `.gitignore`."""
+    title = "Sync Namespace Files from Git",
+    description = "Imports Namespace Files from a Git branch into a Kestra namespace. Can delete files missing in Git, honors `.kestraignore`, and supports dry-run diff output."
 )
 @Plugin(
     examples = {
@@ -103,29 +96,31 @@ import java.util.Optional;
         )
     }
 )
-public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles.Output> {
+public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncNamespaceFiles.Output> {
     @Schema(
-        title = "The branch from which Namespace files will be synced to Kestra – defaults to `main`."
+        title = "Branch to sync",
+        description = "Defaults to `main`."
     )
     @Builder.Default
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
-        title = "The namespace from which files should be synced from the `gitDirectory` to Kestra"
+        title = "Target namespace",
+        description = "Namespace receiving the files; defaults to the current flow namespace."
     )
     @Builder.Default
     private Property<String> namespace = new Property<>("{{ flow.namespace }}");
 
     @Schema(
-        title = "Directory from which Namespace files should be synced",
-        description = "If not set, this task assumes your branch includes a directory named `_files`"
+        title = "Git directory for Namespace Files",
+        description = "Relative path containing files; defaults to `_files`."
     )
     @Builder.Default
     private Property<String> gitDirectory = Property.ofValue("_files");
 
     @Schema(
-        title = "Whether you want to delete Namespace files present in Kestra but not present in Git",
-        description = "It’s `false` by default to avoid destructive behavior. Use with caution because when set to `true`, this task will delete all Namespace files which are not present in Git."
+        title = "Delete files missing in Git",
+        description = "Default false. When true, removes Namespace Files absent from Git."
     )
     @Builder.Default
     private Property<Boolean> delete = Property.ofValue(false);
@@ -136,30 +131,34 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     }
 
     @Override
-    protected void deleteResource(RunContext runContext, String renderedNamespace, URI instanceUri) throws IOException {
-        runContext.storage().namespace(renderedNamespace).delete(Path.of(instanceUri.getPath().replace("\\","/")));
+    protected void deleteResource(RunContext runContext, String renderedNamespace, NamespaceFile namespaceFile) throws IOException {
+        runContext.storage().namespace(renderedNamespace).delete(namespaceFile);
     }
 
     @Override
-    protected URI simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) {
-        return NamespaceFile.of(renderedNamespace, uri).uri();
+    protected NamespaceFile
+    simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) {
+        return NamespaceFile.of(renderedNamespace, uri);
     }
 
     @Override
-    protected URI writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, URISyntaxException {
+    protected NamespaceFile writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, URISyntaxException {
         Namespace namespace = runContext.storage().namespace(renderedNamespace);
-
+        NamespaceFile.of(renderedNamespace, uri);
         try {
             return inputStream == null ?
-                URI.create(namespace.createDirectory(Path.of(uri.getPath())) + "/") :
-                namespace.putFile(Path.of(uri.getPath()), inputStream).uri();
+                namespace.createDirectory(Path.of(uri.getPath())) :
+                namespace.putFile(Path.of(uri.getPath()), inputStream).stream()
+                    .filter(nf -> !nf.isDirectory())
+                    .findFirst()
+                    .orElseThrow();
         } catch (URISyntaxException e) {
             throw new IOException(e);
         }
     }
 
     @Override
-    protected SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, URI resourceBeforeUpdate, URI resourceAfterUpdate) {
+    protected SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, NamespaceFile resourceBeforeUpdate, NamespaceFile resourceAfterUpdate) {
         SyncState syncState;
         if (resourceUri == null) {
             syncState = SyncState.DELETED;
@@ -186,21 +185,24 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     }
 
     @Override
-    protected List<URI> fetchResources(RunContext runContext, String renderedNamespace) throws IOException {
-        return runContext.storage().namespace(renderedNamespace).all(true)
-            .stream()
-            .map(namespaceFile -> namespaceFile.uri())
-            .toList();
+    protected List<NamespaceFile> fetchResources(RunContext runContext, String renderedNamespace) throws IOException {
+        return runContext.storage().namespace(renderedNamespace).all();
     }
 
     @Override
-    protected URI toUri(String renderedNamespace, URI resource) {
+    protected URI toUri(String renderedNamespace, NamespaceFile resource) {
         if (resource == null) {
             return null;
         }
-        NamespaceFile namespaceFile = NamespaceFile.of(renderedNamespace, WindowsUtils.windowsToUnixURI(resource));
-        String trailingSlash = namespaceFile.isDirectory() ? "/" : "";
-        return URI.create(namespaceFile.path(true).toString().replace("\\", "/") + trailingSlash);
+
+        boolean hasTrailingSlash = resource.uri().toString().endsWith("/");
+
+        String path = resource.path();
+        if (hasTrailingSlash && !path.endsWith("/")) {
+            path = path + "/";
+        }
+
+        return NamespaceFile.of(renderedNamespace, path, 1).uri();
     }
 
     @Override
@@ -214,10 +216,8 @@ public class SyncNamespaceFiles extends AbstractSyncTask<URI, SyncNamespaceFiles
     @Getter
     public static class Output extends AbstractSyncTask.Output {
         @Schema(
-            title = "A file containing all changes applied (or not in case of dry run) from Git",
-            description = """
-                The output format is a ION file with one row per file, each row containing the number of added, deleted, and changed lines.
-                A row looks as follows: `{changes:"3",file:"path/to/my/script.py",deletions:"-5",additions:"+10"}`"""
+            title = "Diff of synced Namespace Files",
+            description = "ION file listing per-file sync actions (added, deleted, overwritten)."
         )
         private URI files;
 
