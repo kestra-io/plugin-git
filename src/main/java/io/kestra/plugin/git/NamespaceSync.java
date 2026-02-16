@@ -234,7 +234,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         }
 
         // Fetch Kestra state limited to target namespace only
-        KestraState kestraState = loadKestraState(runContext, rNamespace);
+        KestraState kestraState = loadKestraState(runContext, rNamespace, rOnInvalidSyntax);
         Map<String, byte[]> namespaceFiles = listNamespaceFiles(runContext, rNamespace);
 
         List<DiffLine> diffs = new ArrayList<>();
@@ -323,7 +323,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                                 throw new FlowProcessingException(flowValidated.getConstraints());
                             }
                             fs.importFlow(tenant, gitNode.rawYaml, false);
-                        } catch (FlowProcessingException e) {
+                        } catch (Exception e) {
                             handleInvalid(rc, rInvalid, "FLOW " + key, e);
                         }
                     });
@@ -383,7 +383,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                             }
 
                             fs.importFlow(tenant, gitNode.rawYaml, false);
-                        } catch (FlowProcessingException e) {
+                        } catch (Exception e) {
                             handleInvalid(rc, rInvalid, "FLOW " + key, e);
                         }
                     });
@@ -478,11 +478,19 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     private record KestraState(Map<String, FlowWithSource> flows) {
     }
 
-    private KestraState loadKestraState(RunContext rc, String rootNamespace) {
+    private KestraState loadKestraState(RunContext rc, String rootNamespace, OnInvalidSyntax rOnInvalidSyntax) {
         FlowService fs = flowService(rc);
         String tenant = rc.flowInfo().tenantId();
 
-        Map<String, FlowWithSource> flowsWithSource = fs.findByNamespaceWithSource(tenant, rootNamespace).stream()
+        List<FlowWithSource> allFlows;
+        try {
+            allFlows = fs.findByNamespaceWithSource(tenant, rootNamespace);
+        } catch (Exception e) {
+            handleInvalid(rc, rOnInvalidSyntax, "flows for namespace " + rootNamespace, e);
+            allFlows = List.of();
+        }
+
+        Map<String, FlowWithSource> flowsWithSource = allFlows.stream()
             .collect(Collectors.toMap(f -> key(f.getNamespace(), f.getId()), Function.identity(), (a, b) -> a));
 
         return new KestraState(flowsWithSource);
