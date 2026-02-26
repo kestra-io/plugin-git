@@ -28,7 +28,10 @@ import java.util.stream.Collectors;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.hasItem;
+import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
 
 @KestraTest
 public class SyncNamespaceFilesTest extends AbstractGitTest {
@@ -209,6 +212,34 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
         assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true));
     }
 
+    @Test
+    void secondSyncWithoutGitChanges_ShouldReportUnchangedFiles() throws Exception {
+        var task = SyncNamespaceFiles.builder()
+            .url(new Property<>("{{url}}"))
+            .username(new Property<>("{{pat}}"))
+            .password(new Property<>("{{pat}}"))
+            .branch(new Property<>("{{branch}}"))
+            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .namespace(new Property<>("{{namespace}}"))
+            .build();
+
+        task.run(runContext());
+        var secondRunContext = runContext();
+        var secondSyncOutput = task.run(secondRunContext);
+
+        var secondDiffs = readDiffs(secondRunContext, secondSyncOutput.diffFileUri());
+        assertThat(secondDiffs, hasSize(defaultCaseDiffs(false).size()));
+        assertThat(secondDiffs.stream().map(diff -> diff.get("syncState")).toList(), not(hasItem("OVERWRITTEN")));
+        assertThat(
+            secondDiffs.stream()
+                .filter(diff -> "to_clone/cloned.json".equals(diff.get("gitPath")))
+                .findFirst()
+                .orElseThrow()
+                .get("syncState"),
+            is("UNCHANGED")
+        );
+    }
+
     private static List<Map<String, String>> defaultCaseDiffs(boolean withDeleted) {
         ArrayList<Map<String, String>> diffs = new ArrayList<>(List.of(
                 Map.of("gitPath", "to_clone/_flows/", "syncState", "ADDED", "kestraPath", "/my/namespace/_files/_flows/"),
@@ -257,15 +288,19 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
     }
 
     private static void assertDiffs(RunContext runContext, URI diffFileUri, List<Map<String, String>> expectedDiffs) throws IOException {
-        String diffSummary = IOUtils.toString(runContext.storage().getFile(diffFileUri), StandardCharsets.UTF_8);
-        List<Map<String, String>> diffMaps = diffSummary.lines()
-                .map(Rethrow.throwFunction(diff -> JacksonMapper.ofIon().readValue(
-                        diff,
-                        new TypeReference<Map<String, String>>() {
-                        }
-                )))
-                .toList();
+        List<Map<String, String>> diffMaps = readDiffs(runContext, diffFileUri);
         assertThat(diffMaps, containsInAnyOrder(expectedDiffs.toArray(Map[]::new)));
+    }
+
+    private static List<Map<String, String>> readDiffs(RunContext runContext, URI diffFileUri) throws IOException {
+        String diffSummary = IOUtils.toString(runContext.storage().getFile(diffFileUri), StandardCharsets.UTF_8);
+        return diffSummary.lines()
+            .map(Rethrow.throwFunction(diff -> JacksonMapper.ofIon().readValue(
+                diff,
+                new TypeReference<Map<String, String>>() {
+                }
+            )))
+            .toList();
     }
 
     private void assertNamespaceFileContent(RunContext runContext, String namespaceFileUri, String expectedFileContent) throws IOException {
