@@ -6,8 +6,6 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.storages.Namespace;
 import io.kestra.core.storages.NamespaceFile;
-import io.kestra.core.storages.StorageContext;
-import io.kestra.core.utils.WindowsUtils;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -16,8 +14,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @SuperBuilder(toBuilder = true)
@@ -109,7 +110,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
         description = "Namespace receiving the files; defaults to the current flow namespace."
     )
     @Builder.Default
-    private Property<String> namespace = new Property<>("{{ flow.namespace }}");
+    private Property<String> namespace = Property.ofExpression("{{ flow.namespace }}");
 
     @Schema(
         title = "Git directory for Namespace Files",
@@ -137,24 +138,109 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
 
     @Override
     protected NamespaceFile
-    simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) {
+    simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+        var namespace = runContext.storage().namespace(renderedNamespace);
+        var path = Path.of(uri.getPath());
+        var existingResource = this.findExistingResource(namespace, renderedNamespace, uri);
+
+        if (inputStream == null) {
+            return existingResource.orElseGet(() -> NamespaceFile.of(renderedNamespace, uri));
+        }
+
+        if (existingResource.isPresent() && !existingResource.get().isDirectory()) {
+            if (this.hasSameContent(namespace, path, inputStream)) {
+                return existingResource.get();
+            }
+
+            return NamespaceFile.of(renderedNamespace, uri, existingResource.get().version() + 1);
+        }
+
         return NamespaceFile.of(renderedNamespace, uri);
     }
 
     @Override
-    protected NamespaceFile writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, URISyntaxException {
-        Namespace namespace = runContext.storage().namespace(renderedNamespace);
-        NamespaceFile.of(renderedNamespace, uri);
+    protected NamespaceFile writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+        var namespace = runContext.storage().namespace(renderedNamespace);
+        var path = Path.of(uri.getPath());
+        var existingResource = this.findExistingResource(namespace, renderedNamespace, uri);
+
         try {
-            return inputStream == null ?
-                namespace.createDirectory(Path.of(uri.getPath())) :
-                namespace.putFile(Path.of(uri.getPath()), inputStream).stream()
-                    .filter(nf -> !nf.isDirectory())
-                    .findFirst()
-                    .orElseThrow();
+            if (inputStream == null) {
+                if (existingResource.isPresent()) {
+                    return existingResource.get();
+                }
+                return namespace.createDirectory(path);
+            }
+
+            if (existingResource.isPresent() && !existingResource.get().isDirectory()) {
+                var tempGitFile = runContext.workingDir().createTempFile(".namespace-file-sync").toFile().toPath();
+                try {
+                    Files.copy(inputStream, tempGitFile, StandardCopyOption.REPLACE_EXISTING);
+                    if (this.hasSameContent(namespace, path, tempGitFile)) {
+                        return existingResource.get();
+                    }
+
+                    try (var gitContent = Files.newInputStream(tempGitFile)) {
+                        return this.putFile(namespace, path, gitContent);
+                    }
+                } finally {
+                    Files.deleteIfExists(tempGitFile);
+                }
+            }
+
+            return this.putFile(namespace, path, inputStream);
         } catch (URISyntaxException e) {
             throw new IOException(e);
         }
+    }
+
+    private NamespaceFile putFile(Namespace namespace, Path path, InputStream inputStream) throws IOException, URISyntaxException {
+        return namespace.putFile(path, inputStream).stream()
+            .filter(nf -> !nf.isDirectory())
+            .findFirst()
+            .orElseThrow();
+    }
+
+    private boolean hasSameContent(Namespace namespace, Path path, Path sourceFile) throws IOException {
+        try (var sourceFileContent = Files.newInputStream(sourceFile)) {
+            return this.hasSameContent(namespace, path, sourceFileContent);
+        }
+    }
+
+    private boolean hasSameContent(Namespace namespace, Path path, InputStream sourceContent) throws IOException {
+        try (var existingContent = namespace.getFileContent(path)) {
+            return this.streamsEqual(sourceContent, existingContent);
+        }
+    }
+
+    private boolean streamsEqual(InputStream first, InputStream second) throws IOException {
+        var firstBuffer = new byte[8192];
+        var secondBuffer = new byte[8192];
+
+        while (true) {
+            var firstRead = first.read(firstBuffer);
+            var secondRead = second.read(secondBuffer);
+            if (firstRead != secondRead) {
+                return false;
+            }
+            if (firstRead == -1) {
+                return true;
+            }
+
+            for (var i = 0; i < firstRead; i++) {
+                if (firstBuffer[i] != secondBuffer[i]) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    private Optional<NamespaceFile> findExistingResource(Namespace namespace, String renderedNamespace, URI uri) throws IOException {
+        var targetUri = this.toUri(renderedNamespace, NamespaceFile.of(renderedNamespace, uri));
+        return namespace.all()
+            .stream()
+            .filter(resource -> Objects.equals(this.toUri(renderedNamespace, resource), targetUri))
+            .findFirst();
     }
 
     @Override
@@ -164,8 +250,9 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
             syncState = SyncState.DELETED;
         } else if (resourceBeforeUpdate == null) {
             syncState = SyncState.ADDED;
+        } else if (Objects.equals(resourceBeforeUpdate.uri(), resourceAfterUpdate.uri())) {
+            syncState = SyncState.UNCHANGED;
         } else {
-            // here we don't want to query the content of the file to check if it has changed
             syncState = SyncState.OVERWRITTEN;
         }
 
