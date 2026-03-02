@@ -31,6 +31,7 @@ import org.eclipse.jgit.transport.RemoteRefUpdate;
 import java.io.*;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -858,7 +859,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             return files;
         }
 
-        try (var paths = Files.walk(filesDir)) {
+        try (var paths = Files.walk(filesDir, FileVisitOption.FOLLOW_LINKS)) {
             paths.filter(Files::isRegularFile)
                 .forEach(p -> {
                     try {
