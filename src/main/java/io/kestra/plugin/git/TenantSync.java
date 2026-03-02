@@ -907,10 +907,15 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
             var filesApi = kestraClient.files();
             var path = Path.of(rel);
+            Path parent = path.getParent();
 
-            String directory = path.getParent() != null ? path.getParent().toString().replace("\\", "/") : null;
-            if (directory != null) {
-                filesApi.createNamespaceDirectory(namespace, tenant, directory);
+            if (parent != null) {
+                Path current = null;
+
+                for (Path part : parent) {
+                    current = (current == null) ? part : current.resolve(part);
+                    filesApi.createNamespaceDirectory(namespace, tenant, current.toString().replace("\\", "/"));
+                }
             }
 
             filesApi.createNamespaceFile(namespace, normalizeNamespacePath(rel), tenant, temp);
