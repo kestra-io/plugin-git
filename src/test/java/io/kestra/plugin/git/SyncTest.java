@@ -351,7 +351,7 @@ class SyncTest extends AbstractGitTest {
             .gitDirectory(Property.ofValue("to_clone"))
             .dryRun(Property.ofValue(true))
             .build();
-        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Collections.emptyMap());
+        RunContext runContext = TestsUtils.mockRunContext(TenantService.MAIN_TENANT, runContextFactory, task, Collections.emptyMap());
         task.run(runContext);
 
         assertThat(flowRepositoryInterface.findAllForAllTenants(), hasSize(3));
