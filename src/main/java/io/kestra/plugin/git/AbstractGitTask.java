@@ -150,7 +150,7 @@ public abstract class AbstractGitTask extends Task {
     /**
      * Configure a secure SSLContext based on either:
      * - the JVM default truststore ("JVM" key), or
-     * - a composite trust manager (PEM trust + JVM trust) when a PEM path is provided ("PEM:<sha256>").
+     * - a composite trust manager (PEM trust + JVM trust) when a PEM path is provided ("PEM:{@literal <sha256>}").
      * This method is idempotent and will reconfigure the global SSLContext if and only if the desired key changes.
      */
     protected void configureEnvironmentWithSsl(RunContext runContext) throws Exception {
