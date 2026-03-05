@@ -9,6 +9,7 @@ import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.serializers.YamlParser;
 import io.kestra.plugin.git.services.GitService;
 import io.kestra.sdk.KestraClient;
@@ -798,7 +799,11 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                 pagedResults = kestraClient.dashboards().searchDashboards(page, size, runContext.flowInfo().tenantId(), null, null);
 
                 pagedResults.getResults().forEach(dash -> {
-                    dashboards.put(dash.getTitle(), dash.getSourceCode());
+                    try {
+                        dashboards.put(dash.getTitle(), JacksonMapper.ofYaml().writeValueAsString(dash));
+                    } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                        throw new RuntimeException("Failed to serialize dashboard " + dash.getTitle(), e);
+                    }
                 });
 
                 page++;
