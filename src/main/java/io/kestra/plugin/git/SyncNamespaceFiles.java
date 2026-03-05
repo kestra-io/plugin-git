@@ -218,12 +218,15 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
         var secondBuffer = new byte[8192];
 
         while (true) {
-            var firstRead = first.read(firstBuffer);
-            var secondRead = second.read(secondBuffer);
+            // readNBytes blocks until len bytes are read or EOF, unlike read() which may return fewer bytes
+            // even when more data is available. Using read() caused false mismatches when comparing streams
+            // with different buffering behaviors (e.g. FileInputStream vs storage-backed stream).
+            var firstRead = first.readNBytes(firstBuffer, 0, firstBuffer.length);
+            var secondRead = second.readNBytes(secondBuffer, 0, secondBuffer.length);
             if (firstRead != secondRead) {
                 return false;
             }
-            if (firstRead == -1) {
+            if (firstRead == 0) {
                 return true;
             }
 
