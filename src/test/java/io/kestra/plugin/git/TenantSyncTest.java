@@ -8,12 +8,16 @@ import io.kestra.core.tenant.TenantService;
 import io.kestra.sdk.KestraClient;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayOutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystemException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipEntry;
@@ -24,6 +28,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @KestraTest
 class TenantSyncTest {
@@ -120,6 +125,35 @@ class TenantSyncTest {
             io.kestra.core.runners.RunContext.class,
             String.class,
             TenantSync.OnInvalidSyntax.class
+        );
+        method.setAccessible(true);
+        return method;
+    }
+
+    @Test
+    void shouldReadNamespaceFilesFromSymlinkedDirectories(@TempDir Path tempDir) throws Exception {
+        Path filesDir = Files.createDirectories(tempDir.resolve("my.namespace").resolve("files"));
+        Path externalDir = Files.createDirectories(tempDir.resolve("external"));
+        Files.writeString(externalDir.resolve("script.py"), "print('hello')", StandardCharsets.UTF_8);
+
+        Path symlink = filesDir.resolve("linked");
+        try {
+            Files.createSymbolicLink(symlink, externalDir);
+        } catch (UnsupportedOperationException | SecurityException | FileSystemException ignored) {}
+
+        var task = TenantSync.builder().build();
+        var method = fetchReadGitFilesMethod();
+
+        @SuppressWarnings("unchecked")
+        Map<String, byte[]> gitFiles = (Map<String, byte[]>) method.invoke(task, filesDir);
+
+        assertEquals("print('hello')", new String(gitFiles.get("linked/script.py"), StandardCharsets.UTF_8));
+    }
+
+    private static Method fetchReadGitFilesMethod() throws Exception {
+        var method = TenantSync.class.getDeclaredMethod(
+            "readGitFiles",
+            Path.class
         );
         method.setAccessible(true);
         return method;

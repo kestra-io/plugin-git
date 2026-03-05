@@ -36,6 +36,7 @@ import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -527,7 +528,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         Path namespaceFilesRoot = baseDir.resolve(namespace).resolve(FILES_DIR);
         if (!Files.exists(namespaceFilesRoot)) return out;
 
-        try (Stream<Path> paths = Files.walk(namespaceFilesRoot, MAX_VALUE)) {
+        try (Stream<Path> paths = Files.walk(namespaceFilesRoot, MAX_VALUE, FileVisitOption.FOLLOW_LINKS)) {
             paths.filter(Files::isRegularFile)
                 .forEach(throwConsumer(p -> {
                     Path rel = namespaceFilesRoot.relativize(p);

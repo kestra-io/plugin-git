@@ -20,6 +20,7 @@ import org.eclipse.jgit.api.Git;
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -81,7 +82,11 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
     }
 
     protected Map<URI, Supplier<InputStream>> gitResourcesContentByUri(Path baseDirectory, RunContext runContext) throws IOException, IllegalVariableEvaluationException {
-        try (Stream<Path> paths = Files.walk(baseDirectory, runContext.render(this.traverseDirectories()).as(Boolean.class).orElseThrow() ? MAX_VALUE : 1)) {
+        try (Stream<Path> paths = Files.walk(
+            baseDirectory,
+            runContext.render(this.traverseDirectories()).as(Boolean.class).orElseThrow() ? MAX_VALUE : 1,
+            FileVisitOption.FOLLOW_LINKS
+        )) {
             Stream<Path> filtered = paths.skip(1);
             KestraIgnore kestraIgnore = new KestraIgnore(baseDirectory);
             filtered = filtered.filter(path -> !kestraIgnore.isIgnoredFile(path.toString(), true));

@@ -168,7 +168,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
             .findAllFilesMatching(matcher)
             .stream()
             .collect(Collectors.toMap(
-                nsFile -> baseDirectory.resolve(nsFile.path(false)),
+                nsFile -> baseDirectory.resolve(nsFile.path()),
                 throwFunction(nsFile -> throwSupplier(() -> storage.getFileContent(Path.of(nsFile.path()))))
             ));
 

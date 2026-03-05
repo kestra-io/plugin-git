@@ -31,6 +31,7 @@ import org.eclipse.jgit.transport.RemoteRefUpdate;
 import java.io.*;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -858,7 +859,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             return files;
         }
 
-        try (var paths = Files.walk(filesDir)) {
+        try (var paths = Files.walk(filesDir, FileVisitOption.FOLLOW_LINKS)) {
             paths.filter(Files::isRegularFile)
                 .forEach(p -> {
                     try {
@@ -906,10 +907,15 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
             var filesApi = kestraClient.files();
             var path = Path.of(rel);
+            Path parent = path.getParent();
 
-            String directory = path.getParent() != null ? path.getParent().toString().replace("\\", "/") : null;
-            if (directory != null) {
-                filesApi.createNamespaceDirectory(namespace, tenant, directory);
+            if (parent != null) {
+                Path current = null;
+
+                for (Path part : parent) {
+                    current = (current == null) ? part : current.resolve(part);
+                    filesApi.createNamespaceDirectory(namespace, tenant, current.toString().replace("\\", "/"));
+                }
             }
 
             filesApi.createNamespaceFile(namespace, normalizeNamespacePath(rel), tenant, temp);

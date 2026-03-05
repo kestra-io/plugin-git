@@ -4,6 +4,7 @@ import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.sdk.KestraClient;
+import io.kestra.core.runners.SDK;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -51,10 +52,30 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
                 builder.basicAuth(maybeUsername.get(), maybePassword.get());
                 return builder.build();
             }
-            throw new IllegalArgumentException("Both username and password are required for HTTP Basic authentication");
+
+            if (maybeUsername.isPresent() || maybePassword.isPresent()) {
+                throw new IllegalArgumentException("Both username and password are required for HTTP Basic authentication");
+            }
+
+            if (runContext.render(auth.auto).as(Boolean.class).orElse(Boolean.TRUE)) {
+                Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
+                if (autoAuth.isPresent()) {
+                    if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+                        return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
+                    }
+                }
+            }
+            throw new IllegalArgumentException("No authentication method provided");
         } else {
-            throw new IllegalArgumentException("Auth is required");
+            // try automatic authentication
+            Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
+            if (autoAuth.isPresent()) {
+                if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+                    return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
+                }
+            }
         }
+        return builder.build();
     }
 
     @Builder
@@ -65,5 +86,16 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
 
         @Schema(title = "Password for HTTP Basic authentication.")
         private Property<String> password;
+
+        @Schema(
+            title = "Automatically retrieve credentials from Kestra's configuration if available",
+            description = """
+                The default configuration can be configured globally inside the Kestra configuration file:
+                - Set `kestra.tasks.sdk.authentication.api-token` to use an API token
+                - Set `kestra.tasks.sdk.authentication.username` and `kestra.tasks.sdk.authentication.password` for HTTP basic authentication
+                The Enterprise edition also provides setting a default configuration at the Namespace of Tenant level by an administrator."""
+        )
+        @Builder.Default
+        private Property<Boolean> auto = Property.ofValue(Boolean.TRUE);
     }
 }
