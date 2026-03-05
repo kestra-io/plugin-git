@@ -9,6 +9,7 @@ import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.YamlParser;
 import io.kestra.plugin.git.services.GitService;
 import io.kestra.sdk.KestraClient;
 import io.kestra.sdk.api.FilesApi;
@@ -30,10 +31,13 @@ import org.eclipse.jgit.transport.RemoteRefUpdate;
 import java.io.*;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
 
@@ -43,8 +47,8 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Unidirectional tenant sync between Kestra and Git.",
-    description = "Synchronizes ALL namespaces, flows, files, and dashboards between Kestra and Git."
+    title = "Sync an entire tenant with Git",
+    description = "Synchronizes all namespaces, flows, Namespace Files, and dashboards for one tenant. Direction is set by `sourceOfTruth`; deletions follow `whenMissingInSource` with `protectedNamespaces` safeguards. Supports dry-run diff output and optional subdirectory via `gitDirectory`."
 )
 @Plugin(
     priority = Plugin.Priority.SECONDARY,
@@ -105,58 +109,72 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
     public enum OnInvalidSyntax {SKIP, WARN, FAIL}
 
     @Schema(
-        title = "The branch to read from / write to (required).",
-        description = "Branch prefixed with `origin/` or `refs/heads/` are not supported."
+        title = "Branch to sync",
+        description = "Required branch name (no `origin/` or `refs/heads/` prefixes); must exist on the remote."
     )
     @NotNull
     private Property<String> branch;
 
     @Schema(
-        title = "Subdirectory inside the repo used to store Kestra code and files; if empty, repo root is used.",
-        description = """
-                This is the base folder in your Git repository where Kestra will look for code and files.
-                If you don't set it, the repo root will be used. Inside that folder, Kestra always expects
-                a structure like <namespace>/flows, <namespace>/files, etc.
-
-                | gitDirectory | namespace       | Expected Git path                        |
-                | ------------ | --------------- | -----------------------------------------|
-                | (not set)    | company         | company/flows/my-flow.yaml               |
-                | monorepo     | system          | monorepo/system/flows/my-flow.yaml       |
-                | projectA     | company.team    | projectA/company.team/flows/my-flow.yaml |
-            """
+        title = "Git base directory",
+        description = "Optional subfolder in the repo; default is repo root. Within it, namespaces are under `<namespace>/flows` and `<namespace>/files`, dashboards under `_global/dashboards`."
     )
     private Property<String> gitDirectory;
 
-    @Schema(title = "Select the source of truth.")
+    @Schema(
+        title = "Source of truth",
+        description = "KESTRA (default) pushes Kestra state to Git; GIT applies Git state into Kestra."
+    )
     @Builder.Default
     private Property<SourceOfTruth> sourceOfTruth = Property.ofValue(SourceOfTruth.KESTRA);
 
-    @Schema(title = "Behavior when an object is missing from the selected source of truth.")
+    @Schema(
+        title = "Handling when missing in source",
+        description = "Default DELETE. Options: DELETE removes from target, KEEP leaves untouched, FAIL stops the run. Protected namespaces override deletions."
+    )
     @Builder.Default
     private Property<WhenMissingInSource> whenMissingInSource = Property.ofValue(WhenMissingInSource.DELETE);
 
-    @Schema(title = "Namespaces protected from deletion regardless of policies.")
+    @Schema(
+        title = "Protected namespaces",
+        description = "List that cannot be deleted even when policy is DELETE; defaults to `system`."
+    )
     @Builder.Default
     private Property<List<String>> protectedNamespaces = Property.ofValue(List.of("system"));
 
-    @Schema(title = "If true, only compute the plan and output a diff without applying changes.")
+    @Schema(
+        title = "Dry run only",
+        description = "When true, produces a diff file without applying changes or pushing."
+    )
     @Builder.Default
     private Property<Boolean> dryRun = Property.ofValue(false);
 
-    @Schema(title = "Behavior when encountering invalid syntax while syncing.")
+    @Schema(
+        title = "On invalid syntax",
+        description = "Default FAIL. Options: SKIP, WARN, FAIL."
+    )
     @Builder.Default
     private Property<OnInvalidSyntax> onInvalidSyntax = Property.ofValue(OnInvalidSyntax.FAIL);
 
-    @Schema(title = "Git commit message when pushing back to Git.")
+    @Schema(
+        title = "Git commit message",
+        description = "Used when committing back to Git; defaults to \"Tenant sync from Kestra\"."
+    )
     private Property<String> commitMessage;
 
-    @Schema(title = "The commit author email.")
+    @Schema(title = "Commit author email")
     private Property<String> authorEmail;
 
-    @Schema(title = "The commit author name (defaults to username if null).")
+    @Schema(
+        title = "Commit author name",
+        description = "Defaults to `username` when not set."
+    )
     private Property<String> authorName;
 
-    @Schema(title = "Whether to clone submodules")
+    @Schema(
+        title = "Clone submodules",
+        description = "Default false; enable to fetch nested submodules."
+    )
     protected Property<Boolean> cloneSubmodules;
 
     // Directory names
@@ -228,7 +246,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                 }
             }
 
-            List<FlowWithSource> kestraFlows = fetchFlowsFromKestra(kestraClient, runContext, namespace);
+            List<FlowWithSource> kestraFlows = fetchFlowsFromKestra(kestraClient, runContext, namespace, rOnInvalidSyntax);
             Map<String, byte[]> kestraFiles = listNamespaceFiles(kestraClient, runContext, namespace);
 
             planNamespace(
@@ -714,7 +732,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         }
     }
 
-    private List<FlowWithSource> fetchFlowsFromKestra(KestraClient kestraClient, RunContext runContext, String namespace) {
+    private List<FlowWithSource> fetchFlowsFromKestra(KestraClient kestraClient, RunContext runContext, String namespace, OnInvalidSyntax rOnInvalidSyntax) {
         try {
             // Export all flows from Kestra for the given namespace (including sub-namespaces)
             byte[] zippedFlows = kestraClient.flows().exportFlowsByQuery(
@@ -726,19 +744,31 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
             try (
                 var bais = new ByteArrayInputStream(zippedFlows);
-                var zis = new java.util.zip.ZipInputStream(bais)
+                var zis = new ZipInputStream(bais)
             ) {
-                java.util.zip.ZipEntry entry;
+                ZipEntry entry;
                 while ((entry = zis.getNextEntry()) != null) {
                     if (!entry.getName().endsWith(".yml") && !entry.getName().endsWith(".yaml")) {
                         continue;
                     }
 
-                    String yaml = new String(zis.readAllBytes(), StandardCharsets.UTF_8);
+                    var entryName = entry.getName();
+                    var yaml = new String(zis.readAllBytes(), StandardCharsets.UTF_8);
 
-                    io.kestra.core.models.flows.Flow parsed = io.kestra.core.serializers.YamlParser.parse(yaml, io.kestra.core.models.flows.Flow.class);
+                    io.kestra.core.models.flows.Flow parsed;
+                    try {
+                        parsed = YamlParser.parse(yaml, io.kestra.core.models.flows.Flow.class);
 
-                    if (!namespace.equals(parsed.getNamespace())) {
+                        if (!namespace.equals(parsed.getNamespace())) {
+                            continue;
+                        }
+
+                        var flowValidated = kestraClient.flows().validateFlows(runContext.flowInfo().tenantId(), yaml).getFirst();
+                        if (flowValidated.getConstraints() != null) {
+                            throw new FlowProcessingException(flowValidated.getConstraints());
+                        }
+                    } catch (Exception e) {
+                        handleInvalid(runContext, rOnInvalidSyntax, "FLOW from entry " + entryName, e);
                         continue;
                     }
 
@@ -748,6 +778,9 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
             return flows;
 
+        } catch (KestraRuntimeException e) {
+            // Re-throw KestraRuntimeException from handleInvalid(FAIL) without wrapping
+            throw e;
         } catch (Exception e) {
             throw new KestraRuntimeException("Failed to export flows from Kestra for namespace " + namespace, e);
         }
@@ -826,7 +859,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             return files;
         }
 
-        try (var paths = Files.walk(filesDir)) {
+        try (var paths = Files.walk(filesDir, FileVisitOption.FOLLOW_LINKS)) {
             paths.filter(Files::isRegularFile)
                 .forEach(p -> {
                     try {
@@ -874,10 +907,15 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
             var filesApi = kestraClient.files();
             var path = Path.of(rel);
+            Path parent = path.getParent();
 
-            String directory = path.getParent() != null ? path.getParent().toString().replace("\\", "/") : null;
-            if (directory != null) {
-                filesApi.createNamespaceDirectory(namespace, tenant, directory);
+            if (parent != null) {
+                Path current = null;
+
+                for (Path part : parent) {
+                    current = (current == null) ? part : current.resolve(part);
+                    filesApi.createNamespaceDirectory(namespace, tenant, current.toString().replace("\\", "/"));
+                }
             }
 
             filesApi.createNamespaceFile(namespace, normalizeNamespacePath(rel), tenant, temp);
@@ -965,11 +1003,11 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         @Schema(title = "A file containing all changes applied (or not in case of dry run) to/from Git.")
         private URI diff;
 
-        @Schema(title = "ID of the commit pushed (if any).")
+        @Schema(title = "ID of the commit pushed (if any)")
         @Nullable
         private String commitId;
 
-        @Schema(title = "URL to the commit (if any).")
+        @Schema(title = "URL to the commit (if any)")
         @Nullable
         private String commitURL;
     }

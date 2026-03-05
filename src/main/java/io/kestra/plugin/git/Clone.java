@@ -21,7 +21,8 @@ import java.nio.file.Path;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Clone a Git repository."
+    title = "Clone a Git repository",
+    description = "Clones a repository over HTTP(S) or SSH, optionally checking out a branch, tag, or commit. Defaults to a shallow clone (depth 1) unless a tag or commit is requested; set `cloneSubmodules` to fetch submodules."
 )
 @Plugin(
     examples = {
@@ -33,10 +34,13 @@ import java.nio.file.Path;
                 namespace: company.team
 
                 tasks:
-                  - id: clone
-                    type: io.kestra.plugin.git.Clone
-                    url: https://github.com/dbt-labs/jaffle_shop
-                    branch: main
+                  - id: wdir
+                    type: io.kestra.plugin.core.flow.WorkingDirectory
+                    tasks:
+                      - id: clone
+                          type: io.kestra.plugin.git.Clone
+                          url: https://github.com/kestra-io/blueprints
+                          branch: main
                 """
         ),
         @Example(
@@ -47,12 +51,15 @@ import java.nio.file.Path;
                 namespace: company.team
 
                 tasks:
-                  - id: clone
-                    type: io.kestra.plugin.git.Clone
-                    url: https://github.com/kestra-io/examples
-                    branch: main
-                    username: git_username
-                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                  - id: wdir
+                    type: io.kestra.plugin.core.flow.WorkingDirectory
+                    tasks:
+                      - id: clone
+                        type: io.kestra.plugin.git.Clone
+                        url: https://github.com/kestra-io/blueprints
+                        branch: main
+                        username: git_username
+                        password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
                 """
         ),
         @Example(
@@ -63,16 +70,19 @@ import java.nio.file.Path;
                 namespace: company.team
 
                 tasks:
-                  - id: clone
-                    type: io.kestra.plugin.git.Clone
-                    url: git@github.com:kestra-io/kestra.git
-                    directory: kestra
-                    privateKey: <keyfile_content>
-                    passphrase: <passphrase>
+                 - id: wdir
+                    type: io.kestra.plugin.core.flow.WorkingDirectory
+                    tasks:
+                      - id: clone
+                        type: io.kestra.plugin.git.Clone
+                        url: git@github.com:kestra-io/kestra.git
+                        directory: kestra
+                        privateKey: "{{ secret('SSH_PRIVATE_KEY') }}"
+                        passphrase: "{{ secret('SSH_PASSPHRASE') }}"
                 """
         ),
         @Example(
-            title = "Clone a GitHub repository and run a Python ETL script. Note that the `Worker` task is required so that the Python script shares the same local file system with files cloned from GitHub in the previous task.",
+            title = "Clone a GitHub repository and run a Python ETL script. Note that the `WorkingDirectory` task is required so that the Python script shares the same local file system with files cloned from GitHub in the previous task.",
             full = true,
             code = """
                 id: git_python
@@ -88,8 +98,9 @@ import java.nio.file.Path;
                         branch: main
                       - id: python_etl
                         type: io.kestra.plugin.scripts.python.Commands
-                        beforeCommands:
-                          - pip install requests pandas > /dev/null
+                        dependencies:
+                          - requests
+                          - pandas
                         commands:
                           - python examples/scripts/etl_script.py
                 """
@@ -112,28 +123,34 @@ import java.nio.file.Path;
 )
 public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Output> {
     @Schema(
-        title = "The optional directory associated with the clone operation",
-        description = "If the directory isn't set, the current directory will be used."
+        title = "Target directory",
+        description = "Subdirectory under the working directory where the repo is cloned; defaults to the working directory root."
     )
     private Property<String> directory;
 
     @Schema(
-        title = "The branch to checkout – ignored if \"commit\" is provided."
+        title = "Branch to checkout",
+        description = "Used only when no commit or tag is specified."
     )
     private Property<String> branch;
 
     @Schema(
-        title = "Creates a shallow clone with a history truncated to the specified number of commits.\nIgnored when `commit` is provided to guarantee the commit is available.")
+        title = "Shallow clone depth",
+        description = "Defaults to 1. Ignored when `commit` or `tag` is set to ensure history is available."
+    )
     @Builder.Default
     private Property<Integer> depth = Property.ofValue(1);
 
     @Schema(
-        title = "Commit SHA1 to checkout (detached HEAD) – works also with a shortened SHA1.",
-        description = "If set, the repository is cloned and the specified commit is checked out. This takes precedence over `branch` and disables shallow cloning to ensure the commit is present."
+        title = "Commit SHA to checkout",
+        description = "Detached HEAD checkout; short SHA allowed. Overrides `branch` and disables shallow clone."
     )
     private Property<String> commit;
 
-    @Schema(title = "Tag to checkout – ignored if `commit` is provided.")
+    @Schema(
+        title = "Tag to checkout",
+        description = "Ignored when `commit` is set; performs a full fetch to reach the tag."
+    )
     private Property<String> tag;
 
     @Override
@@ -210,7 +227,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     @Getter
     public static class Output implements io.kestra.core.models.tasks.Output {
         @Schema(
-            title = "The path where the repository is cloned"
+            title = "Path where the repository is cloned"
         )
         private final String directory;
     }

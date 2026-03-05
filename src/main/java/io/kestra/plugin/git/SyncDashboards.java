@@ -30,12 +30,8 @@ import java.util.regex.Pattern;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Sync dashboards from Git to Kestra.",
-    description = """
-        This task syncs dashboards from a given Git branch to Kestra.
-        If the `delete` property is set to true, any dashboard available in Kestra but not present in the `gitDirectory` will be deleted, maintaining Git as the single source of truth for your dashboards.
-        Check the [Version Control with Git](https://kestra.io/docs/version-control-cicd/git) documentation for more details.
-        """
+    title = "Sync dashboards from Git",
+    description = "Imports dashboards from a Git branch. Can delete dashboards missing in Git, respects `.kestraignore`, and supports dry-run diff output."
 )
 @Plugin(
     examples = {
@@ -73,19 +69,22 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
     public static final Pattern NAMESPACE_FINDER_PATTERN = Pattern.compile("(?m)^namespace: (.*)$");
 
     @Schema(
-        title = "The branch from which dashboards will be synced to Kestra."
+        title = "Branch to sync",
+        description = "Defaults to `main`."
     )
     @Builder.Default
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
-        title = "Directory from which dashboards should be synced."
+        title = "Git directory for dashboards",
+        description = "Relative path containing dashboard YAML; defaults to `_dashboards`."
     )
     @Builder.Default
     private Property<String> gitDirectory = Property.ofValue("_dashboards");
 
     @Schema(
-        title = "Whether you want to delete dashboards present in kestra but not present in Git."
+        title = "Delete dashboards missing in Git",
+        description = "Default false to avoid destructive syncs."
     )
     @Builder.Default
     private Property<Boolean> delete = Property.ofValue(false);
@@ -193,11 +192,8 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
     @Getter
     public static class Output extends AbstractSyncTask.Output {
         @Schema(
-            title = "A file containing all changes applied (or not in case of dry run) from Git.",
-            description = """
-                The output format is a ION file with one row per synced flow, each row containing the information whether the flow would be added, deleted, or overwritten in Kestra by the state of what's in Git.
-
-                A row looks as follows: `{gitPath:"flows/flow1.yml",syncState:"ADDED",flowId:"flow1",namespace:"prod",revision:1}`"""
+            title = "Diff of synced dashboards",
+            description = "ION file listing per-dashboard sync actions (added, deleted, updated, unchanged)."
         )
         private URI dashboards;
 

@@ -37,7 +37,8 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Commit and push your saved dashboards to a Git repository."
+    title = "Push dashboards to Git",
+    description = "Commits saved dashboards to Git under `gitDirectory` (default `_dashboards`), filtered by glob patterns. Creates the branch if missing; supports dry-run diff generation."
 )
 @Plugin(
     examples = {
@@ -71,16 +72,23 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
     }
 )
 public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
-    @Schema(title = "The branch to which dashboards should be committed and pushed")
+    @Schema(
+        title = "Branch to push dashboards",
+        description = "Defaults to `main`; created if it does not exist."
+    )
     @Builder.Default
     private Property<String> branch = Property.ofValue("main");
 
-    @Schema(title = "Directory to which dashboards should be pushed")
+    @Schema(
+        title = "Dashboard destination directory",
+        description = "Relative path inside the repository; defaults to `_dashboards`."
+    )
     @Builder.Default
     private Property<String> gitDirectory = Property.ofValue("_dashboards");
 
     @Schema(
-        title = "List of glob patterns or a single one that declares which dashboards should be included in the Git commit",
+        title = "Dashboards to include",
+        description = "Glob pattern(s) matching dashboard IDs; defaults to all (`**`).",
         oneOf = {String.class, String[].class},
         defaultValue = "**"
     )

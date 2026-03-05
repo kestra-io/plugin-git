@@ -49,11 +49,8 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
 @Deprecated(since = "1.0.0", forRemoval = true)
 @Schema(
     deprecated = true,
-    title = "Commit and push files to a Git repository.",
-    description = """
-        Replaced by [PushFlows](https://kestra.io/plugins/plugin-git/tasks/io.kestra.plugin.git.pushflows) and [PushNamespaceFiles](https://kestra.io/plugins/plugin-git/tasks/io.kestra.plugin.git.pushnamespacefiles) for flow and namespace files push scenario. You can add `inputFiles` to be committed and pushed. Furthermore, you can use this task in combination with the `Clone` task so that you can first clone the repository, then add or modify files and push to Git afterwards. " +
-        "Check the examples below as well as the [Version Control with Git](https://kestra.io/docs/developer-guide/git) documentation for more information. Git does not guarantee the order of push operations to a remote repository, which can lead to potential conflicts when multiple users or flows attempt to push changes simultaneously.
-        To minimize the risk of data loss and merge conflicts, it is strongly recommended to use sequential workflows or push changes to separate branches."""
+    title = "Deprecated: push mixed files to Git",
+    description = "Use PushFlows for flows and PushNamespaceFiles for namespace files. Keeps committing working-directory changes (including `inputFiles`) and pushes to Git; branch is created if missing. Prefer serialized pushes to avoid conflicts."
 )
 @Plugin(
     examples = {
@@ -128,14 +125,14 @@ import static org.eclipse.jgit.lib.Constants.R_HEADS;
 )
 public class Push extends AbstractCloningTask implements RunnableTask<Push.Output>, NamespaceFilesInterface, InputFilesInterface {
     @Schema(
-        title = "The optional directory associated with the push operation",
-        description = "If the directory isn't set, the current directory will be used."
+        title = "Target directory",
+        description = "Working-directory subfolder containing the Git repo; defaults to the working directory root."
     )
     private Property<String> directory;
 
     @Schema(
-        title = "The branch to which files should be committed and pushed",
-        description = "If the branch doesn't exist yet, it will be created."
+        title = "Branch to push",
+        description = "Created if absent."
     )
     @NotNull
     private Property<String> branch;
@@ -158,8 +155,8 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
     private Object inputFiles;
 
     @Schema(
-        title = "Patterns of files to add to the commit – default is `.` which means all files.",
-        description = "A directory name (e.g., `dir` to add `dir/file1` and `dir/file2`) can also be given to add all files in the directory, recursively. File globs (e.g., `*.py`) are not yet supported."
+        title = "File patterns to stage",
+        description = "Defaults to `.` (all files). Directories are added recursively; globs are not supported."
     )
     @Builder.Default
     private Property<List<String>> addFilesPattern = Property.ofValue(List.of("."));
@@ -350,7 +347,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
     @Getter
     public static class Output implements io.kestra.core.models.tasks.Output {
         @Schema(
-            title = "ID of the commit pushed."
+            title = "ID of the commit pushed"
         )
         @Nullable
         private final String commitId;
@@ -363,21 +360,22 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
     @Jacksonized
     public static class FlowFiles {
         @Schema(
-            title = "Whether to push flows as YAML files to Git"
+            title = "Push flows from the current namespace"
         )
         @Builder.Default
         @JsonInclude(JsonInclude.Include.NON_NULL)
         private Property<Boolean> enabled = Property.ofValue(true);
 
         @Schema(
-            title = "Whether flows from child namespaces should be included"
+            title = "Include child namespaces"
         )
         @Builder.Default
         @JsonInclude(JsonInclude.Include.NON_NULL)
         private Property<Boolean> childNamespaces = Property.ofValue(true);
 
         @Schema(
-            title = "To which directory flows should be pushed (relative to `directory`)"
+            title = "Flow destination directory",
+            description = "Relative to `directory`; defaults to `_flows`."
         )
         @Builder.Default
         private Property<String> gitDirectory = Property.ofValue("_flows");
@@ -386,10 +384,10 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
     @Builder
     @Getter
     public static class Author {
-        @Schema(title = "The commit author name, if null the username will be used instead")
+        @Schema(title = "Commit author name (defaults to username)")
         private Property<String> name;
 
-        @Schema(title = "The commit author email, if null no author will be set on this commit")
+        @Schema(title = "Commit author email (optional)")
         private Property<String> email;
     }
 }

@@ -33,11 +33,8 @@ import static io.kestra.core.utils.Rethrow.*;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Commit and push your saved flows to a Git repository.",
-    description = """
-        Using this task, you can push one or more flows from a given namespace (and optionally also child namespaces) to Git.
-        Check the examples below to see how you can push all flows or only specific ones.
-        To learn more, check the [Version Control with Git](https://kestra.io/docs/developer-guide/git) guide."""
+    title = "Push flows to Git",
+    description = "Exports saved flows from `sourceNamespace` (optionally child namespaces) into `gitDirectory` (default `_flows`) and pushes to Git. Can rewrite namespaces to `targetNamespace`; branch is created if missing and dry-run writes only the diff."
 )
 @Plugin(
     examples = {
@@ -111,42 +108,35 @@ import static io.kestra.core.utils.Rethrow.*;
 )
 public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     @Schema(
-        title = "The branch to which files should be committed and pushed",
-        description = "If the branch doesn't exist yet, it will be created."
+        title = "Branch to push flows",
+        description = "Defaults to `main`; created if absent."
     )
     @Builder.Default
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
-        title = "Directory to which flows should be pushed",
-        description = """
-            If not set, flows will be pushed to a Git directory named _flows and will optionally also include subdirectories named after the child namespaces.
-            If you prefer, you can specify an arbitrary path, e.g., kestra/flows, allowing you to push flows to that specific Git directory.
-            If the `includeChildNamespaces` property is set to true, this task will also push all flows from child namespaces into their corresponding nested directories, e.g., flows from the child namespace called prod.marketing will be added to the marketing folder within the _flows folder.
-            Note that the targetNamespace (here prod) is specified in the flow code; therefore, kestra will not create the prod directory within _flows. You can use the PushFlows task to push flows from the sourceNamespace, and use SyncFlows to then sync PR-approved flows to the targetNamespace, including all child namespaces."""
+        title = "Flow destination directory",
+        description = "Relative path inside the repo; defaults to `_flows`. Child namespaces are nested under this path when `includeChildNamespaces` is true."
     )
     @Builder.Default
     private Property<String> gitDirectory = Property.ofValue("_flows");
 
     @Schema(
-        title = "The source namespace from which flows should be synced to the `gitDirectory`"
+        title = "Source namespace",
+        description = "Namespace to export flows from; defaults to the current flow namespace."
     )
     @Builder.Default
     private Property<String> sourceNamespace = new Property<>("{{ flow.namespace }}");
 
     @Schema(
-        title = "The target namespace, intended as the production namespace",
-        description = "If set, the `sourceNamespace` will be overwritten to the `targetNamespace` in the flow source code to prepare your branch for merging into the production namespace."
+        title = "Target namespace override",
+        description = "If set, rewrites the `namespace` field in exported flows to this value."
     )
     private Property<String> targetNamespace;
 
     @Schema(
-        title = "List of glob patterns or a single one that declare which flows should be included in the Git commit",
-        description = """
-            By default, all flows from the specified sourceNamespace will be pushed (and optionally adjusted to match the targetNamespace before pushing to Git).
-            If you want to push only the current flow, you can use the "{{flow.id}}" expression or specify the flow ID explicitly, e.g. myflow.
-            Given that this is a list of glob patterns, you can include as many flows as you wish, provided that the user is authorized to access that namespace.
-            Note that each glob pattern try to match the file name OR the relative path starting from `gitDirectory`""",
+        title = "Flows to include",
+        description = "Glob pattern(s) against flow IDs; defaults to all (`**`).",
         oneOf = {String.class, String[].class},
         defaultValue = "**"
     )
@@ -154,18 +144,8 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     private Object flows;
 
     @Schema(
-        title = "Whether you want to push flows from child namespaces as well",
-        description = """
-            By default, it’s `false`, so the task will push only flows from the explicitly declared namespace without pushing flows from child namespaces. If set to `true`, flows from child namespaces will be pushed to child directories in Git. See the example below for a practical explanation:
-
-            | Source namespace in the flow code |       Git directory path       |  Synced to target namespace   |
-            | --------------------------------- | ------------------------------ | ----------------------------- |
-            | namespace: dev                    | _flows/flow1.yml               | namespace: prod               |
-            | namespace: dev                    | _flows/flow2.yml               | namespace: prod               |
-            | namespace: dev.marketing          | _flows/marketing/flow3.yml     | namespace: prod.marketing     |
-            | namespace: dev.marketing          | _flows/marketing/flow4.yml     | namespace: prod.marketing     |
-            | namespace: dev.marketing.crm      | _flows/marketing/crm/flow5.yml | namespace: prod.marketing.crm |
-            | namespace: dev.marketing.crm      | _flows/marketing/crm/flow6.yml | namespace: prod.marketing.crm |"""
+        title = "Include child namespaces",
+        description = "When true, exports flows from child namespaces into nested directories under `gitDirectory`."
     )
     @Builder.Default
     private Property<Boolean> includeChildNamespaces = Property.ofValue(false);

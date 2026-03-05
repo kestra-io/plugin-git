@@ -20,6 +20,7 @@ import org.eclipse.jgit.api.Git;
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -42,13 +43,15 @@ import static java.lang.Integer.MAX_VALUE;
 public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> extends AbstractCloningTask implements RunnableTask<O> {
 
     @Schema(
-        title = "If `true`, the task will only output modifications without performing any modification to Kestra. If `false` (default), all listed modifications will be applied."
+        title = "Dry run only",
+        description = "When true, writes a diff without applying changes to Kestra."
     )
     @Builder.Default
     private Property<Boolean> dryRun = Property.ofValue(false);
 
     @Schema(
-        title = "If `true` (default), the task will fail if the specified directory doesn't exist. If `false`, missing directories will be skipped."
+        title = "Fail if git directory missing",
+        description = "Default true. If false, skips when the rendered `gitDirectory` path does not exist."
     )
     @Builder.Default
     private Property<Boolean> failOnMissingDirectory = Property.ofValue(true);
@@ -79,7 +82,11 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
     }
 
     protected Map<URI, Supplier<InputStream>> gitResourcesContentByUri(Path baseDirectory, RunContext runContext) throws IOException, IllegalVariableEvaluationException {
-        try (Stream<Path> paths = Files.walk(baseDirectory, runContext.render(this.traverseDirectories()).as(Boolean.class).orElseThrow() ? MAX_VALUE : 1)) {
+        try (Stream<Path> paths = Files.walk(
+            baseDirectory,
+            runContext.render(this.traverseDirectories()).as(Boolean.class).orElseThrow() ? MAX_VALUE : 1,
+            FileVisitOption.FOLLOW_LINKS
+        )) {
             Stream<Path> filtered = paths.skip(1);
             KestraIgnore kestraIgnore = new KestraIgnore(baseDirectory);
             filtered = filtered.filter(path -> !kestraIgnore.isIgnoredFile(path.toString(), true));

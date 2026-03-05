@@ -19,7 +19,8 @@ import org.slf4j.Logger;
 @Getter
 public abstract class AbstractCloningTask extends AbstractGitTask {
     @Schema(
-        title = "Whether to clone submodules"
+        title = "Clone submodules",
+        description = "Default false; enable to fetch and initialize nested submodules."
     )
     protected Property<Boolean> cloneSubmodules;
 

@@ -6,8 +6,6 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.storages.Namespace;
 import io.kestra.core.storages.NamespaceFile;
-import io.kestra.core.storages.StorageContext;
-import io.kestra.core.utils.WindowsUtils;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -16,8 +14,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @SuperBuilder(toBuilder = true)
@@ -26,16 +27,8 @@ import java.util.Optional;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Sync Namespace Files from Git to Kestra.",
-    description = """
-        This task syncs Namespace Files from a given Git branch to a Kestra namespace.
-
-        If the `delete` property is set to true, any Namespace Files available in Kestra but not present in the `gitDirectory` will be deleted. This allows you to maintain Git as the single source of truth for your Namespace Files. Check the Version Control with Git documentation for more details.
-
-
-        Using this task, you can push one or more Namespace Files from a given Kestra namespace to Git. Check the [Version Control with Git](https://kestra.io/docs/version-control-cicd) documentation for more details.
-
-        If you don't want some files from Git to be synced, you can add them to a `.kestraignore` file at the root of your `gitDirectory` folder — that file works the same way as `.gitignore`."""
+    title = "Sync Namespace Files from Git",
+    description = "Imports Namespace Files from a Git branch into a Kestra namespace. Can delete files missing in Git, honors `.kestraignore`, and supports dry-run diff output."
 )
 @Plugin(
     examples = {
@@ -106,27 +99,29 @@ import java.util.Optional;
 )
 public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncNamespaceFiles.Output> {
     @Schema(
-        title = "The branch from which Namespace files will be synced to Kestra – defaults to `main`."
+        title = "Branch to sync",
+        description = "Defaults to `main`."
     )
     @Builder.Default
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
-        title = "The namespace from which files should be synced from the `gitDirectory` to Kestra"
+        title = "Target namespace",
+        description = "Namespace receiving the files; defaults to the current flow namespace."
     )
     @Builder.Default
-    private Property<String> namespace = new Property<>("{{ flow.namespace }}");
+    private Property<String> namespace = Property.ofExpression("{{ flow.namespace }}");
 
     @Schema(
-        title = "Directory from which Namespace files should be synced",
-        description = "If not set, this task assumes your branch includes a directory named `_files`"
+        title = "Git directory for Namespace Files",
+        description = "Relative path containing files; defaults to `_files`."
     )
     @Builder.Default
     private Property<String> gitDirectory = Property.ofValue("_files");
 
     @Schema(
-        title = "Whether you want to delete Namespace files present in Kestra but not present in Git",
-        description = "It’s `false` by default to avoid destructive behavior. Use with caution because when set to `true`, this task will delete all Namespace files which are not present in Git."
+        title = "Delete files missing in Git",
+        description = "Default false. When true, removes Namespace Files absent from Git."
     )
     @Builder.Default
     private Property<Boolean> delete = Property.ofValue(false);
@@ -143,24 +138,112 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
 
     @Override
     protected NamespaceFile
-    simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) {
+    simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+        var namespace = runContext.storage().namespace(renderedNamespace);
+        var path = Path.of(uri.getPath());
+        var existingResource = this.findExistingResource(namespace, renderedNamespace, uri);
+
+        if (inputStream == null) {
+            return existingResource.orElseGet(() -> NamespaceFile.of(renderedNamespace, uri));
+        }
+
+        if (existingResource.isPresent() && !existingResource.get().isDirectory()) {
+            if (this.hasSameContent(namespace, path, inputStream)) {
+                return existingResource.get();
+            }
+
+            return NamespaceFile.of(renderedNamespace, uri, existingResource.get().version() + 1);
+        }
+
         return NamespaceFile.of(renderedNamespace, uri);
     }
 
     @Override
-    protected NamespaceFile writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, URISyntaxException {
-        Namespace namespace = runContext.storage().namespace(renderedNamespace);
-        NamespaceFile.of(renderedNamespace, uri);
+    protected NamespaceFile writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+        var namespace = runContext.storage().namespace(renderedNamespace);
+        var path = Path.of(uri.getPath());
+        var existingResource = this.findExistingResource(namespace, renderedNamespace, uri);
+
         try {
-            return inputStream == null ?
-                namespace.createDirectory(Path.of(uri.getPath())) :
-                namespace.putFile(Path.of(uri.getPath()), inputStream).stream()
-                    .filter(nf -> !nf.isDirectory())
-                    .findFirst()
-                    .orElseThrow();
+            if (inputStream == null) {
+                if (existingResource.isPresent()) {
+                    return existingResource.get();
+                }
+                return namespace.createDirectory(path);
+            }
+
+            if (existingResource.isPresent() && !existingResource.get().isDirectory()) {
+                var tempGitFile = runContext.workingDir().createTempFile(".namespace-file-sync").toFile().toPath();
+                try {
+                    Files.copy(inputStream, tempGitFile, StandardCopyOption.REPLACE_EXISTING);
+                    if (this.hasSameContent(namespace, path, tempGitFile)) {
+                        return existingResource.get();
+                    }
+
+                    try (var gitContent = Files.newInputStream(tempGitFile)) {
+                        return this.putFile(namespace, path, gitContent);
+                    }
+                } finally {
+                    Files.deleteIfExists(tempGitFile);
+                }
+            }
+
+            return this.putFile(namespace, path, inputStream);
         } catch (URISyntaxException e) {
             throw new IOException(e);
         }
+    }
+
+    private NamespaceFile putFile(Namespace namespace, Path path, InputStream inputStream) throws IOException, URISyntaxException {
+        return namespace.putFile(path, inputStream).stream()
+            .filter(nf -> !nf.isDirectory())
+            .findFirst()
+            .orElseThrow();
+    }
+
+    private boolean hasSameContent(Namespace namespace, Path path, Path sourceFile) throws IOException {
+        try (var sourceFileContent = Files.newInputStream(sourceFile)) {
+            return this.hasSameContent(namespace, path, sourceFileContent);
+        }
+    }
+
+    private boolean hasSameContent(Namespace namespace, Path path, InputStream sourceContent) throws IOException {
+        try (var existingContent = namespace.getFileContent(path)) {
+            return this.streamsEqual(sourceContent, existingContent);
+        }
+    }
+
+    private boolean streamsEqual(InputStream first, InputStream second) throws IOException {
+        var firstBuffer = new byte[8192];
+        var secondBuffer = new byte[8192];
+
+        while (true) {
+            // readNBytes blocks until len bytes are read or EOF, unlike read() which may return fewer bytes
+            // even when more data is available. Using read() caused false mismatches when comparing streams
+            // with different buffering behaviors (e.g. FileInputStream vs storage-backed stream).
+            var firstRead = first.readNBytes(firstBuffer, 0, firstBuffer.length);
+            var secondRead = second.readNBytes(secondBuffer, 0, secondBuffer.length);
+            if (firstRead != secondRead) {
+                return false;
+            }
+            if (firstRead == 0) {
+                return true;
+            }
+
+            for (var i = 0; i < firstRead; i++) {
+                if (firstBuffer[i] != secondBuffer[i]) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    private Optional<NamespaceFile> findExistingResource(Namespace namespace, String renderedNamespace, URI uri) throws IOException {
+        var targetUri = this.toUri(renderedNamespace, NamespaceFile.of(renderedNamespace, uri));
+        return namespace.all()
+            .stream()
+            .filter(resource -> Objects.equals(this.toUri(renderedNamespace, resource), targetUri))
+            .findFirst();
     }
 
     @Override
@@ -170,8 +253,9 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
             syncState = SyncState.DELETED;
         } else if (resourceBeforeUpdate == null) {
             syncState = SyncState.ADDED;
+        } else if (Objects.equals(resourceBeforeUpdate.uri(), resourceAfterUpdate.uri())) {
+            syncState = SyncState.UNCHANGED;
         } else {
-            // here we don't want to query the content of the file to check if it has changed
             syncState = SyncState.OVERWRITTEN;
         }
 
@@ -222,10 +306,8 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
     @Getter
     public static class Output extends AbstractSyncTask.Output {
         @Schema(
-            title = "A file containing all changes applied (or not in case of dry run) from Git",
-            description = """
-                The output format is a ION file with one row per file, each row containing the number of added, deleted, and changed lines.
-                A row looks as follows: `{changes:"3",file:"path/to/my/script.py",deletions:"-5",additions:"+10"}`"""
+            title = "Diff of synced Namespace Files",
+            description = "ION file listing per-file sync actions (added, deleted, overwritten)."
         )
         private URI files;
 
