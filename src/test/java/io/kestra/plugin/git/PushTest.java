@@ -47,6 +47,7 @@ class PushTest extends AbstractGitTest {
 
     @Test
     void cloneThenPush_OnlyNeedsCredentialsForPush() throws Exception {
+        String branchName = IdUtils.create();
         Clone clone = Clone.builder()
             .id("clone")
             .type(Clone.class.getName())
@@ -80,20 +81,33 @@ class PushTest extends AbstractGitTest {
             ))
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
-            .branch(Property.ofValue(BRANCH))
+            .branch(Property.ofValue(branchName))
             .build();
         Push.Output pushOutput = push.run(cloneRunContext);
 
+        Clone cloneNewBranch = Clone.builder()
+            .id("clone")
+            .type(Clone.class.getName())
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(branchName))
+            .build();
+
         cloneRunContext = runContextFactory.of();
-        Clone.Output cloneOutput = clone.run(cloneRunContext);
+        try {
+            Clone.Output cloneOutput = cloneNewBranch.run(cloneRunContext);
 
-        String fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(INPUT_FILE_NAME).toFile(), "UTF-8");
-        assertThat(fileContent, is(expectedInputFileContent));
+            String fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(INPUT_FILE_NAME).toFile(), "UTF-8");
+            assertThat(fileContent, is(expectedInputFileContent));
 
-        fileContent = FileUtils.readFileToString(extraFile, "UTF-8");
-        assertThat(fileContent, is(extraFileContent));
+            fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve("some_file.txt").toFile(), "UTF-8");
+            assertThat(fileContent, is(extraFileContent));
 
-        assertThat(pushOutput.getCommitId(), is(getLastCommitId(cloneRunContext)));
+            assertThat(pushOutput.getCommitId(), is(getLastCommitId(cloneRunContext)));
+        } finally {
+            deleteRemoteBranch(cloneRunContext.workingDir().path().toString(), branchName);
+        }
     }
 
     private static String getLastCommitId(RunContext runContext) throws GitAPIException, IOException {
@@ -151,6 +165,7 @@ class PushTest extends AbstractGitTest {
     void oneTaskPush_ExistingBranch() throws Exception {
         String namespace = "my-namespace";
         String tenantId = TenantService.MAIN_TENANT;
+        String branchName = IdUtils.create();
         FlowWithSource flow = this.createFlow(tenantId, namespace);
 
         RunContext runContext = runContextFactory.of(flow, Map.of(
@@ -192,7 +207,7 @@ class PushTest extends AbstractGitTest {
                 INPUT_FILE_NAME,
                 namespaceFileName
             )))
-            .branch(Property.ofValue(BRANCH))
+            .branch(Property.ofValue(branchName))
             .build();
 
         var ot = push.run(runContext);
@@ -203,18 +218,23 @@ class PushTest extends AbstractGitTest {
             .url(Property.ofValue(repositoryUrl))
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
-            .branch(Property.ofValue(BRANCH))
+            .branch(Property.ofValue(branchName))
             .build();
 
-        Clone.Output cloneOutput = clone.run(runContextFactory.of());
+        RunContext cloneRunContext = runContextFactory.of();
+        try {
+            Clone.Output cloneOutput = clone.run(cloneRunContext);
 
-        String fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(INPUT_FILE_NAME).toFile(), "UTF-8");
-        assertThat(fileContent, is(expectedInputFileContent));
-        assertThat(new File(cloneOutput.getDirectory(), shouldNotBeCommitted).exists(), is(false));
-        assertThat(new File(Path.of(cloneOutput.getDirectory(), Sync.FLOWS_DIRECTORY).toString()).exists(), is(false));
+            String fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(INPUT_FILE_NAME).toFile(), "UTF-8");
+            assertThat(fileContent, is(expectedInputFileContent));
+            assertThat(new File(cloneOutput.getDirectory(), shouldNotBeCommitted).exists(), is(false));
+            assertThat(new File(Path.of(cloneOutput.getDirectory(), Sync.FLOWS_DIRECTORY).toString()).exists(), is(false));
 
-        fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(namespaceFileName).toFile(), "UTF-8");
-        assertThat(fileContent, is(expectedNamespaceFileContent));
+            fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(namespaceFileName).toFile(), "UTF-8");
+            assertThat(fileContent, is(expectedNamespaceFileContent));
+        } finally {
+            deleteRemoteBranch(cloneRunContext.workingDir().path().toString(), branchName);
+        }
     }
 
     @Test
@@ -321,6 +341,7 @@ class PushTest extends AbstractGitTest {
 
     @Test
     void oneTaskPush_WithSpecifiedDirectory() throws Exception {
+        String branchName = IdUtils.create();
         RunContext runContext = runContextFactory.of();
 
         String expectedInputFileContent = IdUtils.create();
@@ -345,7 +366,7 @@ class PushTest extends AbstractGitTest {
                 directory + "/" + INPUT_FILE_NAME, expectedInputFileContent,
                 directory + "/" + nestedFilePath, expectedNestedInputFileContent
             ))
-            .branch(Property.ofValue(BRANCH))
+            .branch(Property.ofValue(branchName))
             .build();
 
         push.run(runContext);
@@ -356,16 +377,21 @@ class PushTest extends AbstractGitTest {
             .url(Property.ofValue(repositoryUrl))
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
-            .branch(Property.ofValue(BRANCH))
+            .branch(Property.ofValue(branchName))
             .build();
 
-        Clone.Output cloneOutput = clone.run(runContextFactory.of());
+        RunContext cloneRunContext = runContextFactory.of();
+        try {
+            Clone.Output cloneOutput = clone.run(cloneRunContext);
 
-        String fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(INPUT_FILE_NAME).toFile(), "UTF-8");
-        assertThat(fileContent, is(expectedInputFileContent));
+            String fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(INPUT_FILE_NAME).toFile(), "UTF-8");
+            assertThat(fileContent, is(expectedInputFileContent));
 
-        fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(nestedFilePath).toFile(), "UTF-8");
-        assertThat(fileContent, is(expectedNestedInputFileContent));
+            fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(nestedFilePath).toFile(), "UTF-8");
+            assertThat(fileContent, is(expectedNestedInputFileContent));
+        } finally {
+            deleteRemoteBranch(cloneRunContext.workingDir().path().toString(), branchName);
+        }
     }
 
     @Test
