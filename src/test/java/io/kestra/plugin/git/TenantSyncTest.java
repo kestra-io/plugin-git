@@ -1,15 +1,5 @@
 package io.kestra.plugin.git;
 
-import com.sun.net.httpserver.HttpServer;
-import io.kestra.core.exceptions.KestraRuntimeException;
-import io.kestra.core.junit.annotations.KestraTest;
-import io.kestra.core.runners.RunContextFactory;
-import io.kestra.core.tenant.TenantService;
-import io.kestra.sdk.KestraClient;
-import jakarta.inject.Inject;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
 import java.io.ByteArrayOutputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -23,12 +13,24 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import com.sun.net.httpserver.HttpServer;
+
+import io.kestra.core.exceptions.KestraRuntimeException;
+import io.kestra.core.junit.annotations.KestraTest;
+import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.tenant.TenantService;
+import io.kestra.sdk.KestraClient;
+
+import jakarta.inject.Inject;
+
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 @KestraTest
 class TenantSyncTest {
@@ -53,14 +55,16 @@ class TenantSyncTest {
         var validateCalls = new AtomicInteger();
 
         var server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/api/v1/" + TENANT_ID + "/flows/export/by-query", exchange -> {
+        server.createContext("/api/v1/" + TENANT_ID + "/flows/export/by-query", exchange ->
+        {
             exchange.getRequestBody().readAllBytes();
             exchange.getResponseHeaders().add("Content-Type", "application/octet-stream");
             exchange.sendResponseHeaders(200, exportedZip.length);
             exchange.getResponseBody().write(exportedZip);
             exchange.close();
         });
-        server.createContext("/api/v1/" + TENANT_ID + "/flows/validate", exchange -> {
+        server.createContext("/api/v1/" + TENANT_ID + "/flows/validate", exchange ->
+        {
             validateCalls.incrementAndGet();
             exchange.getRequestBody().readAllBytes();
 
@@ -83,13 +87,15 @@ class TenantSyncTest {
         try {
             var task = TenantSync.builder().build();
             var method = fetchFlowsMethod();
-            var runContext = runContextFactory.of(Map.of(
-                "flow", Map.of(
-                    "tenantId", TENANT_ID,
-                    "namespace", NAMESPACE,
-                    "id", "tenant-sync-test"
+            var runContext = runContextFactory.of(
+                Map.of(
+                    "flow", Map.of(
+                        "tenantId", TENANT_ID,
+                        "namespace", NAMESPACE,
+                        "id", "tenant-sync-test"
+                    )
                 )
-            ));
+            );
             var kestraClient = KestraClient.builder()
                 .url("http://localhost:" + server.getAddress().getPort())
                 .basicAuth("user", "pass")
@@ -139,7 +145,8 @@ class TenantSyncTest {
         Path symlink = filesDir.resolve("linked");
         try {
             Files.createSymbolicLink(symlink, externalDir);
-        } catch (UnsupportedOperationException | SecurityException | FileSystemException ignored) {}
+        } catch (UnsupportedOperationException | SecurityException | FileSystemException ignored) {
+        }
 
         var task = TenantSync.builder().build();
         var method = fetchReadGitFilesMethod();

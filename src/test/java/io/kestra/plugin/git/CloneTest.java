@@ -1,23 +1,24 @@
 package io.kestra.plugin.git;
 
-import io.kestra.core.junit.annotations.KestraTest;
-import io.kestra.core.models.property.Property;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.runners.RunContextFactory;
-import io.kestra.core.utils.TestsUtils;
-import jakarta.inject.Inject;
-import org.apache.commons.io.FileUtils;
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.errors.TransportException;
-import org.eclipse.jgit.lib.PersonIdent;
-import org.junit.jupiter.api.Test;
-
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Collection;
 import java.util.Map;
+
+import org.apache.commons.io.FileUtils;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.TransportException;
+import org.eclipse.jgit.lib.PersonIdent;
+import org.junit.jupiter.api.Test;
+
+import io.kestra.core.junit.annotations.KestraTest;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.runners.RunContextFactory;
+
+import jakarta.inject.Inject;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -39,10 +40,12 @@ class CloneTest extends AbstractGitTest {
         Clone.Output runOutput = task.run(runContext);
 
         Collection<File> files = FileUtils.listFiles(Path.of(runOutput.getDirectory()).toFile(), null, true);
-        assertThat(files, hasItems(
-            hasProperty("path", endsWith("README.md")),
-            hasProperty("path", containsString(".git"))
-        ));
+        assertThat(
+            files, hasItems(
+                hasProperty("path", endsWith("README.md")),
+                hasProperty("path", containsString(".git"))
+            )
+        );
     }
 
     @Test
@@ -58,10 +61,12 @@ class CloneTest extends AbstractGitTest {
         Clone.Output runOutput = task.run(runContext);
 
         Collection<File> files = FileUtils.listFiles(Path.of(runOutput.getDirectory()).toFile(), null, true);
-        assertThat(files, hasItems(
-            hasProperty("path", endsWith("README.md")),
-            hasProperty("path", containsString(".git"))
-        ));
+        assertThat(
+            files, hasItems(
+                hasProperty("path", endsWith("README.md")),
+                hasProperty("path", containsString(".git"))
+            )
+        );
     }
 
     @Test
@@ -78,10 +83,12 @@ class CloneTest extends AbstractGitTest {
         Clone.Output runOutput = task.run(runContext);
 
         Collection<File> files = FileUtils.listFiles(Path.of(runOutput.getDirectory()).toFile(), null, true);
-        assertThat(files, hasItems(
-            hasProperty("path", endsWith("README.md")),
-            hasProperty("path", containsString(".git"))
-        ));
+        assertThat(
+            files, hasItems(
+                hasProperty("path", endsWith("README.md")),
+                hasProperty("path", containsString(".git"))
+            )
+        );
     }
 
     @Test
@@ -108,9 +115,13 @@ class CloneTest extends AbstractGitTest {
 
         Clone task = Clone.builder()
             .url(Property.ofValue("https://github.com/kestra-io/plugin-template"))
-            .gitConfig(Property.ofValue(Map.of(
-                "core.fileMode", false
-            )))
+            .gitConfig(
+                Property.ofValue(
+                    Map.of(
+                        "core.fileMode", false
+                    )
+                )
+            )
             .build();
 
         Clone.Output out = task.run(runContext);
@@ -120,7 +131,6 @@ class CloneTest extends AbstractGitTest {
             boolean fileMode = git.getRepository().getConfig().getBoolean("core", null, "fileMode", true);
             assertThat(fileMode, is(false));
         }
-
 
         Path testFile = repoPath.resolve("filemode_test.sh");
         java.nio.file.Files.writeString(testFile, "#!/bin/sh\necho hi\n");
@@ -134,7 +144,8 @@ class CloneTest extends AbstractGitTest {
 
             var status = git.status().call();
 
-            assertThat(status.getModified().isEmpty() && status.getChanged().isEmpty() &&
+            assertThat(
+                status.getModified().isEmpty() && status.getChanged().isEmpty() &&
                     status.getAdded().isEmpty() && status.getRemoved().isEmpty() && status.getUncommittedChanges().isEmpty(),
                 is(true)
             );

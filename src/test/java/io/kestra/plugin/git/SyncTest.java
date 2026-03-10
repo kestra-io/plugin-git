@@ -1,5 +1,22 @@
 package io.kestra.plugin.git;
 
+import java.io.*;
+import java.net.URI;
+import java.nio.file.Path;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import org.apache.commons.io.FileUtils;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.slf4j.event.Level;
+
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.models.flows.Flow;
@@ -15,25 +32,10 @@ import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.KestraIgnore;
 import io.kestra.core.utils.TestsUtils;
+
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
-import org.apache.commons.io.FileUtils;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.slf4j.event.Level;
 import reactor.core.publisher.Flux;
-
-import java.io.*;
-import java.net.URI;
-import java.nio.file.Path;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static io.kestra.core.utils.Rethrow.throwFunction;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -167,11 +169,17 @@ class SyncTest extends AbstractGitTest {
             .gitDirectory(Property.ofValue(clonedGitDirectory))
             .namespaceFilesDirectory(Property.ofValue(destinationDirectory))
             .build();
-        task.run(runContextFactory.of(Map.of("flow", Map.of(
-            "namespace", NAMESPACE,
-            "id", selfFlowId,
-            "tenantId", TENANT_ID
-        ))));
+        task.run(
+            runContextFactory.of(
+                Map.of(
+                    "flow", Map.of(
+                        "namespace", NAMESPACE,
+                        "id", selfFlowId,
+                        "tenantId", TENANT_ID
+                    )
+                )
+            )
+        );
         // endregion
 
         // region THEN
@@ -191,9 +199,14 @@ class SyncTest extends AbstractGitTest {
         // endregion
 
         // region namespace files
-        assertThat(storageInterface.exists(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/" + KestraIgnore.KESTRA_IGNORE_FILE_NAME)), is(false));
+        assertThat(
+            storageInterface.exists(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/" + KestraIgnore.KESTRA_IGNORE_FILE_NAME)),
+            is(false)
+        );
         assertThat(storageInterface.exists(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/file_to_ignore.txt")), is(false));
-        assertThat(storageInterface.exists(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/dir_to_ignore/file.txt")), is(false));
+        assertThat(
+            storageInterface.exists(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/dir_to_ignore/file.txt")), is(false)
+        );
         assertThat(storageInterface.exists(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/dir_to_ignore")), is(false));
         assertThat(storageInterface.exists(TENANT_ID, NAMESPACE, URI.create(StorageContext.namespaceFilePrefix(NAMESPACE) + "/" + destinationDirectory + "/_flows")), is(false));
         assertNamespaceFileContent(TENANT_ID, "/README.md", readmeContent);
@@ -214,7 +227,6 @@ class SyncTest extends AbstractGitTest {
         // region GIVEN
         // region flows
         // this flow is on Git and should be updated
-
 
         // this flow is not on Git and should be deleted
         String flowSource = """
@@ -263,11 +275,17 @@ class SyncTest extends AbstractGitTest {
             .branch(new Property<>(BRANCH))
             .build();
 
-        task.run(runContextFactory.of(Map.of("flow", Map.of(
-            "namespace", NAMESPACE,
-            "id", selfFlowId,
-            "tenantId", TENANT_ID
-        ))));
+        task.run(
+            runContextFactory.of(
+                Map.of(
+                    "flow", Map.of(
+                        "namespace", NAMESPACE,
+                        "id", selfFlowId,
+                        "tenantId", TENANT_ID
+                    )
+                )
+            )
+        );
         // endregion
 
         // region THEN
@@ -293,7 +311,6 @@ class SyncTest extends AbstractGitTest {
         // endregion
         // endregion
     }
-
 
     @Test
     void reconcile_DryRun_ShouldDoNothing() throws Exception {
@@ -385,31 +402,36 @@ class SyncTest extends AbstractGitTest {
 
     private void assertFlows(String tenantId, File flowsDir, String selfFlowSource) throws IOException {
         Map<String, String> namespaceForExpectedFlowSources = Stream.concat(
-                FileUtils.listFiles(flowsDir, null, true).stream()
-                    .filter(file -> !file.getName().equals("kestra-ignored-flow.yml"))
-                    .map(throwFunction(file -> FileUtils.readFileToString(file, "UTF-8")))
-                    .map(source -> {
-                        Matcher matcher = NAMESPACE_FINDER_PATTERN.matcher(source);
-                        matcher.find();
-                        String previousNamespace = matcher.group(1);
-                        if (previousNamespace.startsWith(NAMESPACE + ".")) {
-                            return Map.entry(source, previousNamespace);
-                        }
+            FileUtils.listFiles(flowsDir, null, true).stream()
+                .filter(file -> !file.getName().equals("kestra-ignored-flow.yml"))
+                .map(throwFunction(file -> FileUtils.readFileToString(file, "UTF-8")))
+                .map(source ->
+                {
+                    Matcher matcher = NAMESPACE_FINDER_PATTERN.matcher(source);
+                    matcher.find();
+                    String previousNamespace = matcher.group(1);
+                    if (previousNamespace.startsWith(NAMESPACE + ".")) {
+                        return Map.entry(source, previousNamespace);
+                    }
 
-                        return Map.entry(matcher.replaceFirst("namespace: " + NAMESPACE), NAMESPACE);
-                    }),
-                Stream.of(Map.entry(selfFlowSource, NAMESPACE))
-            )
-            .collect(Collectors.toMap(
-                Map.Entry::getKey,
-                Map.Entry::getValue
-            ));
+                    return Map.entry(matcher.replaceFirst("namespace: " + NAMESPACE), NAMESPACE);
+                }),
+            Stream.of(Map.entry(selfFlowSource, NAMESPACE))
+        )
+            .collect(
+                Collectors.toMap(
+                    Map.Entry::getKey,
+                    Map.Entry::getValue
+                )
+            );
         Map<String, String> namespaceForActualFlowSources = flowRepositoryInterface.findByNamespacePrefixWithSource(tenantId, NAMESPACE).stream()
             .map(flowWithSource -> Map.entry(flowWithSource.getSource(), flowWithSource.getNamespace()))
-            .collect(Collectors.toMap(
-                Map.Entry::getKey,
-                Map.Entry::getValue
-            ));
+            .collect(
+                Collectors.toMap(
+                    Map.Entry::getKey,
+                    Map.Entry::getValue
+                )
+            );
         assertThat(namespaceForActualFlowSources, is(namespaceForExpectedFlowSources));
     }
 

@@ -1,22 +1,5 @@
 package io.kestra.plugin.git;
 
-import io.kestra.core.exceptions.FlowProcessingException;
-import io.kestra.core.exceptions.IllegalVariableEvaluationException;
-import io.kestra.core.models.property.Property;
-import io.kestra.core.models.tasks.RunnableTask;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.serializers.JacksonMapper;
-import io.kestra.core.utils.KestraIgnore;
-import io.kestra.plugin.git.services.GitService;
-import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.Pair;
-import org.eclipse.jgit.api.Git;
-
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -28,6 +11,25 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
+import org.eclipse.jgit.api.Git;
+
+import io.kestra.core.exceptions.FlowProcessingException;
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.models.tasks.RunnableTask;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.core.utils.KestraIgnore;
+import io.kestra.plugin.git.services.GitService;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.*;
 import static java.lang.Integer.MAX_VALUE;
@@ -67,9 +69,12 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
         Path syncDirectory = runContext.workingDir().resolve(Path.of(gitDirectoryPath));
 
         if (!Files.exists(syncDirectory) && runContext.render(this.failOnMissingDirectory).as(Boolean.class).orElse(true)) {
-            throw new IllegalArgumentException(String.format(
-                "The directory '%s' was not found in the git repository. Verify if the path exists in the specified branch '%s'.", gitDirectoryPath, runContext.render(this.getBranch()).as(String.class).orElse("main")
-            ));
+            throw new IllegalArgumentException(
+                String.format(
+                    "The directory '%s' was not found in the git repository. Verify if the path exists in the specified branch '%s'.", gitDirectoryPath,
+                    runContext.render(this.getBranch()).as(String.class).orElse("main")
+                )
+            );
         }
 
         syncDirectory.toFile().mkdirs();
@@ -82,25 +87,30 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
     }
 
     protected Map<URI, Supplier<InputStream>> gitResourcesContentByUri(Path baseDirectory, RunContext runContext) throws IOException, IllegalVariableEvaluationException {
-        try (Stream<Path> paths = Files.walk(
-            baseDirectory,
-            runContext.render(this.traverseDirectories()).as(Boolean.class).orElseThrow() ? MAX_VALUE : 1,
-            FileVisitOption.FOLLOW_LINKS
-        )) {
+        try (
+            Stream<Path> paths = Files.walk(
+                baseDirectory,
+                runContext.render(this.traverseDirectories()).as(Boolean.class).orElseThrow() ? MAX_VALUE : 1,
+                FileVisitOption.FOLLOW_LINKS
+            )
+        ) {
             Stream<Path> filtered = paths.skip(1);
             KestraIgnore kestraIgnore = new KestraIgnore(baseDirectory);
             filtered = filtered.filter(path -> !kestraIgnore.isIgnoredFile(path.toString(), true));
             filtered = filtered.filter(path -> !path.toString().contains(".git"));
 
-            return filtered.collect(Collectors.toMap(
-                gitPath -> URI.create(("/" + baseDirectory.relativize(gitPath) + (gitPath.toFile().isDirectory() ? "/" : "")).replace("\\", "/")),
-                throwFunction(path -> throwSupplier(() -> {
-                    if (Files.isDirectory(path)) {
-                        return null;
-                    }
-                    return Files.newInputStream(path);
-                }))
-            ));
+            return filtered.collect(
+                Collectors.toMap(
+                    gitPath -> URI.create(("/" + baseDirectory.relativize(gitPath) + (gitPath.toFile().isDirectory() ? "/" : "")).replace("\\", "/")),
+                    throwFunction(path -> throwSupplier(() ->
+                    {
+                        if (Files.isDirectory(path)) {
+                            return null;
+                        }
+                        return Files.newInputStream(path);
+                    }))
+                )
+            );
         }
     }
 
@@ -114,13 +124,17 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
 
     protected abstract void deleteResource(RunContext runContext, String renderedNamespace, T instanceResource) throws IOException;
 
-    protected abstract T simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, FlowProcessingException, IllegalVariableEvaluationException;
+    protected abstract T simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream)
+        throws IOException, FlowProcessingException, IllegalVariableEvaluationException;
 
-    protected abstract T writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, URISyntaxException, FlowProcessingException, IllegalVariableEvaluationException;
+    protected abstract T writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream)
+        throws IOException, URISyntaxException, FlowProcessingException, IllegalVariableEvaluationException;
 
-    protected abstract SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, T resourceBeforeUpdate, T resourceAfterUpdate) throws IOException;
+    protected abstract SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, T resourceBeforeUpdate, T resourceAfterUpdate)
+        throws IOException;
 
-    private URI createDiffFile(RunContext runContext, String renderedNamespace, Map<URI, URI> gitUriByResourceUri, Map<URI, T> beforeUpdateResourcesByUri, Map<URI, T> afterUpdateResourcesByUri, List<T> deletedResources) throws IOException, IllegalVariableEvaluationException {
+    private URI createDiffFile(RunContext runContext, String renderedNamespace, Map<URI, URI> gitUriByResourceUri, Map<URI, T> beforeUpdateResourcesByUri,
+        Map<URI, T> afterUpdateResourcesByUri, List<T> deletedResources) throws IOException, IllegalVariableEvaluationException {
         File diffFile = runContext.workingDir().createTempFile(".ion").toFile();
 
         try (BufferedWriter diffWriter = new BufferedWriter(new FileWriter(diffFile))) {
@@ -129,17 +143,22 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
             String renderedGitDirectory = runContext.render(this.getGitDirectory()).as(String.class).orElse(null);
             if (deletedResources != null) {
                 deletedResources.stream()
-                    .map(throwFunction(deletedResource -> wrapper(
-                        runContext,
-                        renderedGitDirectory,
-                        renderedNamespace,
-                        gitUriByResourceUri.get(this.toUri(renderedNamespace, deletedResource)),
-                        deletedResource,
-                        null
-                    ))).forEach(syncResults::add);
+                    .map(
+                        throwFunction(
+                            deletedResource -> wrapper(
+                                runContext,
+                                renderedGitDirectory,
+                                renderedNamespace,
+                                gitUriByResourceUri.get(this.toUri(renderedNamespace, deletedResource)),
+                                deletedResource,
+                                null
+                            )
+                        )
+                    ).forEach(syncResults::add);
             }
 
-            afterUpdateResourcesByUri.entrySet().stream().flatMap(throwFunction(e -> {
+            afterUpdateResourcesByUri.entrySet().stream().flatMap(throwFunction(e ->
+            {
                 SyncResult syncResult = wrapper(
                     runContext,
                     renderedGitDirectory,
@@ -150,18 +169,20 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
                 return syncResult == null ? Stream.empty() : Stream.of(syncResult);
             })).forEach(syncResults::add);
 
-            syncResults.stream().sorted((s1, s2) -> {
-                    if (s1.getGitPath() == null) {
-                        return s2.getGitPath() == null ? 0 : -1;
-                    }
-                    if (s2.getGitPath() == null) {
-                        return 1;
-                    }
+            syncResults.stream().sorted((s1, s2) ->
+            {
+                if (s1.getGitPath() == null) {
+                    return s2.getGitPath() == null ? 0 : -1;
+                }
+                if (s2.getGitPath() == null) {
+                    return 1;
+                }
 
-                    return s1.getGitPath().compareTo(s2.getGitPath());
-                })
+                return s1.getGitPath().compareTo(s2.getGitPath());
+            })
                 .map(throwFunction(JacksonMapper.ofIon()::writeValueAsString))
-                .forEach(throwConsumer(syncResultStr -> {
+                .forEach(throwConsumer(syncResultStr ->
+                {
                     diffWriter.write(syncResultStr);
                     diffWriter.write("\n");
                     runContext.logger().debug(syncResultStr);
@@ -190,14 +211,17 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
 
         Map<URI, T> beforeUpdateResourcesByUri = this.fetchResources(runContext, renderedNamespace)
             .stream()
-            .collect(Collectors.toMap(
-            resource -> this.toUri(renderedNamespace, resource),
-            Function.identity()
-        ));
+            .collect(
+                Collectors.toMap(
+                    resource -> this.toUri(renderedNamespace, resource),
+                    Function.identity()
+                )
+            );
         Map<URI, URI> gitUriByResourceUri = new HashMap<>();
         Map<URI, T> updatedResourcesByUri = gitContentByUri.entrySet().stream()
             .sorted(Comparator.comparing(e -> StringUtils.countMatches(e.getKey().getPath(), "/")))
-            .map(throwFunction(e -> {
+            .map(throwFunction(e ->
+            {
                 InputStream inputStream = e.getValue().get();
                 T resource;
                 if (runContext.render(this.dryRun).as(Boolean.class).orElseThrow()) {
@@ -210,7 +234,8 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
             }))
             .collect(
                 HashMap::new,
-                (map, pair) -> {
+                (map, pair) ->
+                {
                     URI uri = pair.getLeft();
                     T resource = pair.getRight();
                     URI resourceUri = this.toUri(renderedNamespace, resource);
@@ -223,7 +248,8 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
         List<T> deleted;
         if (runContext.render(this.getDelete()).as(Boolean.class).orElseThrow()) {
             deleted = new ArrayList<>();
-            beforeUpdateResourcesByUri.entrySet().stream().filter(e -> !updatedResourcesByUri.containsKey(e.getKey())).forEach(throwConsumer(e -> {
+            beforeUpdateResourcesByUri.entrySet().stream().filter(e -> !updatedResourcesByUri.containsKey(e.getKey())).forEach(throwConsumer(e ->
+            {
                 if (this.mustKeep(runContext, e.getValue())) {
                     return;
                 }

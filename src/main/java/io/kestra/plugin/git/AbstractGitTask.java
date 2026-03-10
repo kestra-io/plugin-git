@@ -1,16 +1,23 @@
 package io.kestra.plugin.git;
 
-import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.kestra.core.models.property.Property;
-import io.kestra.core.models.tasks.Task;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.serializers.JacksonMapper;
-import io.kestra.plugin.git.services.SshTransportConfigCallback;
-import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.*;
-import lombok.experimental.SuperBuilder;
+import java.io.*;
+import java.net.Proxy;
+import java.net.URI;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.KeyStore;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Pattern;
+
+import javax.net.ssl.*;
+
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.TransportCommand;
 import org.eclipse.jgit.api.errors.GitAPIException;
@@ -28,22 +35,19 @@ import org.eclipse.jgit.transport.http.apache.HttpClientConnection;
 import org.eclipse.jgit.transport.http.apache.HttpClientConnectionFactory;
 import org.eclipse.jgit.treewalk.EmptyTreeIterator;
 
-import javax.net.ssl.*;
-import java.io.*;
-import java.net.Proxy;
-import java.net.URI;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.security.KeyStore;
-import java.security.MessageDigest;
-import java.security.SecureRandom;
-import java.security.cert.CertificateFactory;
-import java.security.cert.X509Certificate;
-import java.util.*;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.regex.Pattern;
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.kestra.core.models.property.Property;
+import io.kestra.core.models.tasks.Task;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.plugin.git.services.SshTransportConfigCallback;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @SuperBuilder(toBuilder = true)
 @NoArgsConstructor
@@ -155,8 +159,7 @@ public abstract class AbstractGitTask extends Task {
      */
     protected void configureEnvironmentWithSsl(RunContext runContext) throws Exception {
         // Render potential PEM path
-        String pemPath = trustedCaPemPath == null ? null :
-            runContext.render(trustedCaPemPath).as(String.class).orElse(null);
+        String pemPath = trustedCaPemPath == null ? null : runContext.render(trustedCaPemPath).as(String.class).orElse(null);
 
         // Compute desired configuration key for this run
         String desiredKey = computeDesiredSslKey(pemPath);
@@ -179,12 +182,12 @@ public abstract class AbstractGitTask extends Task {
                 X509TrustManager customTm = buildTrustManagerFromPem(Path.of(pemPath));
                 X509TrustManager jvmTm = buildJvmDefaultTrustManager();
                 X509TrustManager composite = new CompositeX509TrustManager(List.of(customTm, jvmTm));
-                sslContext.init(null, new TrustManager[]{composite}, new SecureRandom());
+                sslContext.init(null, new TrustManager[] { composite }, new SecureRandom());
                 runContext.logger().info("Configured SSLContext with PEM: {}", pemPath);
             } else {
                 // JVM default only
                 X509TrustManager jvmTm = buildJvmDefaultTrustManager();
-                sslContext.init(null, new TrustManager[]{jvmTm}, new SecureRandom());
+                sslContext.init(null, new TrustManager[] { jvmTm }, new SecureRandom());
                 runContext.logger().info("Configured SSLContext with JVM default truststore");
             }
 
@@ -232,7 +235,8 @@ public abstract class AbstractGitTask extends Task {
             certs.add(cert);
             while (bais.available() > 0) {
                 X509Certificate c = (X509Certificate) cf.generateCertificate(bais);
-                if (c != null) certs.add(c);
+                if (c != null)
+                    certs.add(c);
             }
         } catch (Exception e) {
             // Fallback: try generateCertificates (PKCS#7 or multiple certs)
@@ -318,17 +322,21 @@ public abstract class AbstractGitTask extends Task {
 
     public <T extends TransportCommand<T, ?>> T authentified(T command, RunContext runContext) throws Exception {
         if (this.username != null && this.password != null) {
-            command.setCredentialsProvider(new UsernamePasswordCredentialsProvider(
-                runContext.render(this.username).as(String.class).orElseThrow(),
-                runContext.render(this.password).as(String.class).orElseThrow()
-            ));
+            command.setCredentialsProvider(
+                new UsernamePasswordCredentialsProvider(
+                    runContext.render(this.username).as(String.class).orElseThrow(),
+                    runContext.render(this.password).as(String.class).orElseThrow()
+                )
+            );
         }
 
         if (this.privateKey != null) {
-            command.setTransportConfigCallback(new SshTransportConfigCallback(
-                runContext.render(this.privateKey).as(String.class).orElseThrow().getBytes(StandardCharsets.UTF_8),
-                runContext.render(this.passphrase).as(String.class).orElse(null)
-            ));
+            command.setTransportConfigCallback(
+                new SshTransportConfigCallback(
+                    runContext.render(this.privateKey).as(String.class).orElseThrow().getBytes(StandardCharsets.UTF_8),
+                    runContext.render(this.passphrase).as(String.class).orElse(null)
+                )
+            );
         }
 
         return command;
@@ -353,8 +361,11 @@ public abstract class AbstractGitTask extends Task {
             if (parts.length < 2) {
                 // The name is actually the section and the key separated by a dot.
                 // Example: "core.fileMode" -> section = "core", name = "fileMode"
-                runContext.logger().warn("invalid git gitRepoConfig key format: {}. The name is actually the section and the key separated by a dot. " +
-                    "Expected 'section.name' or 'section.subsection.name'", key);
+                runContext.logger().warn(
+                    "invalid git gitRepoConfig key format: {}. The name is actually the section and the key separated by a dot. " +
+                        "Expected 'section.name' or 'section.subsection.name'",
+                    key
+                );
                 continue;
             }
 
@@ -405,8 +416,10 @@ public abstract class AbstractGitTask extends Task {
     protected URI createIonDiff(RunContext runContext, Git git) throws IOException, GitAPIException {
         File diffFile = runContext.workingDir().createTempFile(".ion").toFile();
 
-        try (BufferedWriter diffWriter = new BufferedWriter(new FileWriter(diffFile));
-             DiffFormatter diffFormatter = new DiffFormatter(new ByteArrayOutputStream())) {
+        try (
+            BufferedWriter diffWriter = new BufferedWriter(new FileWriter(diffFile));
+            DiffFormatter diffFormatter = new DiffFormatter(new ByteArrayOutputStream())
+        ) {
 
             diffFormatter.setRepository(git.getRepository());
 
@@ -425,9 +438,12 @@ public abstract class AbstractGitTask extends Task {
 
                     for (Edit edit : editList) {
                         int mods = edit.getLengthB() - edit.getLengthA();
-                        if (mods > 0) additions += mods;
-                        else if (mods < 0) deletions += -mods;
-                        else changes += edit.getLengthB();
+                        if (mods > 0)
+                            additions += mods;
+                        else if (mods < 0)
+                            deletions += -mods;
+                        else
+                            changes += edit.getLengthB();
                     }
 
                     generator.writeStartObject();

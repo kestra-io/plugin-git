@@ -1,19 +1,5 @@
 package io.kestra.plugin.git;
 
-import com.google.common.annotations.VisibleForTesting;
-import io.kestra.core.exceptions.IllegalVariableEvaluationException;
-import io.kestra.core.models.annotations.Example;
-import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.models.annotations.PluginProperty;
-import io.kestra.core.models.flows.FlowWithSource;
-import io.kestra.core.models.property.Property;
-import io.kestra.core.repositories.FlowRepositoryInterface;
-import io.kestra.core.runners.DefaultRunContext;
-import io.kestra.core.runners.RunContext;
-import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.*;
-import lombok.experimental.SuperBuilder;
-
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.net.URI;
@@ -24,6 +10,22 @@ import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import com.google.common.annotations.VisibleForTesting;
+
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.models.annotations.Example;
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.repositories.FlowRepositoryInterface;
+import io.kestra.core.runners.DefaultRunContext;
+import io.kestra.core.runners.RunContext;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.*;
 
@@ -137,7 +139,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     @Schema(
         title = "Flows to include",
         description = "Glob pattern(s) against flow IDs; defaults to all (`**`).",
-        oneOf = {String.class, String[].class},
+        oneOf = { String.class, String[].class },
         defaultValue = "**"
     )
     @PluginProperty(dynamic = true)
@@ -170,7 +172,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     }
 
     protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path flowDirectory, List<String> globs) throws IllegalVariableEvaluationException {
-        FlowRepositoryInterface flowRepository = ((DefaultRunContext)runContext).getApplicationContext().getBean(FlowRepositoryInterface.class);
+        FlowRepositoryInterface flowRepository = ((DefaultRunContext) runContext).getApplicationContext().getBean(FlowRepositoryInterface.class);
 
         Map<String, String> flowProps = Optional.ofNullable((Map<String, String>) runContext.getVariables().get("flow")).orElse(Collections.emptyMap());
         String tenantId = flowProps.get("tenantId");
@@ -185,25 +187,29 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         Stream<FlowWithSource> filteredFlowsToPush = flowsToPush.stream();
         if (globs != null) {
             List<PathMatcher> matchers = globs.stream().map(glob -> FileSystems.getDefault().getPathMatcher("glob:" + glob)).toList();
-            filteredFlowsToPush = filteredFlowsToPush.filter(flowWithSource -> {
+            filteredFlowsToPush = filteredFlowsToPush.filter(flowWithSource ->
+            {
                 String flowId = flowWithSource.getId();
                 return matchers.stream().anyMatch(matcher -> matcher.matches(Path.of(flowId)));
             });
         }
 
-        return filteredFlowsToPush.collect(Collectors.toMap(flowWithSource -> {
+        return filteredFlowsToPush.collect(Collectors.toMap(flowWithSource ->
+        {
             Path path = flowDirectory;
             if (flowWithSource.getNamespace().length() > renderedSourceNamespace.length()) {
                 path = path.resolve(flowWithSource.getNamespace().substring(renderedSourceNamespace.length() + 1).replace(".", "/"));
             }
 
             return path.resolve(flowWithSource.getId() + ".yml");
-        }, throwFunction(flowWithSource -> (throwSupplier(() -> {
+        }, throwFunction(flowWithSource -> (throwSupplier(() ->
+        {
             String renderedTargetNamespace = runContext.render(targetNamespace).as(String.class).orElse(renderedSourceNamespace);
             String modifiedSource = flowWithSource.getSource()
                 .replaceAll(
-                "(?m)^(\\s*namespace:\\s*)" + renderedSourceNamespace,
-                "$1" + renderedTargetNamespace);
+                    "(?m)^(\\s*namespace:\\s*)" + renderedSourceNamespace,
+                    "$1" + renderedTargetNamespace
+                );
             return new ByteArrayInputStream(modifiedSource.getBytes());
         })))));
     }

@@ -1,20 +1,15 @@
 package io.kestra.plugin.git;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import io.kestra.core.models.flows.Flow;
-import io.kestra.core.models.flows.FlowWithSource;
-import io.kestra.core.models.flows.GenericFlow;
-import io.kestra.core.models.property.Property;
-import io.kestra.core.repositories.FlowRepositoryInterface;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.runners.RunContextFactory;
-import io.kestra.core.serializers.JacksonMapper;
-import io.kestra.core.tenant.TenantService;
-import io.kestra.core.utils.IdUtils;
-import io.kestra.core.utils.Rethrow;
-import io.kestra.plugin.git.services.GitService;
-import io.kestra.core.junit.annotations.KestraTest;
-import jakarta.inject.Inject;
+import java.io.File;
+import java.io.IOException;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.StreamSupport;
+
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
 import org.eclipse.jgit.api.Git;
@@ -26,15 +21,22 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import java.io.File;
-import java.io.IOException;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.StreamSupport;
+import com.fasterxml.jackson.core.type.TypeReference;
+
+import io.kestra.core.junit.annotations.KestraTest;
+import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.flows.GenericFlow;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.repositories.FlowRepositoryInterface;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.core.tenant.TenantService;
+import io.kestra.core.utils.IdUtils;
+import io.kestra.core.utils.Rethrow;
+import io.kestra.plugin.git.services.GitService;
+
+import jakarta.inject.Inject;
 
 import static org.eclipse.jgit.lib.Constants.R_HEADS;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -416,7 +418,7 @@ public class PushFlowsTest extends AbstractGitTest {
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {true, false})
+    @ValueSource(booleans = { true, false })
     void defaultCase_MultipleRegex(boolean useStringPebbleArray) throws Exception {
         String tenantId = TenantService.MAIN_TENANT;
         String sourceNamespace = IdUtils.create().toLowerCase();
@@ -424,7 +426,9 @@ public class PushFlowsTest extends AbstractGitTest {
         String branch = IdUtils.create();
         String gitDirectory = "my-flows";
 
-        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory, List.of("first*", "second*"), useStringPebbleArray);
+        RunContext runContext = runContext(
+            tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory, List.of("first*", "second*"), useStringPebbleArray
+        );
 
         FlowWithSource createdFlow = this.createFlow(tenantId, "first-flow", sourceNamespace);
         String subNamespace = "sub-namespace";
@@ -719,36 +723,41 @@ public class PushFlowsTest extends AbstractGitTest {
             try {
                 RunContext cleanupContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
                 this.deleteRemoteBranch(cleanupContext.workingDir().path(), branch);
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }
     }
 
-    private RunContext runContext(String tenantId, String repositoryUrl, String gitUserEmail, String gitUserName, String branch, String sourceNamespace, String targetNamespace, String gitDirectory) {
+    private RunContext runContext(String tenantId, String repositoryUrl, String gitUserEmail, String gitUserName, String branch, String sourceNamespace, String targetNamespace,
+        String gitDirectory) {
         return runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory, null, false);
     }
 
-    private RunContext runContext(String tenantId, String url, String authorEmail, String authorName, String branch, String sourceNamespace, String targetNamespace, String gitDirectory, List<String> flows, boolean useStringPebbleArray) {
-        Map<String, Object> map = new HashMap<>(Map.of(
-            "flow", Map.of(
-                "tenantId", tenantId,
-                "namespace", "system"
-            ),
-            "url", url,
-            "description", DESCRIPTION,
-            "pat", pat,
-            "email", authorEmail,
-            "name", authorName,
-            "branch", branch,
-            "sourceNamespace", sourceNamespace,
-            "targetNamespace", targetNamespace,
-            "gitDirectory", gitDirectory
-        ));
+    private RunContext runContext(String tenantId, String url, String authorEmail, String authorName, String branch, String sourceNamespace, String targetNamespace, String gitDirectory,
+        List<String> flows, boolean useStringPebbleArray) {
+        Map<String, Object> map = new HashMap<>(
+            Map.of(
+                "flow", Map.of(
+                    "tenantId", tenantId,
+                    "namespace", "system"
+                ),
+                "url", url,
+                "description", DESCRIPTION,
+                "pat", pat,
+                "email", authorEmail,
+                "name", authorName,
+                "branch", branch,
+                "sourceNamespace", sourceNamespace,
+                "targetNamespace", targetNamespace,
+                "gitDirectory", gitDirectory
+            )
+        );
 
         if (flows != null && !flows.isEmpty()) {
             if (useStringPebbleArray) {
-                map.put("flows",  flows);
+                map.put("flows", flows);
             } else {
-                for (int i=0; i<flows.size(); i++) {
+                for (int i = 0; i < flows.size(); i++) {
                     map.put("flow" + (i + 1), flows.get(i));
                 }
             }
@@ -758,7 +767,7 @@ public class PushFlowsTest extends AbstractGitTest {
 
     private static RevCommit assertIsLastCommit(RunContext cloneRunContext, PushFlows.Output pushOutput) throws IOException, GitAPIException {
         RevCommit revCommit;
-        try(Git git = Git.open(cloneRunContext.workingDir().path().toFile())) {
+        try (Git git = Git.open(cloneRunContext.workingDir().path().toFile())) {
             revCommit = StreamSupport.stream(git.log().setMaxCount(1).call().spliterator(), false).findFirst().orElse(null);
         }
         assertThat(revCommit.getId().getName(), is(pushOutput.getCommitId()));
@@ -774,16 +783,21 @@ public class PushFlowsTest extends AbstractGitTest {
     private static void assertDiffs(RunContext runContext, URI diffFileUri, List<Map<String, String>> expectedDiffs) throws IOException {
         String diffSummary = IOUtils.toString(runContext.storage().getFile(diffFileUri), StandardCharsets.UTF_8);
         List<Map<String, String>> diffMaps = diffSummary.lines()
-            .map(Rethrow.throwFunction(diff -> JacksonMapper.ofIon().readValue(
-                diff,
-                new TypeReference<Map<String, String>>() {}
-            )))
+            .map(
+                Rethrow.throwFunction(
+                    diff -> JacksonMapper.ofIon().readValue(
+                        diff,
+                        new TypeReference<Map<String, String>>() {
+                        }
+                    )
+                )
+            )
             .toList();
         assertThat(diffMaps, containsInAnyOrder(expectedDiffs.toArray(Map[]::new)));
     }
 
     private void deleteRemoteBranch(Path gitDirectory, String branchName) throws GitAPIException, IOException {
-        try(Git git = Git.open(gitDirectory.toFile())) {
+        try (Git git = Git.open(gitDirectory.toFile())) {
             git.checkout().setName("tmp").setCreateBranch(true).call();
             git.branchDelete().setBranchNames(R_HEADS + branchName).call();
             RefSpec refSpec = new RefSpec()

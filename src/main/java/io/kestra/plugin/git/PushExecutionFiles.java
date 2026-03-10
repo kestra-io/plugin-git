@@ -1,17 +1,5 @@
 package io.kestra.plugin.git;
 
-import io.kestra.core.models.annotations.Example;
-import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.models.property.Property;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.serializers.JacksonMapper;
-import io.kestra.core.utils.PathMatcherPredicate;
-import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
-
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.net.URI;
@@ -22,6 +10,19 @@ import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+
+import io.kestra.core.models.annotations.Example;
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.core.utils.PathMatcherPredicate;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.throwFunction;
 import static io.kestra.core.utils.Rethrow.throwSupplier;
@@ -118,7 +119,7 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
     @Schema(
         title = "Explicit file map",
         description = "Map of destination filename to source file URI (string or JSON map). Useful for wiring outputFiles from other tasks.",
-        anyOf = {Map.class, String.class}
+        anyOf = { Map.class, String.class }
     )
     private Object filesMap;
 
@@ -162,15 +163,17 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
             }
             Map<String, Object> renderedMap = runContext.render(readFilesMap);
 
-            contentByPath = renderedMap.entrySet().stream().collect(Collectors.toMap(
-                e -> baseDirectory.resolve(e.getKey()),
-                throwFunction(e -> throwSupplier(() -> {
-                    URI sourceFileURI = URI.create((String) e.getValue());
-                    return runContext.storage().getFile(sourceFileURI);
-                }))
-            ));
-        }
-        else if (globs != null && !globs.isEmpty()) {
+            contentByPath = renderedMap.entrySet().stream().collect(
+                Collectors.toMap(
+                    e -> baseDirectory.resolve(e.getKey()),
+                    throwFunction(e -> throwSupplier(() ->
+                    {
+                        URI sourceFileURI = URI.create((String) e.getValue());
+                        return runContext.storage().getFile(sourceFileURI);
+                    }))
+                )
+            );
+        } else if (globs != null && !globs.isEmpty()) {
             Predicate<Path> matcher = PathMatcherPredicate.matches(globs);
             List<Path> localMatches = runContext.workingDir().findAllFilesMatching(globs)
                 .stream()
@@ -178,10 +181,12 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
                 .toList();
 
             if (!localMatches.isEmpty()) {
-                contentByPath = localMatches.stream().collect(Collectors.toMap(
-                    path -> baseDirectory.resolve(path.toString()),
-                    throwFunction(path -> throwSupplier(() -> new FileInputStream(path.toFile())))
-                ));
+                contentByPath = localMatches.stream().collect(
+                    Collectors.toMap(
+                        path -> baseDirectory.resolve(path.toString()),
+                        throwFunction(path -> throwSupplier(() -> new FileInputStream(path.toFile())))
+                    )
+                );
             } else {
                 Map<String, Object> outputs = (Map<String, Object>) runContext.getVariables().get("outputs");
                 if (outputs != null) {
@@ -189,19 +194,21 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
                         .filter(v -> v instanceof Map && ((Map<?, ?>) v).get("outputFiles") instanceof Map)
                         .flatMap(v -> ((Map<String, Object>) ((Map<?, ?>) v).get("outputFiles")).entrySet().stream())
                         .filter(e -> globs.stream().anyMatch(g -> e.getKey().matches(g.replace("*", ".*"))))
-                        .collect(Collectors.toMap(
-                            e -> baseDirectory.resolve(e.getKey()),
-                            throwFunction(e -> throwSupplier(() -> {
-                                URI sourceFileURI = URI.create((String) e.getValue());
-                                return runContext.storage().getFile(sourceFileURI);
-                            }))
-                        ));
+                        .collect(
+                            Collectors.toMap(
+                                e -> baseDirectory.resolve(e.getKey()),
+                                throwFunction(e -> throwSupplier(() ->
+                                {
+                                    URI sourceFileURI = URI.create((String) e.getValue());
+                                    return runContext.storage().getFile(sourceFileURI);
+                                }))
+                            )
+                        );
                 } else {
                     contentByPath = Map.of();
                 }
             }
-        }
-        else {
+        } else {
             // we collect all outputFiles from all tasks in the execution
             Map<String, Object> outputs = (Map<String, Object>) runContext.getVariables().get("outputs");
 
@@ -209,13 +216,16 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
                 contentByPath = outputs.values().stream()
                     .filter(v -> v instanceof Map && ((Map<?, ?>) v).get("outputFiles") instanceof Map)
                     .flatMap(v -> ((Map<String, Object>) ((Map<?, ?>) v).get("outputFiles")).entrySet().stream())
-                    .collect(Collectors.toMap(
-                        e -> baseDirectory.resolve(e.getKey()),
-                        throwFunction(e -> throwSupplier(() -> {
-                            URI sourceFileURI = URI.create((String) e.getValue());
-                            return runContext.storage().getFile(sourceFileURI);
-                        }))
-                    ));
+                    .collect(
+                        Collectors.toMap(
+                            e -> baseDirectory.resolve(e.getKey()),
+                            throwFunction(e -> throwSupplier(() ->
+                            {
+                                URI sourceFileURI = URI.create((String) e.getValue());
+                                return runContext.storage().getFile(sourceFileURI);
+                            }))
+                        )
+                    );
 
                 runContext.logger().info("No files or filesMap provided - pushing all execution output files instead.");
             } else {

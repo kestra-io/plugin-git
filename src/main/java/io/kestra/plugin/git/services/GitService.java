@@ -1,17 +1,19 @@
 package io.kestra.plugin.git.services;
 
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.lib.Constants;
+
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.git.AbstractGitTask;
 import io.kestra.plugin.git.Clone;
-import lombok.AllArgsConstructor;
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.lib.Constants;
 
-import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import lombok.AllArgsConstructor;
 
 import static org.eclipse.jgit.lib.Constants.R_HEADS;
 

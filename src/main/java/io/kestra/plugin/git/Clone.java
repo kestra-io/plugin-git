@@ -1,19 +1,21 @@
 package io.kestra.plugin.git;
 
+import java.nio.file.Path;
+
+import org.eclipse.jgit.api.CloneCommand;
+import org.eclipse.jgit.api.Git;
+import org.slf4j.Logger;
+
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.eclipse.jgit.api.CloneCommand;
-import org.eclipse.jgit.api.Git;
-import org.slf4j.Logger;
-
-import java.nio.file.Path;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -155,7 +157,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
     @Override
     public Clone.Output run(RunContext runContext) throws Exception {
-        
+
         Logger logger = runContext.logger();
         String url = runContext.render(this.url).as(String.class).orElse(null);
 
@@ -164,9 +166,9 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
             String directory = runContext.render(this.directory).as(String.class).orElseThrow();
             path = runContext.workingDir().resolve(Path.of(directory));
         }
-        
+
         configureHttpTransport(runContext);
-        
+
         // we add this method to configure ssl to allow self signed certs
         configureEnvironmentWithSsl(runContext);
 

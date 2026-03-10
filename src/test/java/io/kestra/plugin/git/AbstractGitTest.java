@@ -1,6 +1,7 @@
 package io.kestra.plugin.git;
 
 import io.kestra.core.junit.annotations.KestraTest;
+
 import io.micronaut.context.annotation.Value;
 
 @KestraTest

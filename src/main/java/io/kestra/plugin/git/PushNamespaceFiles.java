@@ -1,17 +1,5 @@
 package io.kestra.plugin.git;
 
-import io.kestra.core.exceptions.KestraRuntimeException;
-import io.kestra.core.models.annotations.Example;
-import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.models.annotations.PluginProperty;
-import io.kestra.core.models.property.Property;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.storages.Namespace;
-import io.kestra.core.utils.PathMatcherPredicate;
-import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.*;
-import lombok.experimental.SuperBuilder;
-
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.file.Path;
@@ -21,6 +9,19 @@ import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+
+import io.kestra.core.exceptions.KestraRuntimeException;
+import io.kestra.core.models.annotations.Example;
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.storages.Namespace;
+import io.kestra.core.utils.PathMatcherPredicate;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.throwFunction;
 import static io.kestra.core.utils.Rethrow.throwSupplier;
@@ -167,10 +168,12 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         Map<Path, Supplier<InputStream>> filesMap = storage
             .findAllFilesMatching(matcher)
             .stream()
-            .collect(Collectors.toMap(
-                nsFile -> baseDirectory.resolve(nsFile.path()),
-                throwFunction(nsFile -> throwSupplier(() -> storage.getFileContent(Path.of(nsFile.path()))))
-            ));
+            .collect(
+                Collectors.toMap(
+                    nsFile -> baseDirectory.resolve(nsFile.path()),
+                    throwFunction(nsFile -> throwSupplier(() -> storage.getFileContent(Path.of(nsFile.path()))))
+                )
+            );
 
         if (runContext.render(errorOnMissing).as(Boolean.class).orElse(false) && filesMap.isEmpty()) {
             throw new KestraRuntimeException("No Namespace Files matched the provided 'files' parameter to commit.");

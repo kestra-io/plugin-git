@@ -5,8 +5,8 @@ import io.kestra.core.repositories.DashboardRepositoryInterface;
 import io.kestra.core.serializers.YamlParser;
 
 public class DashboardUtils {
-    public static Dashboard createDashboard(DashboardRepositoryInterface dashboardRepositoryInterface ,
-                                            String tenantId, String title, String id) {
+    public static Dashboard createDashboard(DashboardRepositoryInterface dashboardRepositoryInterface,
+        String tenantId, String title, String id) {
         String dashboardSource = """
             id:\s""" + id + """
 

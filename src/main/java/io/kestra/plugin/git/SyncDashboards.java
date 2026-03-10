@@ -1,19 +1,5 @@
 package io.kestra.plugin.git;
 
-import io.kestra.core.exceptions.IllegalVariableEvaluationException;
-import io.kestra.core.models.annotations.Example;
-import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.models.dashboards.Dashboard;
-import io.kestra.core.models.property.Property;
-import io.kestra.core.repositories.DashboardRepositoryInterface;
-import io.kestra.core.runners.DefaultRunContext;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.serializers.YamlParser;
-import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.*;
-import lombok.experimental.SuperBuilder;
-import org.apache.commons.io.IOUtils;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -23,6 +9,21 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Pattern;
+
+import org.apache.commons.io.IOUtils;
+
+import io.kestra.core.models.annotations.Example;
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.dashboards.Dashboard;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.repositories.DashboardRepositoryInterface;
+import io.kestra.core.runners.DefaultRunContext;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.YamlParser;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -127,7 +128,8 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
 
         Optional<Dashboard> prevDashboard = dashboardRepositoryInterface.get(dashboardWithTenant.getTenantId(), dashboardWithTenant.getId());
         if (dryRun) {
-            return prevDashboard.map(previous -> {
+            return prevDashboard.map(previous ->
+            {
                 if (previous.equals(dashboardWithTenant) && !previous.isDeleted()) {
                     return previous;
                 }
@@ -139,7 +141,8 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
     }
 
     @Override
-    protected SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, Dashboard dashboardBeforeUpdate, Dashboard dashboardAfterUpdate) {
+    protected SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, Dashboard dashboardBeforeUpdate,
+        Dashboard dashboardAfterUpdate) {
         if (resourceUri != null && resourceUri.toString().endsWith("/")) {
             return null;
         }
@@ -149,7 +152,7 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
             syncState = SyncState.DELETED;
         } else if (dashboardBeforeUpdate == null) {
             syncState = SyncState.ADDED;
-        } else if (dashboardBeforeUpdate.getUpdated().equals(Objects.requireNonNull(dashboardAfterUpdate).getUpdated())){
+        } else if (dashboardBeforeUpdate.getUpdated().equals(Objects.requireNonNull(dashboardAfterUpdate).getUpdated())) {
             syncState = SyncState.UNCHANGED;
         } else {
             syncState = SyncState.UPDATED;
@@ -202,7 +205,6 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
             return this.dashboards;
         }
     }
-
 
     @SuperBuilder
     @Getter

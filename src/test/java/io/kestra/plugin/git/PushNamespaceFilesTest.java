@@ -1,29 +1,5 @@
 package io.kestra.plugin.git;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import io.kestra.core.exceptions.KestraRuntimeException;
-import io.kestra.core.junit.annotations.KestraTest;
-import io.kestra.core.models.property.Property;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.runners.RunContextFactory;
-import io.kestra.core.serializers.JacksonMapper;
-import io.kestra.core.storages.Namespace;
-import io.kestra.core.storages.StorageContext;
-import io.kestra.core.storages.StorageInterface;
-import io.kestra.core.tenant.TenantService;
-import io.kestra.core.utils.IdUtils;
-import io.kestra.core.utils.Rethrow;
-import io.kestra.plugin.git.services.GitService;
-import jakarta.inject.Inject;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.io.IOUtils;
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.errors.GitAPIException;
-import org.eclipse.jgit.revwalk.RevCommit;
-import org.eclipse.jgit.transport.RefSpec;
-import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
-import org.junit.jupiter.api.Test;
-
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -34,6 +10,31 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.StreamSupport;
+
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.transport.RefSpec;
+import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.junit.jupiter.api.Test;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+
+import io.kestra.core.exceptions.KestraRuntimeException;
+import io.kestra.core.junit.annotations.KestraTest;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.core.storages.StorageContext;
+import io.kestra.core.tenant.TenantService;
+import io.kestra.core.utils.IdUtils;
+import io.kestra.core.utils.Rethrow;
+import io.kestra.plugin.git.services.GitService;
+
+import jakarta.inject.Inject;
 
 import static org.eclipse.jgit.lib.Constants.R_HEADS;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -57,10 +58,10 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
         RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory);
 
         String firstFilePath = "first-file.txt";
-        runContext.storage().namespace(namespace).putFile(Path.of( firstFilePath), new ByteArrayInputStream("First file".getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of(firstFilePath), new ByteArrayInputStream("First file".getBytes()));
         String secondFilePath = "nested/second-file.txt";
         String secondFileContent = "Second file";
-        runContext.storage().namespace(namespace).putFile(Path.of( secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of(secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
@@ -130,10 +131,10 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
         RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory);
 
         String firstFilePath = "first-file.txt";
-        runContext.storage().namespace(namespace).putFile(Path.of( firstFilePath), new ByteArrayInputStream("First file".getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of(firstFilePath), new ByteArrayInputStream("First file".getBytes()));
         String secondFilePath = "nested/second-file.txt";
         String secondFileContent = "Second file";
-        runContext.storage().namespace(namespace).putFile(Path.of( secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of(secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
@@ -284,7 +285,7 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
         runContext.storage().namespace(namespace).putFile(Path.of(firstFilePath), new ByteArrayInputStream(firstFileContent.getBytes()));
         String secondFilePath = "nested/second-file.txt";
         String secondFileContent = "Second file";
-        runContext.storage().namespace(namespace).putFile(Path.of( secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of(secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
@@ -358,12 +359,12 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
 
         String firstFilePath = "first-file.txt";
         String firstFileContent = "First file";
-        runContext.storage().namespace(namespace).putFile(Path.of( firstFilePath), new ByteArrayInputStream(firstFileContent.getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of(firstFilePath), new ByteArrayInputStream(firstFileContent.getBytes()));
         String secondFilePath = "nested/second-file.txt";
         String secondFileContent = "Second file";
-        runContext.storage().namespace(namespace).putFile(Path.of( secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of(secondFilePath), new ByteArrayInputStream(secondFileContent.getBytes()));
         String thirdFilePath = "third-file.txt";
-        runContext.storage().namespace(namespace).putFile(Path.of( thirdFilePath), new ByteArrayInputStream("Third file".getBytes()));
+        runContext.storage().namespace(namespace).putFile(Path.of(thirdFilePath), new ByteArrayInputStream("Third file".getBytes()));
 
         PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
             .id("pushNamespaceFiles")
@@ -498,7 +499,8 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             .errorOnMissing(Property.ofValue(true))
             .build();
 
-        assertThrows(KestraRuntimeException.class, () -> {
+        assertThrows(KestraRuntimeException.class, () ->
+        {
             pushNamespaceFiles.run(runContext);
         });
     }
@@ -515,11 +517,13 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
         // Clone seed OUTSIDE the workingDir so that workingDir remains empty for the task's clone
         Path seedClone = Files.createTempDirectory("seed-clone-");
 
-        try (Git git = Git.cloneRepository()
-            .setURI(repositoryUrl)
-            .setDirectory(seedClone.toFile())
-            .setCredentialsProvider(new UsernamePasswordCredentialsProvider(pat, pat))
-            .call()) {
+        try (
+            Git git = Git.cloneRepository()
+                .setURI(repositoryUrl)
+                .setDirectory(seedClone.toFile())
+                .setCredentialsProvider(new UsernamePasswordCredentialsProvider(pat, pat))
+                .call()
+        ) {
 
             git.checkout().setCreateBranch(true).setName(branch).call();
 
@@ -527,7 +531,8 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
             Files.createDirectories(dir);
             Files.writeString(
                 dir.resolve(".kestraignore"),
-                String.join("\n",
+                String.join(
+                    "\n",
                     "ignored-file.txt",
                     "ignored-dir/"
                 ),
@@ -614,20 +619,22 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
     }
 
     private RunContext runContext(String tenantId, String url, String authorEmail, String authorName, String branch, String namespace, String gitDirectory) {
-        return runContextFactory.of(Map.of(
-            "flow", Map.of(
-                "tenantId", tenantId,
-                "namespace", "system"
-            ),
-            "url", url,
-            "description", DESCRIPTION,
-            "pat", pat,
-            "email", authorEmail,
-            "name", authorName,
-            "branch", branch,
-            "namespace", namespace,
-            "gitDirectory", gitDirectory
-        ));
+        return runContextFactory.of(
+            Map.of(
+                "flow", Map.of(
+                    "tenantId", tenantId,
+                    "namespace", "system"
+                ),
+                "url", url,
+                "description", DESCRIPTION,
+                "pat", pat,
+                "email", authorEmail,
+                "name", authorName,
+                "branch", branch,
+                "namespace", namespace,
+                "gitDirectory", gitDirectory
+            )
+        );
     }
 
     private static RevCommit assertIsLastCommit(RunContext cloneRunContext, PushNamespaceFiles.Output pushOutput) throws IOException, GitAPIException {
@@ -648,11 +655,15 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
     private static void assertDiffs(RunContext runContext, URI diffFileUri, List<Map<String, String>> expectedDiffs) throws IOException {
         String diffSummary = IOUtils.toString(runContext.storage().getFile(diffFileUri), StandardCharsets.UTF_8);
         List<Map<String, String>> diffMaps = diffSummary.lines()
-            .map(Rethrow.throwFunction(diff -> JacksonMapper.ofIon().readValue(
-                diff,
-                new TypeReference<Map<String, String>>() {
-                }
-            )))
+            .map(
+                Rethrow.throwFunction(
+                    diff -> JacksonMapper.ofIon().readValue(
+                        diff,
+                        new TypeReference<Map<String, String>>() {
+                        }
+                    )
+                )
+            )
             .toList();
         assertThat(diffMaps, containsInAnyOrder(expectedDiffs.toArray(Map[]::new)));
     }

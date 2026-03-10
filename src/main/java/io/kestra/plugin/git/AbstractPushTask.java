@@ -1,22 +1,13 @@
 package io.kestra.plugin.git;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.kestra.core.exceptions.IllegalVariableEvaluationException;
-import io.kestra.core.exceptions.KestraRuntimeException;
-import io.kestra.core.models.property.Property;
-import io.kestra.core.models.tasks.RunnableTask;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.serializers.JacksonMapper;
-import io.kestra.core.utils.KestraIgnore;
-import io.kestra.plugin.git.services.GitService;
-import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.annotation.Nullable;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
+import java.io.*;
+import java.net.URI;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
+
 import org.eclipse.jgit.api.AddCommand;
 import org.eclipse.jgit.api.DiffCommand;
 import org.eclipse.jgit.api.Git;
@@ -35,13 +26,25 @@ import org.eclipse.jgit.transport.RemoteRefUpdate;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.slf4j.Logger;
 
-import java.io.*;
-import java.net.URI;
-import java.nio.file.*;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Supplier;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.exceptions.KestraRuntimeException;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.models.tasks.RunnableTask;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.core.utils.KestraIgnore;
+import io.kestra.plugin.git.services.GitService;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.annotation.Nullable;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.*;
 import static java.nio.file.FileVisitResult.CONTINUE;
@@ -59,7 +62,8 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         REJECTED_OTHER_REASON
     );
 
-    private static final TypeReference<List<String>> TYPE_REFERENCE = new TypeReference<>() {};
+    private static final TypeReference<List<String>> TYPE_REFERENCE = new TypeReference<>() {
+    };
     public static final ObjectMapper MAPPER = JacksonMapper.ofJson();
 
     protected Property<String> commitMessage;
@@ -109,8 +113,10 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
     /**
      * Removes any file from the remote that is no longer present on the instance
      */
-    private void deleteOutdatedResources(Git git, Path basePath, Map<Path, Supplier<InputStream>> contentByPath, List<String> globs, KestraIgnore kestraIgnore) throws IOException, GitAPIException {
-        if (!Files.exists(basePath)) return;
+    private void deleteOutdatedResources(Git git, Path basePath, Map<Path, Supplier<InputStream>> contentByPath, List<String> globs, KestraIgnore kestraIgnore)
+        throws IOException, GitAPIException {
+        if (!Files.exists(basePath))
+            return;
 
         var workTree = git.getRepository().getWorkTree().toPath().toRealPath();
         var baseDir = basePath.toRealPath();
@@ -140,26 +146,32 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
 
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                if (!attrs.isRegularFile()) return CONTINUE;
+                if (!attrs.isRegularFile())
+                    return CONTINUE;
                 Path real = file.toRealPath();
-                if (!real.startsWith(workTree)) return CONTINUE;
+                if (!real.startsWith(workTree))
+                    return CONTINUE;
 
                 Path baseRel = baseDir.relativize(real);
                 String rel = toUnix(prefix.isEmpty() ? baseRel : Path.of(prefix).resolve(baseRel));
 
                 String filename = real.getFileName().toString();
-                if (".kestraignore".equals(filename)) return CONTINUE;
+                if (".kestraignore".equals(filename))
+                    return CONTINUE;
                 if (kestraIgnore != null) {
                     String relToBase = baseDir.relativize(real).toString().replace('\\', '/');
-                    if (kestraIgnore.isIgnoredFile(relToBase, false)) return CONTINUE;
+                    if (kestraIgnore.isIgnoredFile(relToBase, false))
+                        return CONTINUE;
                 }
 
-                if (keep.contains(rel)) return CONTINUE;
+                if (keep.contains(rel))
+                    return CONTINUE;
 
                 String gitRel = toUnix(workTree.relativize(real));
                 if (matchers != null) {
                     String stem = getStem(filename);
-                    if (!matchesAny(matchers, gitRel, filename, stem)) return CONTINUE;
+                    if (!matchesAny(matchers, gitRel, filename, stem))
+                        return CONTINUE;
                 }
                 rm.addFilepattern(gitRel);
                 changed.set(true);
@@ -182,11 +194,13 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
     }
 
     private static boolean matchesAny(PathMatcher[] matchers, String... candidates) {
-        if (matchers == null) return true;
+        if (matchers == null)
+            return true;
         for (String s : candidates) {
             Path p = Path.of(s);
             for (PathMatcher m : matchers) {
-                if (m.matches(p)) return true;
+                if (m.matches(p))
+                    return true;
             }
         }
         return false;
@@ -207,8 +221,10 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         File diffFile = runContext.workingDir().createTempFile(".ion").toFile();
         boolean dryRunValue = runContext.render(this.dryRun).as(Boolean.class).orElseThrow();
 
-        try (DiffFormatter diffFormatter = new DiffFormatter(null);
-             BufferedWriter diffWriter = new BufferedWriter(new FileWriter(diffFile))) {
+        try (
+            DiffFormatter diffFormatter = new DiffFormatter(null);
+            BufferedWriter diffWriter = new BufferedWriter(new FileWriter(diffFile))
+        ) {
             diffFormatter.setRepository(git.getRepository());
 
             DiffCommand diff = git.diff();
@@ -221,7 +237,8 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
 
             diff.call()
                 .stream().sorted(Comparator.comparing(AbstractPushTask::getPath))
-                .map(throwFunction(diffEntry -> {
+                .map(throwFunction(diffEntry ->
+                {
                     EditList editList = diffFormatter.toFileHeader(diffEntry).toEditList();
                     int additions = 0;
                     int deletions = 0;
@@ -237,7 +254,6 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
                         }
                     }
 
-
                     return Map.of(
                         "file", AbstractPushTask.getPath(diffEntry),
                         "additions", "+" + additions,
@@ -246,7 +262,8 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
                     );
                 }))
                 .map(throwFunction(JacksonMapper.ofIon()::writeValueAsString))
-                .forEach(throwConsumer(ionDiff -> {
+                .forEach(throwConsumer(ionDiff ->
+                {
                     diffWriter.write(ionDiff);
                     diffWriter.write("\n");
                     runContext.logger().debug(ionDiff);
@@ -345,7 +362,7 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
 
     public O run(RunContext runContext) throws Exception {
         configureHttpTransport(runContext);
-        
+
         // we add this method to configure ssl to allow self signed certs
         configureEnvironmentWithSsl(runContext);
 

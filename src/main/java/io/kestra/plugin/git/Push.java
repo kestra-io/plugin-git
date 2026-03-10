@@ -1,6 +1,23 @@
 package io.kestra.plugin.git;
 
+import java.io.File;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.util.*;
+
+import org.apache.commons.io.FileUtils;
+import org.eclipse.jgit.api.AddCommand;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.ListBranchCommand;
+import org.eclipse.jgit.api.RmCommand;
+import org.eclipse.jgit.api.errors.EmptyCommitException;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.PersonIdent;
+import org.slf4j.Logger;
+
 import com.fasterxml.jackson.annotation.JsonInclude;
+
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
@@ -16,27 +33,13 @@ import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.FilesService;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.utils.Rethrow;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.annotation.Nullable;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import lombok.extern.jackson.Jacksonized;
-import org.apache.commons.io.FileUtils;
-import org.eclipse.jgit.api.AddCommand;
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.ListBranchCommand;
-import org.eclipse.jgit.api.RmCommand;
-import org.eclipse.jgit.api.errors.EmptyCommitException;
-import org.eclipse.jgit.lib.ObjectId;
-import org.eclipse.jgit.lib.PersonIdent;
-import org.slf4j.Logger;
-
-import java.io.File;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
-import java.util.*;
 
 import static io.kestra.core.utils.Rethrow.throwConsumer;
 import static org.eclipse.jgit.lib.Constants.R_HEADS;
@@ -188,9 +191,9 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         }
 
         String branch = runContext.render(this.branch).as(String.class).orElse(null);
-        
+
         configureHttpTransport(runContext);
-        
+
         // we add this method to configure ssl to allow self-signed certs
         configureEnvironmentWithSsl(runContext);
 
@@ -255,7 +258,8 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
                     runContext.render(this.namespaceFiles.getInclude()).asList(String.class),
                     runContext.render(this.namespaceFiles.getExclude()).asList(String.class)
                 )
-                .forEach(Rethrow.throwConsumer(namespaceFile -> {
+                .forEach(Rethrow.throwConsumer(namespaceFile ->
+                {
                     InputStream content = runContext.storage().getFile(namespaceFile.uri());
                     runContext.workingDir().putFile(Path.of(namespaceFile.path()), content);
                 }));
@@ -283,11 +287,15 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
             // Create flow directory if it doesn't exist
             flowsDirectory.toFile().mkdirs();
 
-            flows.forEach(throwConsumer(flowWithSource -> FileUtils.writeStringToFile(
-                flowsDirectory.resolve(flowWithSource.getNamespace() + "." + flowWithSource.getId() + ".yml").toFile(),
-                flowWithSource.getSource(),
-                StandardCharsets.UTF_8
-            )));
+            flows.forEach(
+                throwConsumer(
+                    flowWithSource -> FileUtils.writeStringToFile(
+                        flowsDirectory.resolve(flowWithSource.getNamespace() + "." + flowWithSource.getId() + ".yml").toFile(),
+                        flowWithSource.getSource(),
+                        StandardCharsets.UTF_8
+                    )
+                )
+            );
         }
 
         logger.info(

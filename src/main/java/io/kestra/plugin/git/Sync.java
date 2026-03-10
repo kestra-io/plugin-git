@@ -1,5 +1,21 @@
 package io.kestra.plugin.git;
 
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
+import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.flows.FlowWithSource;
@@ -13,6 +29,7 @@ import io.kestra.core.services.FlowService;
 import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.KestraIgnore;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.EqualsAndHashCode;
@@ -20,21 +37,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 import lombok.experimental.SuperBuilder;
-import org.apache.commons.io.FileUtils;
-import org.apache.commons.lang3.StringUtils;
-import org.slf4j.Logger;
-
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.net.URI;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.*;
-import java.util.function.Function;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static io.kestra.core.utils.Rethrow.*;
 
@@ -109,9 +111,9 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
         String namespace = flowProps.get("namespace");
         String tenantId = flowProps.get("tenantId");
         boolean dryRun = this.dryRun != null && runContext.render(this.dryRun).as(Boolean.class).orElse(false);
-        
+
         configureHttpTransport(runContext);
-        
+
         // we add this method to configure ssl to allow self signed certs
         configureEnvironmentWithSsl(runContext);
 
@@ -144,7 +146,8 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
                 .filter(filePath -> !kestraIgnore.isIgnoredFile(absoluteGitDirPath.relativize(filePath).toString(), true))
                 .map(throwFunction(Files::readAllBytes))
                 .map(String::new)
-                .map(flowSource -> {
+                .map(flowSource ->
+                {
                     Matcher matcher = NAMESPACE_FINDER_PATTERN.matcher(flowSource);
                     matcher.find();
                     String previousNamespace = matcher.group(1);
@@ -154,7 +157,8 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
 
                     return Map.entry(namespace, matcher.replaceFirst("namespace: " + namespace));
                 })
-                .map(throwFunction(flowSourceByNamespace -> {
+                .map(throwFunction(flowSourceByNamespace ->
+                {
                     boolean isAddition;
                     FlowWithSource flowWithSource;
                     String flowSource = flowSourceByNamespace.getValue();
@@ -185,7 +189,8 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
 
             flowRepository.findByNamespaceWithSource(tenantId, namespace).stream()
                 .filter(flow -> !flowIdsImported.contains(flow.getId()))
-                .forEach(flow -> {
+                .forEach(flow ->
+                {
                     if (!dryRun) {
                         flowRepository.delete(flow);
                     }
@@ -196,7 +201,8 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
         Map<String, String> gitContentByFilePath;
         try (Stream<Path> walk = Files.walk(absoluteGitDirPath)) {
             List<Path> list = walk
-                .filter(path -> {
+                .filter(path ->
+                {
                     String pathStr = path.toString();
                     return !pathStr.equals(absoluteGitDirPath.toString()) &&
                         !pathStr.contains("/.git/") && !pathStr.endsWith("/.git") &&
@@ -206,7 +212,8 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
                 .toList();
             gitContentByFilePath = list.stream()
                 .map(Path::toFile)
-                .collect(HashMap::new, throwBiConsumer((map, file) -> {
+                .collect(HashMap::new, throwBiConsumer((map, file) ->
+                {
                     String relativePath = absoluteGitDirPath.relativize(file.toPath()).toString();
                     map.put(
                         "/" + (file.isDirectory() ? relativePath + "/" : relativePath),
@@ -227,14 +234,18 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
         List<URI> namespaceFilesUris = storage.allByPrefix(tenantId, namespace, namespaceFilePrefix, true);
 
         Map<String, URI> fullUriByRelativeNsFilesPath = namespaceFilesUris.stream()
-            .collect(Collectors.toMap(
-                uri -> "/" + finalNamespaceFilePrefix.relativize(uri),
-                Function.identity()
-            ));
+            .collect(
+                Collectors.toMap(
+                    uri -> "/" + finalNamespaceFilePrefix.relativize(uri),
+                    Function.identity()
+                )
+            );
 
-        logger.info("Dry run is {}, {}performing following actions (- for deletions, + for creations, ~ for update or no modification):", dryRun ? "enabled" : "disabled", dryRun ? "not " : "");
+        logger
+            .info("Dry run is {}, {}performing following actions (- for deletions, + for creations, ~ for update or no modification):", dryRun ? "enabled" : "disabled", dryRun ? "not " : "");
         // perform all required deletions before-hand
-        fullUriByRelativeNsFilesPath.forEach(throwBiConsumer((relativeNsFilePath, uri) -> {
+        fullUriByRelativeNsFilesPath.forEach(throwBiConsumer((relativeNsFilePath, uri) ->
+        {
             if (!gitContentByFilePath.containsKey(relativeNsFilePath)) {
                 logDeletion(logger, relativeNsFilePath);
                 if (!dryRun) {
@@ -246,7 +257,8 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
         // perform all required additions/updates
         gitContentByFilePath.entrySet().stream()
             .sorted(Comparator.comparing(e -> StringUtils.countMatches(e.getKey(), "/")))
-            .forEach(throwConsumer(contentByFilePath -> {
+            .forEach(throwConsumer(contentByFilePath ->
+            {
                 String path = contentByFilePath.getKey();
                 if (fullUriByRelativeNsFilesPath.containsKey(path)) {
                     logUpdate(logger, path);

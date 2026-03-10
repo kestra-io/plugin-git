@@ -1,34 +1,5 @@
 package io.kestra.plugin.git;
 
-import io.kestra.core.exceptions.FlowProcessingException;
-import io.kestra.core.exceptions.IllegalVariableEvaluationException;
-import io.kestra.core.exceptions.KestraRuntimeException;
-import io.kestra.core.models.annotations.Example;
-import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.models.flows.FlowSource;
-import io.kestra.core.models.flows.FlowWithSource;
-import io.kestra.core.models.property.Property;
-import io.kestra.core.models.tasks.RunnableTask;
-import io.kestra.core.repositories.FlowRepositoryInterface;
-import io.kestra.core.runners.DefaultRunContext;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.serializers.YamlParser;
-import io.kestra.core.services.FlowService;
-import io.kestra.core.storages.NamespaceFile;
-import io.kestra.plugin.git.services.GitService;
-import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.annotation.Nullable;
-import jakarta.validation.constraints.NotNull;
-import lombok.*;
-import lombok.experimental.SuperBuilder;
-import org.eclipse.jgit.api.AddCommand;
-import org.eclipse.jgit.api.errors.EmptyCommitException;
-import org.eclipse.jgit.lib.Constants;
-import org.eclipse.jgit.lib.ObjectId;
-import org.eclipse.jgit.lib.PersonIdent;
-import org.eclipse.jgit.transport.PushResult;
-import org.eclipse.jgit.transport.RemoteRefUpdate;
-
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -45,6 +16,37 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import org.eclipse.jgit.api.AddCommand;
+import org.eclipse.jgit.api.errors.EmptyCommitException;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.transport.PushResult;
+import org.eclipse.jgit.transport.RemoteRefUpdate;
+
+import io.kestra.core.exceptions.FlowProcessingException;
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.exceptions.KestraRuntimeException;
+import io.kestra.core.models.annotations.Example;
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.flows.FlowSource;
+import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.models.tasks.RunnableTask;
+import io.kestra.core.repositories.FlowRepositoryInterface;
+import io.kestra.core.runners.DefaultRunContext;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.YamlParser;
+import io.kestra.core.services.FlowService;
+import io.kestra.core.storages.NamespaceFile;
+import io.kestra.plugin.git.services.GitService;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import jakarta.annotation.Nullable;
+import jakarta.validation.constraints.NotNull;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.throwConsumer;
 import static java.lang.Integer.MAX_VALUE;
@@ -110,11 +112,22 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
 )
 public class NamespaceSync extends AbstractCloningTask implements RunnableTask<NamespaceSync.Output> {
 
-    public enum SourceOfTruth {GIT, KESTRA}
+    public enum SourceOfTruth {
+        GIT,
+        KESTRA
+    }
 
-    public enum WhenMissingInSource {DELETE, KEEP, FAIL}
+    public enum WhenMissingInSource {
+        DELETE,
+        KEEP,
+        FAIL
+    }
 
-    public enum OnInvalidSyntax {SKIP, WARN, FAIL}
+    public enum OnInvalidSyntax {
+        SKIP,
+        WARN,
+        FAIL
+    }
 
     @Schema(
         title = "Branch to sync",
@@ -245,7 +258,8 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         planNamespaceFiles(runContext, baseDir, rNamespace, gitFiles, namespaceFiles, rSourceOfTruth, rWhenMissingInSource, rProtectedNamespaces, rDryRun, diffs, apply);
 
         if (!rDryRun) {
-            for (Runnable r : apply) r.run();
+            for (Runnable r : apply)
+                r.run();
         }
 
         String addPattern = (rGitDirectory == null || rGitDirectory.isBlank()) ? "." : rGitDirectory;
@@ -298,9 +312,9 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     }
 
     private void planFlows(RunContext rc, Path baseDir, GitTree gitTree, KestraState kes,
-                           SourceOfTruth rSource, WhenMissingInSource rMissing, OnInvalidSyntax rInvalid,
-                           List<String> protectedNamespace, boolean rDryRun,
-                           List<DiffLine> diff, List<Runnable> apply) {
+        SourceOfTruth rSource, WhenMissingInSource rMissing, OnInvalidSyntax rInvalid,
+        List<String> protectedNamespace, boolean rDryRun,
+        List<DiffLine> diff, List<Runnable> apply) {
         FlowService fs = flowService(rc);
         Map<String, GitNode> gitByKey = gitTree.nodes;
         Map<String, FlowWithSource> kesByKey = kes.flows;
@@ -316,18 +330,20 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
             if (gitNode != null && kestraFlowWithSource == null) {
                 if (rSource == SourceOfTruth.GIT) {
                     diff.add(DiffLine.added(fileRel, key, Kind.FLOW));
-                    if (!rDryRun) apply.add(() -> {
-                        try {
-                            var flowValidated = fs.validate(rc.flowInfo().tenantId(), List.of(new FlowSource(key, gitNode.rawYaml))).getFirst();
+                    if (!rDryRun)
+                        apply.add(() ->
+                        {
+                            try {
+                                var flowValidated = fs.validate(rc.flowInfo().tenantId(), List.of(new FlowSource(key, gitNode.rawYaml))).getFirst();
 
-                            if (flowValidated.getConstraints() != null) {
-                                throw new FlowProcessingException(flowValidated.getConstraints());
+                                if (flowValidated.getConstraints() != null) {
+                                    throw new FlowProcessingException(flowValidated.getConstraints());
+                                }
+                                fs.importFlow(tenant, gitNode.rawYaml, false);
+                            } catch (Exception e) {
+                                handleInvalid(rc, rInvalid, "FLOW " + key, e);
                             }
-                            fs.importFlow(tenant, gitNode.rawYaml, false);
-                        } catch (Exception e) {
-                            handleInvalid(rc, rInvalid, "FLOW " + key, e);
-                        }
-                    });
+                        });
                 } else {
                     switch (rMissing) {
                         case KEEP -> diff.add(DiffLine.unchanged(fileRel, key, Kind.FLOW));
@@ -337,7 +353,8 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                                 diff.add(DiffLine.unchanged(fileRel, key, Kind.FLOW));
                             } else {
                                 diff.add(DiffLine.deletedGit(fileRel, key, Kind.FLOW));
-                                if (!rDryRun) apply.add(() -> deleteGitFile(baseDir, fileRel));
+                                if (!rDryRun)
+                                    apply.add(() -> deleteGitFile(baseDir, fileRel));
                             }
                         }
                         case FAIL ->
@@ -348,10 +365,12 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                 if (rSource == SourceOfTruth.KESTRA) {
                     String rel = fileRelFromKey(FLOWS_DIR, key);
                     diff.add(DiffLine.added(rel, key, Kind.FLOW));
-                    if (!rDryRun) apply.add(() -> {
-                        ensureNamespaceFolders(baseDir, namespace);
-                        writeGitFile(baseDir, rel, kestraFlowWithSource.getSource());
-                    });
+                    if (!rDryRun)
+                        apply.add(() ->
+                        {
+                            ensureNamespaceFolders(baseDir, namespace);
+                            writeGitFile(baseDir, rel, kestraFlowWithSource.getSource());
+                        });
                 } else {
                     switch (rMissing) {
                         case KEEP -> diff.add(DiffLine.unchanged(fileRelFromKey(FLOWS_DIR, key), key, Kind.FLOW));
@@ -361,7 +380,8 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                                 break;
                             }
                             diff.add(DiffLine.deletedKestra(fileRelFromKey(FLOWS_DIR, key), key, Kind.FLOW));
-                            if (!rDryRun) apply.add(() -> deleteFlow(rc, kestraFlowWithSource));
+                            if (!rDryRun)
+                                apply.add(() -> deleteFlow(rc, kestraFlowWithSource));
                         }
                         case FAIL ->
                             throw new KestraRuntimeException("Sync failed: FLOW missing in Git but present in KESTRA for key " + key);
@@ -375,30 +395,33 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                 }
                 if (rSource == SourceOfTruth.GIT) {
                     diff.add(DiffLine.updatedKestra(fileRel, key, Kind.FLOW));
-                    if (!rDryRun) apply.add(() -> {
-                        try {
-                            var flowValidated = fs.validate(rc.flowInfo().tenantId(), List.of(new FlowSource(key, gitNode.rawYaml))).getFirst();
+                    if (!rDryRun)
+                        apply.add(() ->
+                        {
+                            try {
+                                var flowValidated = fs.validate(rc.flowInfo().tenantId(), List.of(new FlowSource(key, gitNode.rawYaml))).getFirst();
 
-                            if (flowValidated.getConstraints() != null) {
-                                throw new FlowProcessingException(flowValidated.getConstraints());
+                                if (flowValidated.getConstraints() != null) {
+                                    throw new FlowProcessingException(flowValidated.getConstraints());
+                                }
+
+                                fs.importFlow(tenant, gitNode.rawYaml, false);
+                            } catch (Exception e) {
+                                handleInvalid(rc, rInvalid, "FLOW " + key, e);
                             }
-
-                            fs.importFlow(tenant, gitNode.rawYaml, false);
-                        } catch (Exception e) {
-                            handleInvalid(rc, rInvalid, "FLOW " + key, e);
-                        }
-                    });
+                        });
                 } else {
                     diff.add(DiffLine.updatedGit(fileRel, key, Kind.FLOW));
-                    if (!rDryRun) apply.add(() -> writeGitFile(baseDir, fileRel, kestraFlowWithSource.getSource()));
+                    if (!rDryRun)
+                        apply.add(() -> writeGitFile(baseDir, fileRel, kestraFlowWithSource.getSource()));
                 }
             }
         }
     }
 
     private void planNamespaceFiles(RunContext rc, Path baseDir, String namespace, Map<String, byte[]> gitFiles,
-                                    Map<String, byte[]> kestraFiles, SourceOfTruth rSource, WhenMissingInSource rMissing,
-                                    List<String> protectedNamespace, boolean rDryRun, List<DiffLine> diff, List<Runnable> apply) {
+        Map<String, byte[]> kestraFiles, SourceOfTruth rSource, WhenMissingInSource rMissing,
+        List<String> protectedNamespace, boolean rDryRun, List<DiffLine> diff, List<Runnable> apply) {
 
         Set<String> paths = union(gitFiles.keySet(), kestraFiles.keySet());
         for (String rel : paths) {
@@ -409,9 +432,11 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
             if (inGit && !inKestra) {
                 if (rSource == SourceOfTruth.GIT) {
                     diff.add(DiffLine.added(fileRel, namespace + ":" + rel, Kind.FILE));
-                    if (!rDryRun) apply.add(() -> {
-                        putNamespaceFile(rc, namespace, rel, gitFiles.get(rel));
-                    });
+                    if (!rDryRun)
+                        apply.add(() ->
+                        {
+                            putNamespaceFile(rc, namespace, rel, gitFiles.get(rel));
+                        });
                 } else {
                     switch (rMissing) {
                         case KEEP -> diff.add(DiffLine.unchanged(fileRel, namespace + ":" + rel, Kind.FILE));
@@ -421,7 +446,8 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                                 diff.add(DiffLine.unchanged(fileRel, namespace + ":" + rel, Kind.FILE));
                             } else {
                                 diff.add(DiffLine.deletedGit(fileRel, namespace + ":" + rel, Kind.FILE));
-                                if (!rDryRun) apply.add(() -> deleteGitFile(baseDir, fileRel));
+                                if (!rDryRun)
+                                    apply.add(() -> deleteGitFile(baseDir, fileRel));
                             }
                         }
                         case FAIL ->
@@ -434,7 +460,8 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
             if (!inGit && inKestra) {
                 if (rSource == SourceOfTruth.KESTRA) {
                     diff.add(DiffLine.added(fileRel, namespace + ":" + rel, Kind.FILE));
-                    if (!rDryRun) apply.add(() -> writeGitBinaryFile(baseDir, fileRel, kestraFiles.get(rel)));
+                    if (!rDryRun)
+                        apply.add(() -> writeGitBinaryFile(baseDir, fileRel, kestraFiles.get(rel)));
                 } else {
                     switch (rMissing) {
                         case KEEP -> diff.add(DiffLine.unchanged(fileRel, namespace + ":" + rel, Kind.FILE));
@@ -444,7 +471,8 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                                 break;
                             }
                             diff.add(DiffLine.deletedKestra(fileRel, namespace + ":" + rel, Kind.FILE));
-                            if (!rDryRun) apply.add(() -> deleteNamespaceFile(rc, namespace, rel));
+                            if (!rDryRun)
+                                apply.add(() -> deleteNamespaceFile(rc, namespace, rel));
                         }
                         case FAIL ->
                             throw new KestraRuntimeException("Sync failed: FILE missing in Git but present in KESTRA: " + namespace + ":" + rel);
@@ -460,10 +488,12 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                     diff.add(DiffLine.unchanged(fileRel, namespace + ":" + rel, Kind.FILE));
                 } else if (rSource == SourceOfTruth.GIT) {
                     diff.add(DiffLine.updatedKestra(fileRel, namespace + ":" + rel, Kind.FILE));
-                    if (!rDryRun) apply.add(() -> putNamespaceFile(rc, namespace, rel, gitFile));
+                    if (!rDryRun)
+                        apply.add(() -> putNamespaceFile(rc, namespace, rel, gitFile));
                 } else {
                     diff.add(DiffLine.updatedGit(fileRel, namespace + ":" + rel, Kind.FILE));
-                    if (!rDryRun) apply.add(() -> writeGitBinaryFile(baseDir, fileRel, kestraFile));
+                    if (!rDryRun)
+                        apply.add(() -> writeGitBinaryFile(baseDir, fileRel, kestraFile));
                 }
             }
         }
@@ -499,18 +529,21 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
     private GitTree readGitTreeNamespaceFirst(Path baseDir) throws IOException {
         GitTree tree = new GitTree();
-        if (baseDir == null || !Files.exists(baseDir)) return tree;
+        if (baseDir == null || !Files.exists(baseDir))
+            return tree;
 
         Pattern p = Pattern.compile("(.+?)/" + Pattern.quote(FLOWS_DIR) + "/([^/]+)\\.(ya?ml|yml)$");
 
         try (Stream<Path> paths = Files.walk(baseDir, MAX_VALUE)) {
             paths.filter(Files::isRegularFile)
                 .filter(YamlParser::isValidExtension)
-                .forEach(throwConsumer(abs -> {
+                .forEach(throwConsumer(abs ->
+                {
                     Path relPath = baseDir.relativize(abs);
                     String unix = relPath.toString().replace(File.separatorChar, '/');
                     Matcher m = p.matcher(unix);
-                    if (!m.matches()) return;
+                    if (!m.matches())
+                        return;
                     String namespacePath = m.group(1);
                     String id = stripExt(new File(m.group(2)).getName());
                     String namespace = namespacePath.replace('/', '.');
@@ -524,13 +557,16 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
     private Map<String, byte[]> readGitNamespaceFiles(Path baseDir, String namespace) throws IOException {
         Map<String, byte[]> out = new HashMap<>();
-        if (baseDir == null || !Files.exists(baseDir)) return out;
+        if (baseDir == null || !Files.exists(baseDir))
+            return out;
         Path namespaceFilesRoot = baseDir.resolve(namespace).resolve(FILES_DIR);
-        if (!Files.exists(namespaceFilesRoot)) return out;
+        if (!Files.exists(namespaceFilesRoot))
+            return out;
 
         try (Stream<Path> paths = Files.walk(namespaceFilesRoot, MAX_VALUE, FileVisitOption.FOLLOW_LINKS)) {
             paths.filter(Files::isRegularFile)
-                .forEach(throwConsumer(p -> {
+                .forEach(throwConsumer(p ->
+                {
                     Path rel = namespaceFilesRoot.relativize(p);
                     byte[] content = Files.readAllBytes(p);
                     String relUnix = rel.toString().replace(File.separatorChar, '/');
@@ -563,7 +599,8 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
             Map<String, byte[]> out = new HashMap<>();
             for (int i = 0; i < entries.size(); i++) {
                 String key = normalized.get(i);
-                if (directories.contains(key)) continue;
+                if (directories.contains(key))
+                    continue;
                 byte[] bytes = readNamespaceFileBytes(runContext, entries.get(i).uri());
                 out.put(key, bytes);
             }
@@ -620,7 +657,8 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
     private GitTree filterTreeByNamespace(GitTree src, String rootNamespace) {
         GitTree out = new GitTree();
-        src.nodes.forEach((k, v) -> {
+        src.nodes.forEach((k, v) ->
+        {
             if (v.namespace.equals(rootNamespace)) {
                 out.nodes.put(k, v);
             }
@@ -629,7 +667,8 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     }
 
     private void ensureNamespaceFolders(Path baseDir, String namespace) {
-        if (baseDir == null) return;
+        if (baseDir == null)
+            return;
         Path namespaceRoot = baseDir.resolve(namespace);
         for (String d : List.of(FLOWS_DIR, FILES_DIR)) {
             try {
@@ -644,7 +683,8 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     }
 
     private static boolean isProtected(String namespace, List<String> protectedNamespace) {
-        if (namespace == null) return false;
+        if (namespace == null)
+            return false;
         return protectedNamespace.stream().anyMatch(p -> p.equals(namespace) || namespace.startsWith(p + "."));
     }
 
@@ -685,7 +725,8 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     }
 
     private static String nodeToYamlPath(String kind, GitNode g, String key) {
-        if (g != null && g.relPath != null) return g.relPath;
+        if (g != null && g.relPath != null)
+            return g.relPath;
         return fileRelFromKey(kind, key);
     }
 
@@ -729,7 +770,8 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     private PersonIdent author(RunContext runContext) throws IllegalVariableEvaluationException {
         String rName = runContext.render(this.authorName).as(String.class).orElse(runContext.render(this.username).as(String.class).orElse(null));
         String rEmail = runContext.render(this.authorEmail).as(String.class).orElse(null);
-        if (rEmail == null || rName == null) return null;
+        if (rEmail == null || rName == null)
+            return null;
         return new PersonIdent(rName, rEmail);
     }
 
