@@ -195,6 +195,71 @@ class CloneTest extends AbstractGitTest {
     }
 
     @Test
+    void cloneIntoNonEmptyDirectory() throws Exception {
+        // Given a local repo to clone from
+        Path remote = Files.createTempDirectory("git-remote-");
+        Path remoteFile = remote.resolve("repo-file.txt");
+
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(remoteFile, "from repo\n");
+            git.add().addFilepattern("repo-file.txt").call();
+            git.commit().setMessage("initial").call();
+        }
+
+        // And a working directory that already has files (simulating WorkingDirectory inputFiles)
+        RunContext runContext = runContextFactory.of();
+        Path workingDir = runContext.workingDir().path();
+        Files.writeString(workingDir.resolve("pre-existing.txt"), "I was here first\n");
+
+        // When cloning into the non-empty working directory
+        Clone task = Clone.builder()
+            .url(Property.ofValue(remote.toUri().toString()))
+            .build();
+
+        Clone.Output out = task.run(runContext);
+
+        // Then both the pre-existing file and the cloned file should be present
+        Path repoPath = Path.of(out.getDirectory());
+        assertThat(Files.exists(repoPath.resolve("pre-existing.txt")), is(true));
+        assertThat(Files.readString(repoPath.resolve("pre-existing.txt")), is("I was here first\n"));
+        assertThat(Files.exists(repoPath.resolve("repo-file.txt")), is(true));
+        assertThat(Files.readString(repoPath.resolve("repo-file.txt")), is("from repo\n"));
+        assertThat(repoPath.resolve(".git").toFile().exists(), is(true));
+    }
+
+    @Test
+    void cloneIntoNonEmptySubdirectory() throws Exception {
+        // Given a local repo to clone from
+        Path remote = Files.createTempDirectory("git-remote-");
+
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(remote.resolve("repo-file.txt"), "from repo\n");
+            git.add().addFilepattern("repo-file.txt").call();
+            git.commit().setMessage("initial").call();
+        }
+
+        // And a working directory with a non-empty subdirectory
+        RunContext runContext = runContextFactory.of();
+        Path subDir = runContext.workingDir().resolve(Path.of("myrepo"));
+        Files.createDirectories(subDir);
+        Files.writeString(subDir.resolve("pre-existing.txt"), "I was here first\n");
+
+        // When cloning into the non-empty subdirectory
+        Clone task = Clone.builder()
+            .url(Property.ofValue(remote.toUri().toString()))
+            .directory(Property.ofValue("myrepo"))
+            .build();
+
+        Clone.Output out = task.run(runContext);
+
+        // Then both files should be present
+        Path repoPath = Path.of(out.getDirectory());
+        assertThat(Files.exists(repoPath.resolve("pre-existing.txt")), is(true));
+        assertThat(Files.exists(repoPath.resolve("repo-file.txt")), is(true));
+        assertThat(repoPath.resolve(".git").toFile().exists(), is(true));
+    }
+
+    @Test
     void cloneAtSpecificTag() throws Exception {
         // Given a local repo with 2 commits and a tag
         Path remote = Files.createTempDirectory("git-remote-");
