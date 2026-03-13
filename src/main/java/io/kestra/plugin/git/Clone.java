@@ -1,9 +1,13 @@
 package io.kestra.plugin.git;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 import org.eclipse.jgit.api.CloneCommand;
+import org.eclipse.jgit.api.FetchCommand;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.transport.RefSpec;
+import org.eclipse.jgit.transport.URIish;
 import org.slf4j.Logger;
 
 import io.kestra.core.models.annotations.Example;
@@ -172,14 +176,27 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         // we add this method to configure ssl to allow self signed certs
         configureEnvironmentWithSsl(runContext);
 
-        CloneCommand cloneCommand = Git.cloneRepository()
-            .setURI(url)
-            .setDirectory(path.toFile());
-
         // If a specific commit or tag is requested, we must not do a shallow clone;
         // otherwise the target may not be present.
         boolean hasCommit = this.commit != null;
         boolean hasTag = this.tag != null;
+
+        logger.info("Start cloning from '{}'", url);
+
+        // When the target directory already contains files (e.g. from WorkingDirectory inputFiles),
+        // JGit's CloneCommand fails with "Destination path already exists and is not an empty directory".
+        // In that case, use git init + fetch + checkout instead.
+        if (isNonEmptyDirectory(path)) {
+            logger.info("Target directory '{}' is not empty, using init+fetch strategy", path);
+            return initFetchCheckout(runContext, logger, url, path, hasCommit, hasTag);
+        }
+
+        // Ensure the directory exists for clone
+        Files.createDirectories(path);
+
+        CloneCommand cloneCommand = Git.cloneRepository()
+            .setURI(url)
+            .setDirectory(path.toFile());
 
         if (!hasCommit && !hasTag) {
             if (this.branch != null) {
@@ -197,26 +214,130 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
         cloneCommand = authentified(cloneCommand, runContext);
 
-        logger.info("Start cloning from '{}'", url);
+        try (var git = cloneCommand.call()) {
+            applyGitConfig(git.getRepository(), runContext);
+            postCloneCheckout(git, runContext, logger, hasCommit, hasTag);
 
-        try (Git git = cloneCommand.call()) {
+            return Output.builder()
+                .directory(git.getRepository().getDirectory().getParent())
+                .build();
+        }
+    }
+
+    /**
+     * Handles post-clone checkout for commit, tag, or branch.
+     */
+    private void postCloneCheckout(Git git, RunContext runContext, Logger logger, boolean hasCommit, boolean hasTag) throws Exception {
+        if (hasCommit) {
+            var rSha = runContext.render(this.commit).as(String.class).orElseThrow();
+            checkoutCommit(git, rSha, logger);
+        } else if (hasTag) {
+            var rTagName = runContext.render(this.tag).as(String.class).orElseThrow();
+            checkoutTag(git, rTagName, logger);
+        } else if (this.branch != null) {
+            var rTargetBranch = runContext.render(this.branch).as(String.class).orElse(null);
+            checkoutBranch(git, rTargetBranch, logger);
+        }
+    }
+
+    /**
+     * Clones into a non-empty directory using git init + fetch + checkout.
+     * This is the standard Git workaround when the target directory already contains files
+     * (e.g. from WorkingDirectory inputFiles).
+     */
+    private Clone.Output initFetchCheckout(RunContext runContext, Logger logger, String url, Path path, boolean hasCommit, boolean hasTag) throws Exception {
+        try (var git = Git.init().setDirectory(path.toFile()).call()) {
+            git.remoteAdd()
+                .setName("origin")
+                .setUri(new URIish(url))
+                .call();
+
             applyGitConfig(git.getRepository(), runContext);
 
+            // Fetch all branches and tags from remote
+            FetchCommand fetchCommand = git.fetch()
+                .setRemote("origin")
+                .setRefSpecs(
+                    new RefSpec("+refs/heads/*:refs/remotes/origin/*"),
+                    new RefSpec("+refs/tags/*:refs/tags/*")
+                );
+
+            if (!hasCommit && !hasTag) {
+                var rDepth = runContext.render(this.depth).as(Integer.class).orElse(1);
+                if (this.depth != null) {
+                    fetchCommand.setDepth(rDepth);
+                }
+            }
+
+            authentified(fetchCommand, runContext).call();
+
+            // Determine branch to checkout
+            var rBranch = this.branch != null
+                ? runContext.render(this.branch).as(String.class).orElse(null)
+                : null;
+
+            // Checkout the fetched content
             if (hasCommit) {
                 var rSha = runContext.render(this.commit).as(String.class).orElseThrow();
                 checkoutCommit(git, rSha, logger);
             } else if (hasTag) {
                 var rTagName = runContext.render(this.tag).as(String.class).orElseThrow();
                 checkoutTag(git, rTagName, logger);
-            } else if (this.branch != null) {
-                var rTargetBranch = runContext.render(this.branch).as(String.class).orElse(null);
-                checkoutBranch(git, rTargetBranch, logger);
+            } else {
+                // Resolve the target branch; fall back to detecting the remote HEAD default branch
+                var targetBranch = rBranch;
+                if (targetBranch == null) {
+                    var headRef = git.getRepository().exactRef("refs/remotes/origin/HEAD");
+                    if (headRef != null && headRef.getTarget() != null) {
+                        targetBranch = headRef.getTarget().getName().replace("refs/remotes/origin/", "");
+                    }
+                }
+
+                // If still null, try common defaults
+                if (targetBranch == null) {
+                    if (git.getRepository().exactRef("refs/remotes/origin/main") != null) {
+                        targetBranch = "main";
+                    } else if (git.getRepository().exactRef("refs/remotes/origin/master") != null) {
+                        targetBranch = "master";
+                    } else {
+                        throw new IllegalStateException(
+                            "Cannot determine the default branch. Please specify the 'branch' property explicitly."
+                        );
+                    }
+                }
+
+                var remoteBranch = "origin/" + targetBranch;
+
+                git.checkout()
+                    .setName(targetBranch)
+                    .setCreateBranch(true)
+                    .setStartPoint(remoteBranch)
+                    .call();
+
+                logger.info("Checked out branch {} from {}", targetBranch, remoteBranch);
+            }
+
+            if (this.cloneSubmodules != null && runContext.render(this.cloneSubmodules).as(Boolean.class).orElse(false)) {
+                git.submoduleInit().call();
+                authentified(git.submoduleUpdate(), runContext).call();
             }
 
             return Output.builder()
                 .directory(git.getRepository().getDirectory().getParent())
                 .build();
         }
+    }
+
+    /**
+     * Returns true if the path exists, is a directory, and contains at least one entry.
+     */
+    private static boolean isNonEmptyDirectory(Path path) {
+        var dir = path.toFile();
+        if (!dir.exists() || !dir.isDirectory()) {
+            return false;
+        }
+        var entries = dir.list();
+        return entries != null && entries.length > 0;
     }
 
     @Override
