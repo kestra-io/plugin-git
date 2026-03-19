@@ -271,7 +271,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
             String tenantId = flowProps.get("tenantId");
             String namespace = flowProps.get("namespace");
 
-            FlowRepositoryInterface flowRepository = ((DefaultRunContext) runContext).getApplicationContext().getBean(FlowRepositoryInterface.class);
+            FlowRepositoryInterface flowRepository = ((DefaultRunContext) runContext).services().additionalService(FlowRepositoryInterface.class);
 
             List<FlowWithSource> flows;
             if (Boolean.TRUE.equals(runContext.render(this.flows.childNamespaces).as(Boolean.class).orElse(true))) {

@@ -138,8 +138,8 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
         // synchronize flows directory to namespace flows
         File flowsDirectory = flowsDirectoryBasePath.toFile();
         if (flowsDirectory.exists()) {
-            FlowRepositoryInterface flowRepository = ((DefaultRunContext) runContext).getApplicationContext().getBean(FlowRepositoryInterface.class);
-            FlowService flowService = ((DefaultRunContext) runContext).getApplicationContext().getBean(FlowService.class);
+            FlowRepositoryInterface flowRepository = ((DefaultRunContext) runContext).services().additionalService(FlowRepositoryInterface.class);
+            FlowService flowService = ((DefaultRunContext) runContext).services().additionalService(FlowService.class);
 
             Set<String> flowIdsImported = Arrays.stream(flowsDirectory.listFiles())
                 .map(File::toPath)
@@ -222,7 +222,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
                 }), HashMap::putAll);
         }
 
-        StorageInterface storage = ((DefaultRunContext) runContext).getApplicationContext().getBean(StorageInterface.class);
+        StorageInterface storage = ((DefaultRunContext) runContext).services().additionalService(StorageInterface.class);
         URI namespaceFilePrefix = URI.create("kestra://" + StorageContext.namespaceFilePrefix(namespace) + "/");
         if (this.namespaceFilesDirectory != null) {
             String renderedNamespaceFilesDirectory = runContext.render(this.namespaceFilesDirectory).as(String.class).orElseThrow();

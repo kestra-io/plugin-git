@@ -102,7 +102,7 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
         configureEnvironmentWithSsl(runContext);
 
         GitService gitService = new GitService(this);
-        FlowService flowService = ((DefaultRunContext) runContext).getApplicationContext().getBean(FlowService.class);
+        FlowService flowService = ((DefaultRunContext) runContext).services().additionalService(FlowService.class);
 
         Git git = gitService.cloneBranch(runContext, runContext.render(this.getBranch()).as(String.class).orElse(null), Property.ofValue(Boolean.FALSE));
         Path cloneDir = git.getRepository().getWorkTree().toPath();

@@ -156,7 +156,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
     private FlowService flowService(RunContext runContext) {
         if (flowService == null) {
-            flowService = ((DefaultRunContext) runContext).getApplicationContext().getBean(FlowService.class);
+            flowService = ((DefaultRunContext) runContext).services().additionalService(FlowService.class);
         }
         return flowService;
     }
