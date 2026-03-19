@@ -89,10 +89,10 @@ class PushExecutionFilesTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(new Property<>(repositoryUrl))
-                .username(new Property<>(pat))
-                .password(new Property<>(pat))
-                .branch(new Property<>(branch))
+                .url(Property.ofValue(repositoryUrl))
+                .username(Property.ofValue(pat))
+                .password(Property.ofValue(pat))
+                .branch(Property.ofValue(branch))
                 .build();
 
             Clone.Output cloneOutput = clone.run(runContextFactory.of());
@@ -138,10 +138,10 @@ class PushExecutionFilesTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(new Property<>(repositoryUrl))
-                .username(new Property<>(pat))
-                .password(new Property<>(pat))
-                .branch(new Property<>(branch))
+                .url(Property.ofValue(repositoryUrl))
+                .username(Property.ofValue(pat))
+                .password(Property.ofValue(pat))
+                .branch(Property.ofValue(branch))
                 .build();
 
             Clone.Output cloneOutput = clone.run(runContextFactory.of());

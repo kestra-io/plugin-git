@@ -162,10 +162,10 @@ class SyncTest extends AbstractGitTest {
         String clonedGitDirectory = "to_clone";
         String destinationDirectory = "sync_directory";
         Sync task = Sync.builder()
-            .url(new Property<>(repositoryUrl))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(BRANCH))
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
             .gitDirectory(Property.ofValue(clonedGitDirectory))
             .namespaceFilesDirectory(Property.ofValue(destinationDirectory))
             .build();
@@ -189,10 +189,10 @@ class SyncTest extends AbstractGitTest {
 
         RunContext runContext = runContextFactory.of();
         Clone.builder()
-            .url(new Property<>(repositoryUrl))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(BRANCH))
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
             .build()
             .run(runContext);
         assertFlows(TENANT_ID, runContext.workingDir().path().resolve(Path.of(clonedGitDirectory, "_flows")).toFile(), selfFlowSource);
@@ -269,10 +269,10 @@ class SyncTest extends AbstractGitTest {
 
         // region WHEN
         Sync task = Sync.builder()
-            .url(new Property<>(repositoryUrl))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(BRANCH))
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
             .build();
 
         task.run(
@@ -295,10 +295,10 @@ class SyncTest extends AbstractGitTest {
 
         RunContext runContext = runContextFactory.of();
         Clone.builder()
-            .url(new Property<>(repositoryUrl))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(BRANCH))
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
             .build()
             .run(runContext);
         assertFlows(TENANT_ID, runContext.workingDir().path().resolve("_flows").toFile(), selfFlowSource);
@@ -361,10 +361,10 @@ class SyncTest extends AbstractGitTest {
         Sync task = Sync.builder()
             .id("reconcile")
             .type(Sync.class.getName())
-            .url(new Property<>(repositoryUrl))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(BRANCH))
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
             .gitDirectory(Property.ofValue("to_clone"))
             .dryRun(Property.ofValue(true))
             .build();

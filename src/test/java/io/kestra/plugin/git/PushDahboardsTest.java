@@ -62,14 +62,14 @@ public class PushDahboardsTest extends AbstractGitTest {
             PushDashboards pushDashboards = PushDashboards.builder()
                 .id(PushDahboardsTest.class.getSimpleName())
                 .type(PushDashboards.class.getName())
-                .branch(new Property<>("{{branch}}"))
-                .url(new Property<>("{{url}}"))
-                .commitMessage(new Property<>("Push from CI - {{description}}"))
-                .gitDirectory(new Property<>("{{gitDirectory}}"))
-                .username(new Property<>("{{pat}}"))
-                .password(new Property<>("{{pat}}"))
-                .authorEmail(new Property<>("{{email}}"))
-                .authorName(new Property<>("{{name}}"))
+                .branch(Property.ofExpression("{{branch}}"))
+                .url(Property.ofExpression("{{url}}"))
+                .commitMessage(Property.ofExpression("Push from CI - {{description}}"))
+                .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+                .username(Property.ofExpression("{{pat}}"))
+                .password(Property.ofExpression("{{pat}}"))
+                .authorEmail(Property.ofExpression("{{email}}"))
+                .authorName(Property.ofExpression("{{name}}"))
                 .build();
 
             PushDashboards.Output pushDashboardsOutput = pushDashboards.run(runContext);
@@ -79,10 +79,10 @@ public class PushDahboardsTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(new Property<>(repositoryUrl))
-                .username(new Property<>(pat))
-                .password(new Property<>(pat))
-                .branch(new Property<>(branch))
+                .url(Property.ofValue(repositoryUrl))
+                .username(Property.ofValue(pat))
+                .password(Property.ofValue(pat))
+                .branch(Property.ofValue(branch))
                 .build();
 
             RunContext cloneRunContext = runContextFactory.of();
@@ -134,15 +134,15 @@ public class PushDahboardsTest extends AbstractGitTest {
             PushDashboards pushDashboards = PushDashboards.builder()
                 .id(PushDahboardsTest.class.getSimpleName())
                 .type(PushDashboards.class.getName())
-                .branch(new Property<>("{{branch}}"))
-                .url(new Property<>("{{url}}"))
-                .commitMessage(new Property<>("Push from CI - {{description}}"))
-                .gitDirectory(new Property<>("{{gitDirectory}}"))
-                .username(new Property<>("{{pat}}"))
-                .password(new Property<>("{{pat}}"))
+                .branch(Property.ofExpression("{{branch}}"))
+                .url(Property.ofExpression("{{url}}"))
+                .commitMessage(Property.ofExpression("Push from CI - {{description}}"))
+                .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+                .username(Property.ofExpression("{{pat}}"))
+                .password(Property.ofExpression("{{pat}}"))
                 .dashboards("first*")
-                .authorEmail(new Property<>("{{email}}"))
-                .authorName(new Property<>("{{name}}"))
+                .authorEmail(Property.ofExpression("{{email}}"))
+                .authorName(Property.ofExpression("{{name}}"))
                 .build();
 
             pushDashboards.run(runContext);
@@ -152,10 +152,10 @@ public class PushDahboardsTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(new Property<>(repositoryUrl))
-                .username(new Property<>(pat))
-                .password(new Property<>(pat))
-                .branch(new Property<>(branch))
+                .url(Property.ofValue(repositoryUrl))
+                .username(Property.ofValue(pat))
+                .password(Property.ofValue(pat))
+                .branch(Property.ofValue(branch))
                 .build();
 
             RunContext cloneRunContext = runContextFactory.of();

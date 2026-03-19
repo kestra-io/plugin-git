@@ -53,9 +53,9 @@ class CloneTest extends AbstractGitTest {
         RunContext runContext = runContextFactory.of();
 
         Clone task = Clone.builder()
-            .url(new Property<>(repositoryUrl))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
             .build();
 
         Clone.Output runOutput = task.run(runContext);

@@ -103,7 +103,7 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
     )
     @Override
     public Property<String> getCommitMessage() {
-        return Optional.ofNullable(this.commitMessage).orElse(new Property<>("Add dashboards from flow: {{ flow.id }}"));
+        return Optional.ofNullable(this.commitMessage).orElse(Property.ofExpression("Add dashboards from flow: {{ flow.id }}"));
     }
 
     @Override

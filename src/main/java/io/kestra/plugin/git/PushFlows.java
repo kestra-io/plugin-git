@@ -128,7 +128,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         description = "Namespace to export flows from; defaults to the current flow namespace."
     )
     @Builder.Default
-    private Property<String> sourceNamespace = new Property<>("{{ flow.namespace }}");
+    private Property<String> sourceNamespace = Property.ofExpression("{{ flow.namespace }}");
 
     @Schema(
         title = "Target namespace override",
@@ -158,7 +158,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     )
     @Override
     public Property<String> getCommitMessage() {
-        return Optional.ofNullable(this.commitMessage).orElse(new Property<>("Add flows from " + this.sourceNamespace.toString() + " namespace"));
+        return Optional.ofNullable(this.commitMessage).orElse(Property.ofValue("Add flows from " + this.sourceNamespace.toString() + " namespace"));
     }
 
     @Override

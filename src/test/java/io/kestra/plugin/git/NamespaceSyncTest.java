@@ -124,10 +124,10 @@ public class NamespaceSyncTest extends AbstractGitTest {
 
         RunContext cloneCtx = runContextFactory.of();
         Clone.builder()
-            .url(new Property<>(repositoryUrl))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(branch))
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(branch))
             .build()
             .run(cloneCtx);
 

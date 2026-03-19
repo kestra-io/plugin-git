@@ -147,12 +147,12 @@ public class SyncFlowsTest extends AbstractGitTest {
         flows.forEach(f -> previousRevisionByUid.put(f.uidWithoutRevision(), f.getRevision()));
 
         SyncFlows task = SyncFlows.builder()
-            .url(new Property<>("{{url}}"))
-            .username(new Property<>("{{pat}}"))
-            .password(new Property<>("{{pat}}"))
-            .branch(new Property<>("{{branch}}"))
-            .gitDirectory(new Property<>("{{gitDirectory}}"))
-            .targetNamespace(new Property<>("{{namespace}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .targetNamespace(Property.ofExpression("{{namespace}}"))
             .delete(Property.ofValue(true))
             .includeChildNamespaces(Property.ofValue(true))
             .ignoreInvalidFlows(Property.ofValue(true))
@@ -166,10 +166,10 @@ public class SyncFlowsTest extends AbstractGitTest {
 
         RunContext cloneRunContext = runContextFactory.of();
         Clone.builder()
-            .url(new Property<>(repositoryUrl))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(BRANCH))
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
             .build()
             .run(cloneRunContext);
         assertFlows(cloneRunContext.workingDir().path().resolve(Path.of(GIT_DIRECTORY)).toFile(), true, selfFlowSource);
@@ -245,12 +245,12 @@ public class SyncFlowsTest extends AbstractGitTest {
         flows.forEach(f -> previousRevisionByUid.put(f.uidWithoutRevision(), f.getRevision()));
 
         SyncFlows task = SyncFlows.builder()
-            .url(new Property<>("{{url}}"))
-            .username(new Property<>("{{pat}}"))
-            .password(new Property<>("{{pat}}"))
-            .branch(new Property<>("{{branch}}"))
-            .gitDirectory(new Property<>("{{gitDirectory}}"))
-            .targetNamespace(new Property<>("{{namespace}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .targetNamespace(Property.ofExpression("{{namespace}}"))
             .includeChildNamespaces(Property.ofValue(true))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
@@ -260,10 +260,10 @@ public class SyncFlowsTest extends AbstractGitTest {
 
         RunContext cloneRunContext = runContextFactory.of();
         Clone.builder()
-            .url(new Property<>(repositoryUrl))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(BRANCH))
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
             .build()
             .run(cloneRunContext);
         assertFlows(cloneRunContext.workingDir().path().resolve(Path.of(GIT_DIRECTORY)).toFile(), true, selfFlowSource, nonVersionedFlowSource);
@@ -337,12 +337,12 @@ public class SyncFlowsTest extends AbstractGitTest {
         flows.forEach(f -> previousRevisionByUid.put(f.uidWithoutRevision(), f.getRevision()));
 
         SyncFlows task = SyncFlows.builder()
-            .url(new Property<>("{{url}}"))
-            .username(new Property<>("{{pat}}"))
-            .password(new Property<>("{{pat}}"))
-            .branch(new Property<>("{{branch}}"))
-            .gitDirectory(new Property<>("{{gitDirectory}}"))
-            .targetNamespace(new Property<>("{{namespace}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .targetNamespace(Property.ofExpression("{{namespace}}"))
             .delete(Property.ofValue(true))
             .includeChildNamespaces(Property.ofValue(false))
             .build();
@@ -353,10 +353,10 @@ public class SyncFlowsTest extends AbstractGitTest {
 
         RunContext cloneRunContext = runContextFactory.of();
         Clone.builder()
-            .url(new Property<>(repositoryUrl))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(BRANCH))
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
             .build()
             .run(cloneRunContext);
         assertFlows(cloneRunContext.workingDir().path().resolve(Path.of(GIT_DIRECTORY)).toFile(), false, selfFlowSource, unversionedFlowSourceInChildNamespace);
@@ -439,12 +439,12 @@ public class SyncFlowsTest extends AbstractGitTest {
             .toArray(String[]::new);
 
         SyncFlows task = SyncFlows.builder()
-            .url(new Property<>("{{url}}"))
-            .username(new Property<>("{{pat}}"))
-            .password(new Property<>("{{pat}}"))
-            .branch(new Property<>("{{branch}}"))
-            .gitDirectory(new Property<>("{{gitDirectory}}"))
-            .targetNamespace(new Property<>("{{namespace}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .targetNamespace(Property.ofExpression("{{namespace}}"))
             .delete(Property.ofValue(true))
             .includeChildNamespaces(Property.ofValue(true))
             .dryRun(Property.ofValue(true))
@@ -483,12 +483,12 @@ public class SyncFlowsTest extends AbstractGitTest {
         RunContext runContext = runContext();
 
         SyncFlows task = SyncFlows.builder()
-            .url(new Property<>("{{url}}"))
-            .username(new Property<>("{{pat}}"))
-            .password(new Property<>("{{pat}}"))
-            .branch(new Property<>("{{branch}}"))
-            .gitDirectory(new Property<>("nonexistent/path"))
-            .targetNamespace(new Property<>("{{namespace}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofValue("nonexistent/path"))
+            .targetNamespace(Property.ofExpression("{{namespace}}"))
             .build();
 
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () ->
@@ -537,10 +537,10 @@ public class SyncFlowsTest extends AbstractGitTest {
         );
 
         SyncFlows task = SyncFlows.builder()
-            .url(new Property<>("{{url}}"))
-            .branch(new Property<>("{{branch}}"))
-            .gitDirectory(new Property<>("{{gitDirectory}}"))
-            .targetNamespace(new Property<>("{{namespace}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .targetNamespace(Property.ofExpression("{{namespace}}"))
             .ignoreInvalidFlows(Property.ofValue(true))
             .build();
 
@@ -590,10 +590,10 @@ public class SyncFlowsTest extends AbstractGitTest {
         );
 
         SyncFlows task = SyncFlows.builder()
-            .url(new Property<>("{{url}}"))
-            .branch(new Property<>("{{branch}}"))
-            .gitDirectory(new Property<>("{{gitDirectory}}"))
-            .targetNamespace(new Property<>("{{namespace}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .targetNamespace(Property.ofExpression("{{namespace}}"))
             .build();
 
         FlowProcessingException ex = assertThrows(FlowProcessingException.class, () -> task.run(runContext));

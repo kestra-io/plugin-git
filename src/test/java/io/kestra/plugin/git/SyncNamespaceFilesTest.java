@@ -81,12 +81,12 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
         );
 
         SyncNamespaceFiles task = SyncNamespaceFiles.builder()
-            .url(new Property<>("{{url}}"))
-            .username(new Property<>("{{pat}}"))
-            .password(new Property<>("{{pat}}"))
-            .branch(new Property<>("{{branch}}"))
-            .gitDirectory(new Property<>("{{gitDirectory}}"))
-            .namespace(new Property<>("{{namespace}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
             .delete(Property.ofValue(true))
             .build();
         SyncNamespaceFiles.Output syncOutput = task.run(runContext);
@@ -135,12 +135,12 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
         );
 
         SyncNamespaceFiles task = SyncNamespaceFiles.builder()
-            .url(new Property<>("{{url}}"))
-            .username(new Property<>("{{pat}}"))
-            .password(new Property<>("{{pat}}"))
-            .branch(new Property<>("{{branch}}"))
-            .gitDirectory(new Property<>("{{gitDirectory}}"))
-            .namespace(new Property<>("{{namespace}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
             .build();
         SyncNamespaceFiles.Output syncOutput = task.run(runContext);
 
@@ -189,12 +189,12 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
         );
 
         SyncNamespaceFiles task = SyncNamespaceFiles.builder()
-            .url(new Property<>("{{url}}"))
-            .username(new Property<>("{{pat}}"))
-            .password(new Property<>("{{pat}}"))
-            .branch(new Property<>("{{branch}}"))
-            .gitDirectory(new Property<>("{{gitDirectory}}"))
-            .namespace(new Property<>("{{namespace}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
             .dryRun(Property.ofValue(true))
             .delete(Property.ofValue(true))
             .build();
@@ -217,12 +217,12 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
     @Test
     void secondSyncWithoutGitChanges_ShouldReportUnchangedFiles() throws Exception {
         var task = SyncNamespaceFiles.builder()
-            .url(new Property<>("{{url}}"))
-            .username(new Property<>("{{pat}}"))
-            .password(new Property<>("{{pat}}"))
-            .branch(new Property<>("{{branch}}"))
-            .gitDirectory(new Property<>("{{gitDirectory}}"))
-            .namespace(new Property<>("{{namespace}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
             .build();
 
         task.run(runContext());
