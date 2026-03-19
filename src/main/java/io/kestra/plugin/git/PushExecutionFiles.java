@@ -135,7 +135,7 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
     )
     @Override
     public Property<String> getCommitMessage() {
-        return Optional.ofNullable(this.commitMessage).orElse(new Property<>("Add files from execution {{ execution.id }}"));
+        return Optional.ofNullable(this.commitMessage).orElse(Property.ofExpression("Add files from execution {{ execution.id }}"));
     }
 
     @Override
@@ -145,7 +145,7 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
 
     @Override
     public Property<String> fetchedNamespace() {
-        return new Property<>("{{ flow.namespace }}");
+        return Property.ofExpression("{{ flow.namespace }}");
     }
 
     @Override

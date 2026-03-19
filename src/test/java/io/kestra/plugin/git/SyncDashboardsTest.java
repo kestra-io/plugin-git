@@ -77,11 +77,11 @@ public class SyncDashboardsTest extends AbstractGitTest {
         dashboards.forEach(d -> previousRevisionByUid.put(d.uid(), d.getUpdated()));
 
         SyncDashboards task = SyncDashboards.builder()
-            .url(new Property<>("{{url}}"))
-            .username(new Property<>("{{pat}}"))
-            .password(new Property<>("{{pat}}"))
-            .branch(new Property<>("{{branch}}"))
-            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
             .delete(Property.ofValue(delete))
             .build();
 
@@ -136,11 +136,11 @@ public class SyncDashboardsTest extends AbstractGitTest {
         dashboards.forEach(d -> previousRevisionByUid.put(d.uid(), d.getUpdated()));
 
         SyncDashboards task = SyncDashboards.builder()
-            .url(new Property<>("{{url}}"))
-            .username(new Property<>("{{pat}}"))
-            .password(new Property<>("{{pat}}"))
-            .branch(new Property<>("{{branch}}"))
-            .gitDirectory(new Property<>("{{gitDirectory}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
             .delete(Property.ofValue(delete))
             .dryRun(Property.ofValue(true))
             .build();

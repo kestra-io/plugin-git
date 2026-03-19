@@ -48,12 +48,12 @@ public class SyncFlowTest extends AbstractGitTest {
         assertThat(flowRepositoryInterface.findAllForAllTenants().size(), is(0));
 
         SyncFlow task = SyncFlow.builder()
-            .url(new Property<>("{{url}}"))
-            .username(new Property<>("{{pat}}"))
-            .password(new Property<>("{{pat}}"))
-            .branch(new Property<>("{{branch}}"))
-            .targetNamespace(new Property<>(TARGET_NAMESPACE))
-            .flowPath(new Property<>("to_clone/_flows/first-flow.yml"))
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .targetNamespace(Property.ofValue(TARGET_NAMESPACE))
+            .flowPath(Property.ofValue("to_clone/_flows/first-flow.yml"))
             .build();
 
         SyncFlow.Output output = task.run(runContext);
@@ -86,12 +86,12 @@ public class SyncFlowTest extends AbstractGitTest {
         assertThat(initialFlow.getRevision(), is(1));
 
         SyncFlow task = SyncFlow.builder()
-            .url(new Property<>("{{url}}"))
-            .username(new Property<>("{{pat}}"))
-            .password(new Property<>("{{pat}}"))
-            .branch(new Property<>("{{branch}}"))
-            .targetNamespace(new Property<>(TARGET_NAMESPACE))
-            .flowPath(new Property<>("to_clone/_flows/second-flow.yml"))
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .targetNamespace(Property.ofValue(TARGET_NAMESPACE))
+            .flowPath(Property.ofValue("to_clone/_flows/second-flow.yml"))
             .build();
 
         SyncFlow.Output output = task.run(runContext);
@@ -115,12 +115,12 @@ public class SyncFlowTest extends AbstractGitTest {
         assertThat(flowRepositoryInterface.findAllForAllTenants().size(), is(0));
 
         SyncFlow task = SyncFlow.builder()
-            .url(new Property<>("{{url}}"))
-            .username(new Property<>("{{pat}}"))
-            .password(new Property<>("{{pat}}"))
-            .branch(new Property<>("{{branch}}"))
-            .targetNamespace(new Property<>(TARGET_NAMESPACE))
-            .flowPath(new Property<>("to_clone/_flows/first-flow.yml"))
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .targetNamespace(Property.ofValue(TARGET_NAMESPACE))
+            .flowPath(Property.ofValue("to_clone/_flows/first-flow.yml"))
             .dryRun(Property.ofValue(true))
             .build();
 
@@ -138,12 +138,12 @@ public class SyncFlowTest extends AbstractGitTest {
         RunContext runContext = runContext();
 
         SyncFlow task = SyncFlow.builder()
-            .url(new Property<>("{{url}}"))
-            .username(new Property<>("{{pat}}"))
-            .password(new Property<>("{{pat}}"))
-            .branch(new Property<>("{{branch}}"))
-            .targetNamespace(new Property<>(TARGET_NAMESPACE))
-            .flowPath(new Property<>("non_existent_file.yml"))
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .targetNamespace(Property.ofValue(TARGET_NAMESPACE))
+            .flowPath(Property.ofValue("non_existent_file.yml"))
             .build();
 
         Exception exception = org.junit.jupiter.api.Assertions.assertThrows(

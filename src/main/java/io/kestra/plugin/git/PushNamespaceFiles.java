@@ -115,7 +115,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         description = "Namespace whose files are exported; defaults to the current flow namespace."
     )
     @Builder.Default
-    private Property<String> namespace = new Property<>("{{ flow.namespace }}");
+    private Property<String> namespace = Property.ofExpression("{{ flow.namespace }}");
 
     @Schema(
         title = "Destination directory",
@@ -139,7 +139,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     )
     @Override
     public Property<String> getCommitMessage() {
-        return Optional.ofNullable(this.commitMessage).orElse(new Property<>("Add files from " + this.namespace.toString() + " namespace"));
+        return Optional.ofNullable(this.commitMessage).orElse(Property.ofValue("Add files from " + this.namespace.toString() + " namespace"));
     }
 
     @Schema(
