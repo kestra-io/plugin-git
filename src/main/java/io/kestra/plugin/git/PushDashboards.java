@@ -118,7 +118,7 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
     }
 
     protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path flowDirectory, List<String> globs) throws IllegalVariableEvaluationException {
-        DashboardRepositoryInterface dashboardRepository = ((DefaultRunContext) runContext).getApplicationContext().getBean(DashboardRepositoryInterface.class);
+        DashboardRepositoryInterface dashboardRepository = ((DefaultRunContext) runContext).services().additionalService(DashboardRepositoryInterface.class);
 
         Map<String, String> flowProps = Optional.ofNullable((Map<String, String>) runContext.getVariables().get("flow")).orElse(Collections.emptyMap());
         String tenantId = flowProps.get("tenantId");

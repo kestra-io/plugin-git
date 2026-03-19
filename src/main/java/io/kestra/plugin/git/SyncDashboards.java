@@ -91,7 +91,7 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
     private Property<Boolean> delete = Property.ofValue(false);
 
     private DashboardRepositoryInterface repository(RunContext runContext) {
-        return ((DefaultRunContext) runContext).getApplicationContext().getBean(DashboardRepositoryInterface.class);
+        return ((DefaultRunContext) runContext).services().additionalService(DashboardRepositoryInterface.class);
     }
 
     @Override

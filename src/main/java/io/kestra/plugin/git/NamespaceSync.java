@@ -204,7 +204,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     private static final String FILES_DIR = "files";
 
     private FlowService flowService(RunContext rc) {
-        return ((DefaultRunContext) rc).getApplicationContext().getBean(FlowService.class);
+        return ((DefaultRunContext) rc).services().additionalService(FlowService.class);
     }
 
     @Override
@@ -216,7 +216,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
         runContext.logger().info("Now in NamespaceSync for namespace {}", rNamespace);
 
-        var flowRepository = ((DefaultRunContext) runContext).getApplicationContext().getBean(FlowRepositoryInterface.class);
+        var flowRepository = ((DefaultRunContext) runContext).services().additionalService(FlowRepositoryInterface.class);
         var tenantId = runContext.flowInfo().tenantId();
         var distinctNamespaces = flowRepository.findDistinctNamespace(tenantId);
         if (!distinctNamespaces.contains(rNamespace)) {
