@@ -15,6 +15,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @NoArgsConstructor
@@ -24,6 +25,7 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
         title = "Clone submodules",
         description = "Default false; enable to fetch and initialize nested submodules."
     )
+    @PluginProperty(group = "advanced")
     protected Property<Boolean> cloneSubmodules;
 
     protected void checkoutCommit(Git git, String sha, Logger logger) throws Exception {

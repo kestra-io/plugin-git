@@ -26,6 +26,7 @@ import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.throwFunction;
 import static io.kestra.core.utils.Rethrow.throwSupplier;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @NoArgsConstructor
@@ -101,6 +102,7 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
         description = "Defaults to `main`; created if absent."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
@@ -108,12 +110,14 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
         description = "Relative path inside the repository; defaults to `_outputs`."
     )
     @Builder.Default
+    @PluginProperty(group = "destination")
     private Property<String> gitDirectory = Property.ofValue("_outputs");
 
     @Schema(
         title = "Glob pattern(s) for execution files",
         description = "Matches files relative to the execution working directory."
     )
+    @PluginProperty(group = "deprecated")
     private Object files;
 
     @Schema(
@@ -121,6 +125,7 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
         description = "Map of destination filename to source file URI (string or JSON map). Useful for wiring outputFiles from other tasks.",
         anyOf = { Map.class, String.class }
     )
+    @PluginProperty(group = "source")
     private Object filesMap;
 
     @Schema(
@@ -128,6 +133,7 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
         description = "If true, raises an error when nothing matches `files` or `filesMap`; default false logs a warning and skips."
     )
     @Builder.Default
+    @PluginProperty(group = "reliability")
     private Property<Boolean> errorOnMissing = Property.ofValue(false);
 
     @Schema(

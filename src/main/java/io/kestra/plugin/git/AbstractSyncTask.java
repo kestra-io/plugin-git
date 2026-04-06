@@ -33,6 +33,7 @@ import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.*;
 import static java.lang.Integer.MAX_VALUE;
+import io.kestra.core.models.annotations.PluginProperty;
 
 /**
  *
@@ -49,6 +50,7 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
         description = "When true, writes a diff without applying changes to Kestra."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<Boolean> dryRun = Property.ofValue(false);
 
     @Schema(
@@ -56,6 +58,7 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
         description = "Default true. If false, skips when the rendered `gitDirectory` path does not exist."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<Boolean> failOnMissingDirectory = Property.ofValue(true);
 
     public abstract Property<Boolean> getDelete();
