@@ -28,6 +28,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -114,6 +115,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         description = "Defaults to `main`."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
@@ -121,6 +123,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         description = "Flows are rewritten to this namespace (and nested namespaces when applicable)."
     )
     @NotNull
+    @PluginProperty(group = "main")
     private Property<String> targetNamespace;
 
     @Schema(
@@ -128,6 +131,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         description = "Relative path containing flow YAML; defaults to `_flows`. Subdirectories map to child namespaces when `includeChildNamespaces` is true."
     )
     @Builder.Default
+    @PluginProperty(group = "destination")
     private Property<String> gitDirectory = Property.ofValue("_flows");
 
     @Schema(
@@ -135,6 +139,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         description = "Default false. When true, subdirectories under `gitDirectory` are synced to corresponding child namespaces."
     )
     @Builder.Default
+    @PluginProperty(group = "source")
     private Property<Boolean> includeChildNamespaces = Property.ofValue(false);
 
     @Schema(
@@ -142,6 +147,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         description = "Default false to avoid destructive syncs. When true (and especially with `includeChildNamespaces`), removes flows not present in Git."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<Boolean> delete = Property.ofValue(false);
 
     @Schema(
@@ -149,6 +155,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         description = "If true, skips flows that fail validation instead of failing the task."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<Boolean> ignoreInvalidFlows = Property.ofValue(false);
 
     @Getter(AccessLevel.NONE)

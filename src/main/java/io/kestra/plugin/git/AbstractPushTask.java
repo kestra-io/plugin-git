@@ -50,6 +50,7 @@ import static io.kestra.core.utils.Rethrow.*;
 import static java.nio.file.FileVisitResult.CONTINUE;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @NoArgsConstructor
@@ -73,18 +74,21 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         description = "When true, writes a diff file without pushing. Default false pushes immediately."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<Boolean> dryRun = Property.ofValue(false);
 
     @Schema(
         title = "Commit author email",
         description = "If null, no author is set."
     )
+    @PluginProperty(group = "connection")
     private Property<String> authorEmail;
 
     @Schema(
         title = "Commit author name",
         description = "Defaults to `username` when empty."
     )
+    @PluginProperty(group = "connection")
     private Property<String> authorName;
 
     @Schema(
@@ -92,6 +96,7 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
         description = "If true (default), removes Git files that no longer exist in Kestra."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<Boolean> delete = Property.ofValue(true);
 
     public abstract Property<String> getCommitMessage();

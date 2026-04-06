@@ -21,6 +21,7 @@ import io.kestra.core.storages.NamespaceFile;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -104,6 +105,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
         description = "Defaults to `main`."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
@@ -111,6 +113,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
         description = "Namespace receiving the files; defaults to the current flow namespace."
     )
     @Builder.Default
+    @PluginProperty(group = "source")
     private Property<String> namespace = Property.ofExpression("{{ flow.namespace }}");
 
     @Schema(
@@ -118,6 +121,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
         description = "Relative path containing files; defaults to `_files`."
     )
     @Builder.Default
+    @PluginProperty(group = "destination")
     private Property<String> gitDirectory = Property.ofValue("_files");
 
     @Schema(
@@ -125,6 +129,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
         description = "Default false. When true, removes Namespace Files absent from Git."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<Boolean> delete = Property.ofValue(false);
 
     @Override

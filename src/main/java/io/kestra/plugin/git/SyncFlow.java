@@ -24,6 +24,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -65,6 +66,7 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
         description = "Defaults to `main`."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<String> branch = Property.ofValue("main");
 
     @Override
@@ -77,6 +79,7 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
         description = "Replaces any namespace declared in the flow file."
     )
     @NotNull
+    @PluginProperty(group = "main")
     private Property<String> targetNamespace;
 
     @Schema(
@@ -84,6 +87,7 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
         description = "Relative path to the flow YAML inside the repository."
     )
     @NotNull
+    @PluginProperty(group = "main")
     private Property<String> flowPath;
 
     @Schema(
@@ -91,6 +95,7 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
         description = "When true, validates and logs without importing."
     )
     @Builder.Default
+    @PluginProperty(group = "reliability")
     private Property<Boolean> dryRun = Property.ofValue(Boolean.FALSE);
 
     @Override

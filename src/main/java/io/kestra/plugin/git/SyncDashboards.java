@@ -24,6 +24,7 @@ import io.kestra.core.serializers.YamlParser;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -74,6 +75,7 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
         description = "Defaults to `main`."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
@@ -81,6 +83,7 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
         description = "Relative path containing dashboard YAML; defaults to `_dashboards`."
     )
     @Builder.Default
+    @PluginProperty(group = "destination")
     private Property<String> gitDirectory = Property.ofValue("_dashboards");
 
     @Schema(
@@ -88,6 +91,7 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
         description = "Default false to avoid destructive syncs."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<Boolean> delete = Property.ofValue(false);
 
     private DashboardRepositoryInterface repository(RunContext runContext) {

@@ -20,6 +20,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -132,12 +133,14 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         title = "Target directory",
         description = "Subdirectory under the working directory where the repo is cloned; defaults to the working directory root."
     )
+    @PluginProperty(group = "destination")
     private Property<String> directory;
 
     @Schema(
         title = "Branch to checkout",
         description = "Used only when no commit or tag is specified."
     )
+    @PluginProperty(group = "advanced")
     private Property<String> branch;
 
     @Schema(
@@ -145,18 +148,21 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         description = "Defaults to 1. Ignored when `commit` or `tag` is set to ensure history is available."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<Integer> depth = Property.ofValue(1);
 
     @Schema(
         title = "Commit SHA to checkout",
         description = "Detached HEAD checkout; short SHA allowed. Overrides `branch` and disables shallow clone."
     )
+    @PluginProperty(group = "advanced")
     private Property<String> commit;
 
     @Schema(
         title = "Tag to checkout",
         description = "Ignored when `commit` is set; performs a full fetch to reach the tag."
     )
+    @PluginProperty(group = "advanced")
     private Property<String> tag;
 
     @Override

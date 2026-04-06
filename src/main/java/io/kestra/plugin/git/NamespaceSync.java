@@ -51,6 +51,7 @@ import lombok.experimental.SuperBuilder;
 import static io.kestra.core.utils.Rethrow.throwConsumer;
 import static java.lang.Integer.MAX_VALUE;
 import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -134,12 +135,14 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         description = "Required branch name (no `origin/` or `refs/heads/` prefixes); must exist on the remote."
     )
     @NotNull
+    @PluginProperty(group = "main")
     private Property<String> branch;
 
     @Schema(
         title = "Git base directory",
         description = "Optional subfolder in the repo; default is repo root. Within it, files are expected under `<namespace>/flows` and `<namespace>/files`."
     )
+    @PluginProperty(group = "destination")
     private Property<String> gitDirectory;
 
     @Schema(
@@ -147,6 +150,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         description = "Required; syncs only this namespace (no child namespaces)."
     )
     @NotNull
+    @PluginProperty(group = "main")
     private Property<String> namespace;
 
     @Schema(
@@ -154,6 +158,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         description = "KESTRA (default) pushes Kestra state to Git; GIT applies Git state into Kestra."
     )
     @Builder.Default
+    @PluginProperty(group = "source")
     private Property<SourceOfTruth> sourceOfTruth = Property.ofValue(SourceOfTruth.KESTRA);
 
     @Schema(
@@ -161,6 +166,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         description = "Default DELETE. Options: DELETE removes from target, KEEP leaves untouched, FAIL stops the run. Protected namespaces override deletions."
     )
     @Builder.Default
+    @PluginProperty(group = "source")
     private Property<WhenMissingInSource> whenMissingInSource = Property.ofValue(WhenMissingInSource.DELETE);
 
     @Schema(
@@ -168,6 +174,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         description = "List that cannot be deleted even when policy is DELETE; defaults to `system`."
     )
     @Builder.Default
+    @PluginProperty(group = "source")
     private Property<List<String>> protectedNamespaces = Property.ofValue(List.of("system"));
 
     @Schema(
@@ -175,6 +182,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         description = "When true, produces a diff file without applying changes or pushing."
     )
     @Builder.Default
+    @PluginProperty(group = "reliability")
     private Property<Boolean> dryRun = Property.ofValue(false);
 
     @Schema(
@@ -182,6 +190,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         description = "Default FAIL. Options: SKIP, WARN, FAIL."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<OnInvalidSyntax> onInvalidSyntax = Property.ofValue(OnInvalidSyntax.FAIL);
 
     @Schema(
@@ -191,12 +200,14 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     private Property<String> commitMessage;
 
     @Schema(title = "Commit author email")
+    @PluginProperty(group = "connection")
     private Property<String> authorEmail;
 
     @Schema(
         title = "Commit author name",
         description = "Defaults to `username` when not set."
     )
+    @PluginProperty(group = "connection")
     private Property<String> authorName;
 
     // Directory names (namespace-first structure: <namespace>/<kind>/<id>.yaml)

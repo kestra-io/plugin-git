@@ -114,6 +114,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         description = "Defaults to `main`; created if absent."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
@@ -121,6 +122,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         description = "Relative path inside the repo; defaults to `_flows`. Child namespaces are nested under this path when `includeChildNamespaces` is true."
     )
     @Builder.Default
+    @PluginProperty(group = "destination")
     private Property<String> gitDirectory = Property.ofValue("_flows");
 
     @Schema(
@@ -128,12 +130,14 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         description = "Namespace to export flows from; defaults to the current flow namespace."
     )
     @Builder.Default
+    @PluginProperty(group = "source")
     private Property<String> sourceNamespace = Property.ofExpression("{{ flow.namespace }}");
 
     @Schema(
         title = "Target namespace override",
         description = "If set, rewrites the `namespace` field in exported flows to this value."
     )
+    @PluginProperty(group = "source")
     private Property<String> targetNamespace;
 
     @Schema(
@@ -142,7 +146,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         oneOf = { String.class, String[].class },
         defaultValue = "**"
     )
-    @PluginProperty(dynamic = true)
+    @PluginProperty(dynamic = true, group = "advanced")
     private Object flows;
 
     @Schema(
@@ -150,6 +154,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         description = "When true, exports flows from child namespaces into nested directories under `gitDirectory`."
     )
     @Builder.Default
+    @PluginProperty(group = "source")
     private Property<Boolean> includeChildNamespaces = Property.ofValue(false);
 
     @Schema(

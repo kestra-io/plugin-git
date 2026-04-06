@@ -108,6 +108,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         description = "Defaults to `main`; created if absent."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
@@ -115,6 +116,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         description = "Namespace whose files are exported; defaults to the current flow namespace."
     )
     @Builder.Default
+    @PluginProperty(group = "source")
     private Property<String> namespace = Property.ofExpression("{{ flow.namespace }}");
 
     @Schema(
@@ -122,6 +124,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         description = "Relative path inside the repo; defaults to `_files`. Paths under the namespace are preserved beneath this directory."
     )
     @Builder.Default
+    @PluginProperty(group = "destination")
     private Property<String> gitDirectory = Property.ofValue("_files");
 
     @Schema(
@@ -130,7 +133,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         defaultValue = "**"
 
     )
-    @PluginProperty(dynamic = true)
+    @PluginProperty(dynamic = true, group = "deprecated")
     private Object files;
 
     @Schema(
@@ -147,6 +150,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         description = "If true, throws when the glob finds no files; otherwise logs and skips."
     )
     @Builder.Default
+    @PluginProperty(group = "reliability")
     private Property<Boolean> errorOnMissing = Property.ofValue(false);
 
     @Override

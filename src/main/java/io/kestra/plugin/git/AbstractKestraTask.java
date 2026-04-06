@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder
 @NoArgsConstructor
@@ -25,10 +26,12 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
     @Schema(
         title = "Kestra API URL. If null, uses 'kestra.url' from [configuration](https://kestra.io/docs/configuration#kestra-url). If that is also null, defaults to 'http://localhost:8080'."
     )
+    @PluginProperty(group = "connection")
     private Property<String> kestraUrl;
 
     @Schema(title = "Authentication information")
     @NotNull
+    @PluginProperty(group = "main")
     private Auth auth;
 
     protected KestraClient kestraClient(RunContext runContext) throws IllegalVariableEvaluationException {
@@ -86,9 +89,11 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
     @Getter
     public static class Auth {
         @Schema(title = "Username for HTTP Basic authentication.")
+        @PluginProperty(group = "connection")
         private Property<String> username;
 
         @Schema(title = "Password for HTTP Basic authentication.")
+        @PluginProperty(group = "connection")
         private Property<String> password;
 
         @Schema(
@@ -100,6 +105,7 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
                 The Enterprise edition also provides setting a default configuration at the Namespace of Tenant level by an administrator."""
         )
         @Builder.Default
+        @PluginProperty(group = "advanced")
         private Property<Boolean> auto = Property.ofValue(Boolean.TRUE);
     }
 }

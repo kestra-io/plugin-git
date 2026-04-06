@@ -131,6 +131,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         title = "Target directory",
         description = "Working-directory subfolder containing the Git repo; defaults to the working directory root."
     )
+    @PluginProperty(group = "destination")
     private Property<String> directory;
 
     @Schema(
@@ -138,23 +139,27 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         description = "Created if absent."
     )
     @NotNull
+    @PluginProperty(group = "main")
     private Property<String> branch;
 
     @Schema(
         title = "Commit message"
     )
     @NotNull
+    @PluginProperty(group = "main")
     private Property<String> commitMessage;
 
+    @PluginProperty(group = "source")
     private NamespaceFiles namespaceFiles;
 
     @Schema(
         title = "Whether to push flows from the current namespace to Git"
     )
-    @PluginProperty
+    @PluginProperty(group = "advanced")
     @Builder.Default
     private FlowFiles flows = FlowFiles.builder().build();
 
+    @PluginProperty(group = "source")
     private Object inputFiles;
 
     @Schema(
@@ -162,10 +167,11 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         description = "Defaults to `.` (all files). Directories are added recursively; globs are not supported."
     )
     @Builder.Default
+    @PluginProperty(group = "source")
     private Property<List<String>> addFilesPattern = Property.ofValue(List.of("."));
 
     @Schema(title = "Commit author")
-    @PluginProperty
+    @PluginProperty(group = "connection")
     private Author author;
 
     private boolean branchExists(RunContext runContext, String branch) throws Exception {

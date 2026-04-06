@@ -48,6 +48,7 @@ import io.kestra.plugin.git.services.SshTransportConfigCallback;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @NoArgsConstructor
@@ -64,42 +65,50 @@ public abstract class AbstractGitTask extends Task {
         title = "Repository URL",
         description = "HTTP(S) or SSH URI used for clone and push operations."
     )
+    @PluginProperty(group = "connection")
     protected Property<String> url;
 
     @Schema(
         title = "Username or organization",
         description = "Used for HTTP basic authentication and as a fallback commit author."
     )
+    @PluginProperty(group = "connection")
     protected Property<String> username;
 
     @Schema(
         title = "Password or personal access token",
         description = "Supplies HTTP credentials. When a PAT is used, pushes are recorded under that PAT’s user without needing `authorName` and `authorEmail`."
     )
+    @PluginProperty(group = "connection")
     protected Property<String> password;
 
     @Schema(
         title = "PEM private key",
         description = "PEM-formatted private key matching a public key registered on the Git server. Generate with `ssh-keygen -t ecdsa -b 256 -m PEM`."
     )
+    @PluginProperty(group = "connection")
     protected Property<String> privateKey;
 
     @Schema(title = "Passphrase for `privateKey`")
+    @PluginProperty(group = "advanced")
     protected Property<String> passphrase;
 
     @Schema(
         title = "Extra trusted CA PEM path",
         description = "Optional PEM-encoded CA bundle added to the JVM truststore; equivalent to `git config http.sslCAInfo <path>` for self-signed or internal CAs."
     )
+    @PluginProperty(group = "advanced")
     protected Property<String> trustedCaPemPath;
 
     @Schema(
         title = "Disable proxy for HTTP",
         description = "When true, forces direct connections instead of using the JVM proxy settings."
     )
+    @PluginProperty(group = "advanced")
     protected Property<Boolean> noProxy;
 
     @Schema(title = "Initial Git branch")
+    @PluginProperty(group = "advanced")
     public abstract Property<String> getBranch();
 
     @Schema(
@@ -107,6 +116,7 @@ public abstract class AbstractGitTask extends Task {
         description = "Default 10000 ms."
     )
     @Builder.Default
+    @PluginProperty(group = "execution")
     protected Property<Integer> connectTimeout = Property.ofValue(10000);
 
     @Schema(
@@ -114,6 +124,7 @@ public abstract class AbstractGitTask extends Task {
         description = "Default 60000 ms."
     )
     @Builder.Default
+    @PluginProperty(group = "execution")
     protected Property<Integer> readTimeout = Property.ofValue(60000);
 
     @Schema(
@@ -124,6 +135,7 @@ public abstract class AbstractGitTask extends Task {
             - core.autocrlf: false (preserve line endings)
             """
     )
+    @PluginProperty(group = "advanced")
     protected Property<Map<String, Object>> gitConfig;
 
     protected void configureHttpTransport(RunContext runContext) throws Exception {

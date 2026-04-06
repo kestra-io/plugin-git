@@ -79,6 +79,7 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
         description = "Defaults to `main`; created if it does not exist."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
@@ -86,6 +87,7 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
         description = "Relative path inside the repository; defaults to `_dashboards`."
     )
     @Builder.Default
+    @PluginProperty(group = "destination")
     private Property<String> gitDirectory = Property.ofValue("_dashboards");
 
     @Schema(
@@ -94,7 +96,7 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
         oneOf = { String.class, String[].class },
         defaultValue = "**"
     )
-    @PluginProperty(dynamic = true)
+    @PluginProperty(dynamic = true, group = "advanced")
     private Object dashboards;
 
     @Schema(

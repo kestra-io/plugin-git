@@ -39,6 +39,7 @@ import lombok.ToString;
 import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.*;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -88,20 +89,24 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
         title = "Git directory to sync from",
         description = "Defaults to repo root; `_flows` within it is used for flows."
     )
+    @PluginProperty(group = "destination")
     private Property<String> gitDirectory;
 
     @Schema(
         title = "Target namespace files directory",
         description = "Optional subpath under the namespace; defaults to namespace root."
     )
+    @PluginProperty(group = "source")
     private Property<String> namespaceFilesDirectory;
 
+    @PluginProperty(group = "advanced")
     private Property<String> branch;
 
     @Schema(
         title = "Dry run only",
         description = "When true, logs planned additions/updates/deletions without applying."
     )
+    @PluginProperty(group = "reliability")
     private Property<Boolean> dryRun;
 
     @Override
