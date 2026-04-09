@@ -7,6 +7,7 @@ import org.eclipse.jgit.revwalk.RevObject;
 import org.eclipse.jgit.revwalk.RevTag;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.transport.RefSpec;
+import org.eclipse.jgit.transport.TagOpt;
 import org.slf4j.Logger;
 
 import io.kestra.core.models.property.Property;
@@ -28,17 +29,23 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
     @PluginProperty(group = "advanced")
     protected Property<Boolean> cloneSubmodules;
 
-    protected void checkoutCommit(Git git, String sha, Logger logger) throws Exception {
+    protected void checkoutCommit(Git git, String sha, Logger logger, boolean noTags) throws Exception {
         // Ensure we have a full history in case the repo was shallow by default on the remote
         // or if the requested SHA is deep in history.
         try {
-            // Fetch all branches and tags to guarantee the target commit is available locally.
-            git.fetch()
-                .setRefSpecs(
+            var fetch = git.fetch()
+                .setRefSpecs(new RefSpec("+refs/heads/*:refs/remotes/origin/*"));
+
+            if (!noTags) {
+                fetch.setRefSpecs(
                     new RefSpec("+refs/heads/*:refs/remotes/origin/*"),
                     new RefSpec("+refs/tags/*:refs/tags/*")
-                )
-                .call();
+                );
+            } else {
+                fetch.setTagOpt(TagOpt.NO_TAGS);
+            }
+
+            fetch.call();
         } catch (Exception fetchEx) {
             logger.warn("Fetch before checkout failed: {}", fetchEx.getMessage());
         }
@@ -56,10 +63,12 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
         }
     }
 
-    protected void checkoutTag(Git git, String rTagName, Logger logger) throws Exception {
-        git.fetch()
-            .setRefSpecs(new RefSpec("+refs/tags/*:refs/tags/*"))
-            .call();
+    protected void checkoutTag(Git git, String rTagName, Logger logger, boolean noTags) throws Exception {
+        if (!noTags) {
+            git.fetch()
+                .setRefSpecs(new RefSpec("+refs/tags/*:refs/tags/*"))
+                .call();
+        }
 
         Ref tagRef = git.getRepository().findRef("refs/tags/" + rTagName);
         if (tagRef == null) {
