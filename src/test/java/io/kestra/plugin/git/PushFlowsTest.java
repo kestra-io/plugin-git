@@ -819,7 +819,7 @@ public class PushFlowsTest extends AbstractGitTest {
 
             tasks:
               - id: my-task
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: Hello from my-task
               - id: subflow
                 type: io.kestra.core.tasks.flows.Subflow
