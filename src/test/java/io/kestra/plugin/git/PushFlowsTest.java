@@ -822,7 +822,7 @@ public class PushFlowsTest extends AbstractGitTest {
                 type: io.kestra.plugin.core.log.Log
                 message: Hello from my-task
               - id: subflow
-                type: io.kestra.core.tasks.flows.Subflow
+                type: io.kestra.plugin.core.flow.Subflow
                 namespace:\s""" + namespace + """
             .sub-namespace
                 flowId: another-flow
