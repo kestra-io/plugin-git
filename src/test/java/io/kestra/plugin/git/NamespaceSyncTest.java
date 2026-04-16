@@ -1,6 +1,7 @@
 package io.kestra.plugin.git;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -9,6 +10,7 @@ import java.nio.file.Path;
 import java.util.*;
 
 import org.apache.commons.io.IOUtils;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -52,6 +54,18 @@ public class NamespaceSyncTest extends AbstractGitTest {
     @Inject
     private StorageInterface storageInterface;
 
+    private MockKestraApiServer server;
+
+    @BeforeEach
+    void startMockServer() throws IOException {
+        server = MockKestraApiServer.start(flowRepository);
+    }
+
+    @AfterEach
+    void stopMockServer() {
+        server.close();
+    }
+
     @BeforeEach
     void initBranch() {
         branch = BRANCH_PREFIX + "-" + Long.toHexString(System.nanoTime());
@@ -87,6 +101,7 @@ public class NamespaceSyncTest extends AbstractGitTest {
             .sourceOfTruth(Property.ofValue(NamespaceSync.SourceOfTruth.KESTRA))
             .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.KEEP))
             .dryRun(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         NamespaceSync.Output out = task.run(rc);
@@ -118,6 +133,7 @@ public class NamespaceSyncTest extends AbstractGitTest {
             .sourceOfTruth(Property.ofValue(NamespaceSync.SourceOfTruth.KESTRA))
             .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.KEEP))
             .dryRun(Property.ofValue(false))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         NamespaceSync.Output out = task.run(rc);
@@ -167,6 +183,7 @@ public class NamespaceSyncTest extends AbstractGitTest {
             .sourceOfTruth(Property.ofValue(NamespaceSync.SourceOfTruth.GIT))
             .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.KEEP))
             .dryRun(Property.ofValue(false))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         task.run(rc);
@@ -228,6 +245,7 @@ public class NamespaceSyncTest extends AbstractGitTest {
             .sourceOfTruth(Property.ofValue(NamespaceSync.SourceOfTruth.KESTRA))
             .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.DELETE))
             .dryRun(Property.ofValue(false))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         push.run(rc);
     }

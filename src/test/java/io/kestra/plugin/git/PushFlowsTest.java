@@ -17,6 +17,8 @@ import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -53,6 +55,18 @@ public class PushFlowsTest extends AbstractGitTest {
     @Inject
     private FlowRepositoryInterface flowRepositoryInterface;
 
+    private MockKestraApiServer server;
+
+    @BeforeEach
+    void startMockServer() throws IOException {
+        server = MockKestraApiServer.start(flowRepositoryInterface);
+    }
+
+    @AfterEach
+    void stopMockServer() {
+        server.close();
+    }
+
     @Test
     void defaultCase_SingleRegex() throws Exception {
         String tenantId = TenantService.MAIN_TENANT;
@@ -82,6 +96,7 @@ public class PushFlowsTest extends AbstractGitTest {
             .flows("second*")
             .includeChildNamespaces(Property.ofValue(true))
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         try {
@@ -155,6 +170,7 @@ public class PushFlowsTest extends AbstractGitTest {
             .flows("second*")
             .includeChildNamespaces(Property.ofValue(true))
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         try {
@@ -221,6 +237,7 @@ public class PushFlowsTest extends AbstractGitTest {
             .includeChildNamespaces(Property.ofValue(true))
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
             .dryRun(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         PushFlows.Output pushOutput = pushFlows.run(runContext);
@@ -268,6 +285,7 @@ public class PushFlowsTest extends AbstractGitTest {
             .targetNamespace(Property.ofExpression("{{targetNamespace}}"))
             .includeChildNamespaces(Property.ofValue(true))
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         try {
@@ -369,6 +387,7 @@ public class PushFlowsTest extends AbstractGitTest {
             .targetNamespace(Property.ofExpression("{{targetNamespace}}"))
             .includeChildNamespaces(Property.ofValue(true))
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         try {
@@ -451,6 +470,7 @@ public class PushFlowsTest extends AbstractGitTest {
             .flows(useStringPebbleArray ? "{{ flows }}" : List.of("{{ flow1 }}", "{{ flow2 }}"))
             .includeChildNamespaces(Property.ofValue(true))
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         try {
@@ -526,6 +546,7 @@ public class PushFlowsTest extends AbstractGitTest {
             .sourceNamespace(Property.ofExpression("{{sourceNamespace}}"))
             .targetNamespace(Property.ofExpression("{{targetNamespace}}"))
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         try {
@@ -590,6 +611,7 @@ public class PushFlowsTest extends AbstractGitTest {
             .targetNamespace(Property.ofExpression("{{targetNamespace}}"))
             .includeChildNamespaces(Property.ofValue(true))
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         try {
@@ -643,6 +665,7 @@ public class PushFlowsTest extends AbstractGitTest {
                 .targetNamespace(Property.ofExpression("{{targetNamespace}}"))
                 .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
                 .delete(Property.ofValue(false))
+                .kestraUrl(Property.ofValue(server.url()))
                 .build();
 
             PushFlows.Output firstOutput = firstPush.run(runContext1);
@@ -681,6 +704,7 @@ public class PushFlowsTest extends AbstractGitTest {
                 .targetNamespace(Property.ofExpression("{{targetNamespace}}"))
                 .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
                 .delete(Property.ofValue(false))
+                .kestraUrl(Property.ofValue(server.url()))
                 .build();
 
             PushFlows.Output secondOutput = secondPush.run(runContext2);
@@ -708,6 +732,7 @@ public class PushFlowsTest extends AbstractGitTest {
                 .targetNamespace(Property.ofExpression("{{targetNamespace}}"))
                 .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
                 .delete(Property.ofValue(true))
+                .kestraUrl(Property.ofValue(server.url()))
                 .build();
 
             PushFlows.Output thirdOutput = thirdPush.run(runContext3);

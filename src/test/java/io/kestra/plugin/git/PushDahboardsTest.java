@@ -14,6 +14,8 @@ import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import io.kestra.core.junit.annotations.KestraTest;
@@ -43,6 +45,18 @@ public class PushDahboardsTest extends AbstractGitTest {
     @Inject
     private DashboardRepositoryInterface dashboardRepositoryInterface;
 
+    private MockKestraApiServer server;
+
+    @BeforeEach
+    void startMockServer() throws IOException {
+        server = MockKestraApiServer.start(dashboardRepositoryInterface);
+    }
+
+    @AfterEach
+    void stopMockServer() {
+        server.close();
+    }
+
     @Test
     void defaultCase_DefaultRegex() throws Exception {
         String tenantId = TenantService.MAIN_TENANT;
@@ -71,6 +85,7 @@ public class PushDahboardsTest extends AbstractGitTest {
                 .password(Property.ofExpression("{{pat}}"))
                 .authorEmail(Property.ofExpression("{{email}}"))
                 .authorName(Property.ofExpression("{{name}}"))
+                .kestraUrl(Property.ofValue(server.url()))
                 .build();
 
             PushDashboards.Output pushDashboardsOutput = pushDashboards.run(runContext);
@@ -144,6 +159,7 @@ public class PushDahboardsTest extends AbstractGitTest {
                 .dashboards("first*")
                 .authorEmail(Property.ofExpression("{{email}}"))
                 .authorName(Property.ofExpression("{{name}}"))
+                .kestraUrl(Property.ofValue(server.url()))
                 .build();
 
             pushDashboards.run(runContext);

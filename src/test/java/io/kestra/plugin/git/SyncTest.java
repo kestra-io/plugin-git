@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.apache.commons.io.FileUtils;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.event.Level;
@@ -58,6 +59,18 @@ class SyncTest extends AbstractGitTest {
 
     @Inject
     private StorageInterface storageInterface;
+
+    private MockKestraApiServer server;
+
+    @BeforeEach
+    void startMockServer() throws IOException {
+        server = MockKestraApiServer.start(flowRepositoryInterface);
+    }
+
+    @AfterEach
+    void stopMockServer() {
+        server.close();
+    }
 
     @Inject
     @Named(QueueFactoryInterface.WORKERTASKLOG_NAMED)
@@ -169,6 +182,7 @@ class SyncTest extends AbstractGitTest {
             .branch(Property.ofValue(BRANCH))
             .gitDirectory(Property.ofValue(clonedGitDirectory))
             .namespaceFilesDirectory(Property.ofValue(destinationDirectory))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         var syncRc1 = runContextFactory.of(
             Map.of(
@@ -274,6 +288,7 @@ class SyncTest extends AbstractGitTest {
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
             .branch(Property.ofValue(BRANCH))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         var syncRc2 = runContextFactory.of(
@@ -368,6 +383,7 @@ class SyncTest extends AbstractGitTest {
             .branch(Property.ofValue(BRANCH))
             .gitDirectory(Property.ofValue("to_clone"))
             .dryRun(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         RunContext runContext = TestsUtils.mockRunContext(TenantService.MAIN_TENANT, runContextFactory, task, Collections.emptyMap());
         task.run(runContext);

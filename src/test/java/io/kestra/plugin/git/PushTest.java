@@ -15,7 +15,9 @@ import org.eclipse.jgit.api.errors.TransportException;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import io.kestra.core.junit.annotations.KestraTest;
@@ -47,6 +49,18 @@ class PushTest extends AbstractGitTest {
 
     @Inject
     private FlowRepositoryInterface flowRepositoryInterface;
+
+    private MockKestraApiServer server;
+
+    @BeforeEach
+    void startMockServer() throws IOException {
+        server = MockKestraApiServer.start(flowRepositoryInterface);
+    }
+
+    @AfterEach
+    void stopMockServer() {
+        server.close();
+    }
 
     @Test
     void cloneThenPush_OnlyNeedsCredentialsForPush() throws Exception {
@@ -90,6 +104,7 @@ class PushTest extends AbstractGitTest {
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
             .branch(Property.ofValue(branchName))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         Push.Output pushOutput = push.run(cloneRunContext);
 
@@ -157,6 +172,7 @@ class PushTest extends AbstractGitTest {
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
             .branch(Property.ofValue(otherBranch))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         Push.Output pushOutput = push.run(cloneRunContext);
 
@@ -230,6 +246,7 @@ class PushTest extends AbstractGitTest {
                 )
             )
             .branch(Property.ofValue(branchName))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         var ot = push.run(runContext);
@@ -292,6 +309,7 @@ class PushTest extends AbstractGitTest {
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
             .branch(Property.ofValue(branchName))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         var rc1 = runContextFactory.of();
         runContextFactory.initializer().forExecutor((DefaultRunContext) rc1);
@@ -348,6 +366,7 @@ class PushTest extends AbstractGitTest {
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
             .branch(Property.ofValue(branchName))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         RunContext runContext = runContextFactory.of();
         runContextFactory.initializer().forExecutor((DefaultRunContext) runContext);
@@ -409,6 +428,7 @@ class PushTest extends AbstractGitTest {
                 )
             )
             .branch(Property.ofValue(branchName))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         push.run(runContext);
@@ -463,6 +483,7 @@ class PushTest extends AbstractGitTest {
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
             .branch(Property.ofValue(branchName))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         try {
@@ -531,6 +552,7 @@ class PushTest extends AbstractGitTest {
                     .build()
             )
             .branch(Property.ofValue(branchName))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         try {
@@ -596,6 +618,7 @@ class PushTest extends AbstractGitTest {
                     .gitDirectory(Property.ofValue("my-flows"))
                     .build()
             )
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         try {

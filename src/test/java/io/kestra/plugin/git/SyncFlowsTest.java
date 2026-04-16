@@ -12,6 +12,7 @@ import java.util.stream.Stream;
 
 import org.apache.commons.io.IOUtils;
 import org.eclipse.jgit.api.Git;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -56,6 +57,18 @@ public class SyncFlowsTest extends AbstractGitTest {
 
     @Inject
     private FlowRepositoryInterface flowRepositoryInterface;
+
+    private MockKestraApiServer server;
+
+    @BeforeEach
+    void startMockServer() throws IOException {
+        server = MockKestraApiServer.start(flowRepositoryInterface);
+    }
+
+    @AfterEach
+    void stopMockServer() {
+        server.close();
+    }
 
     @BeforeEach
     void init() {
@@ -157,6 +170,7 @@ public class SyncFlowsTest extends AbstractGitTest {
             .delete(Property.ofValue(true))
             .includeChildNamespaces(Property.ofValue(true))
             .ignoreInvalidFlows(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 
@@ -253,6 +267,7 @@ public class SyncFlowsTest extends AbstractGitTest {
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
             .targetNamespace(Property.ofExpression("{{namespace}}"))
             .includeChildNamespaces(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 
@@ -346,6 +361,7 @@ public class SyncFlowsTest extends AbstractGitTest {
             .targetNamespace(Property.ofExpression("{{namespace}}"))
             .delete(Property.ofValue(true))
             .includeChildNamespaces(Property.ofValue(false))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 
@@ -435,7 +451,7 @@ public class SyncFlowsTest extends AbstractGitTest {
         assertThat(flows, hasSize(5));
         flows.forEach(f -> previousRevisionByUid.put(f.uidWithoutRevision(), f.getRevision()));
 
-        String[] beforeUpdateSources = flowRepositoryInterface.findWithSource(null, TENANT_ID, null).stream()
+        String[] beforeUpdateSources = flowRepositoryInterface.findAllWithSource(TENANT_ID).stream()
             .map(FlowWithSource::getSource)
             .toArray(String[]::new);
 
@@ -449,13 +465,14 @@ public class SyncFlowsTest extends AbstractGitTest {
             .delete(Property.ofValue(true))
             .includeChildNamespaces(Property.ofValue(true))
             .dryRun(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 
         flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(5));
 
-        String[] afterUpdateSources = flowRepositoryInterface.findWithSource(null, TENANT_ID, null).stream()
+        String[] afterUpdateSources = flowRepositoryInterface.findAllWithSource(TENANT_ID).stream()
             .map(FlowWithSource::getSource)
             .toArray(String[]::new);
 
@@ -490,6 +507,7 @@ public class SyncFlowsTest extends AbstractGitTest {
             .branch(Property.ofExpression("{{branch}}"))
             .gitDirectory(Property.ofValue("nonexistent/path"))
             .targetNamespace(Property.ofExpression("{{namespace}}"))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () ->
@@ -544,6 +562,7 @@ public class SyncFlowsTest extends AbstractGitTest {
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
             .targetNamespace(Property.ofExpression("{{namespace}}"))
             .ignoreInvalidFlows(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         SyncFlows.Output output = task.run(runContext);
@@ -597,6 +616,7 @@ public class SyncFlowsTest extends AbstractGitTest {
             .branch(Property.ofExpression("{{branch}}"))
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
             .targetNamespace(Property.ofExpression("{{namespace}}"))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         FlowProcessingException ex = assertThrows(FlowProcessingException.class, () -> task.run(runContext));

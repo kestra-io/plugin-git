@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.*;
 
 import org.apache.commons.io.IOUtils;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -47,6 +48,18 @@ public class SyncDashboardsTest extends AbstractGitTest {
     @Inject
     private DashboardRepositoryInterface dashboardRepositoryInterface;
 
+    private MockKestraApiServer server;
+
+    @BeforeEach
+    void startMockServer() throws IOException {
+        server = MockKestraApiServer.start(dashboardRepositoryInterface);
+    }
+
+    @AfterEach
+    void stopMockServer() {
+        server.close();
+    }
+
     @BeforeEach
     void init() {
         dashboardRepositoryInterface.findAll(TENANT_ID).forEach(dashboard ->
@@ -84,6 +97,7 @@ public class SyncDashboardsTest extends AbstractGitTest {
             .branch(Property.ofExpression("{{branch}}"))
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
             .delete(Property.ofValue(delete))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         SyncDashboards.Output syncOutput = task.run(runContext);
