@@ -36,7 +36,6 @@ import io.kestra.core.models.tasks.NamespaceFilesInterface;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.FilesService;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.runners.SDK;
 import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.utils.Rethrow;
 import io.kestra.sdk.KestraClient;
@@ -378,25 +377,6 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
         } catch (ApiException e) {
             throw new KestraRuntimeException("Failed to export flows from Kestra for namespace " + namespace, e);
         }
-    }
-
-    private KestraClient kestraClient(RunContext runContext) throws IllegalVariableEvaluationException {
-        String rKestraUrl;
-        try {
-            rKestraUrl = runContext.render("{{ kestra.url }}");
-        } catch (IllegalVariableEvaluationException e) {
-            rKestraUrl = "http://localhost:8080";
-        }
-        if (rKestraUrl == null || rKestraUrl.isBlank()) {
-            rKestraUrl = "http://localhost:8080";
-        }
-        String normalizedUrl = rKestraUrl.trim().replaceAll("/+$", "");
-        var builder = KestraClient.builder().url(normalizedUrl);
-        Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
-        if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-            return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
-        }
-        return builder.build();
     }
 
     private PersonIdent author(RunContext runContext) throws IllegalVariableEvaluationException {

@@ -30,7 +30,6 @@ import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.models.tasks.VoidOutput;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.runners.SDK;
 import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
@@ -375,25 +374,6 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
         } catch (IOException e) {
             throw new KestraRuntimeException("Failed to create named file for: " + fileName, e);
         }
-    }
-
-    private KestraClient kestraClient(RunContext runContext) throws IllegalVariableEvaluationException {
-        String rKestraUrl;
-        try {
-            rKestraUrl = runContext.render("{{ kestra.url }}");
-        } catch (IllegalVariableEvaluationException e) {
-            rKestraUrl = "http://localhost:8080";
-        }
-        if (rKestraUrl == null || rKestraUrl.isBlank()) {
-            rKestraUrl = "http://localhost:8080";
-        }
-        String normalizedUrl = rKestraUrl.trim().replaceAll("/+$", "");
-        var builder = KestraClient.builder().url(normalizedUrl);
-        Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
-        if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-            return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
-        }
-        return builder.build();
     }
 
     private static void logDeletion(Logger logger, String path) {
