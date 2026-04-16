@@ -26,6 +26,7 @@ import io.kestra.core.models.flows.GenericFlow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.GenericTask;
 import io.kestra.core.repositories.FlowRepositoryInterface;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
@@ -535,6 +536,7 @@ public class SyncFlowsTest extends AbstractGitTest {
                 "namespace", NAMESPACE
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) runContext);
 
         SyncFlows task = SyncFlows.builder()
             .url(Property.ofExpression("{{url}}"))
@@ -588,6 +590,7 @@ public class SyncFlowsTest extends AbstractGitTest {
                 "namespace", NAMESPACE
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) runContext);
 
         SyncFlows task = SyncFlows.builder()
             .url(Property.ofExpression("{{url}}"))
@@ -633,7 +636,7 @@ public class SyncFlowsTest extends AbstractGitTest {
     }
 
     private RunContext runContext() {
-        return runContextFactory.of(
+        var rc = runContextFactory.of(
             Map.of(
                 "flow", Map.of(
                     "tenantId", SyncFlowsTest.TENANT_ID,
@@ -647,6 +650,8 @@ public class SyncFlowsTest extends AbstractGitTest {
                 "gitDirectory", SyncFlowsTest.GIT_DIRECTORY
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) rc);
+        return rc;
     }
 
     private static void assertDiffs(RunContext runContext, URI diffFileUri, List<Map<String, Object>> expectedDiffs) throws IOException {

@@ -28,6 +28,7 @@ import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.flows.GenericFlow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.repositories.FlowRepositoryInterface;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
@@ -762,7 +763,9 @@ public class PushFlowsTest extends AbstractGitTest {
                 }
             }
         }
-        return runContextFactory.of(map);
+        var rc = runContextFactory.of(map);
+        runContextFactory.initializer().forExecutor((DefaultRunContext) rc);
+        return rc;
     }
 
     private static RevCommit assertIsLastCommit(RunContext cloneRunContext, PushFlows.Output pushOutput) throws IOException, GitAPIException {

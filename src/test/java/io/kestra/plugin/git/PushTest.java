@@ -24,6 +24,7 @@ import io.kestra.core.models.flows.GenericFlow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.NamespaceFiles;
 import io.kestra.core.repositories.FlowRepositoryInterface;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.tenant.TenantService;
@@ -60,6 +61,7 @@ class PushTest extends AbstractGitTest {
             .build();
 
         RunContext cloneRunContext = runContextFactory.of();
+        runContextFactory.initializer().forExecutor((DefaultRunContext) cloneRunContext);
         clone.run(cloneRunContext);
 
         File extraFile = cloneRunContext.workingDir().resolve(Path.of("some_file.txt")).toFile();
@@ -138,6 +140,7 @@ class PushTest extends AbstractGitTest {
             .build();
 
         RunContext cloneRunContext = runContextFactory.of();
+        runContextFactory.initializer().forExecutor((DefaultRunContext) cloneRunContext);
         clone.run(cloneRunContext);
         String ciBranchExpectedLastCommitId = getLastCommitId(cloneRunContext);
 
@@ -181,6 +184,7 @@ class PushTest extends AbstractGitTest {
                 "description", "One-task push"
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) runContext);
 
         String expectedInputFileContent = IdUtils.create();
         String expectedNamespaceFileContent = IdUtils.create();
@@ -289,7 +293,9 @@ class PushTest extends AbstractGitTest {
             .password(Property.ofValue(pat))
             .branch(Property.ofValue(branchName))
             .build();
-        push.run(runContextFactory.of());
+        var rc1 = runContextFactory.of();
+        runContextFactory.initializer().forExecutor((DefaultRunContext) rc1);
+        push.run(rc1);
 
         RunContext runContext = runContextFactory.of();
         clone.run(runContext);
@@ -298,7 +304,9 @@ class PushTest extends AbstractGitTest {
         push = push.toBuilder()
             .inputFiles(null)
             .build();
-        push.run(runContextFactory.of());
+        var rc2 = runContextFactory.of();
+        runContextFactory.initializer().forExecutor((DefaultRunContext) rc2);
+        push.run(rc2);
 
         runContext = runContextFactory.of();
         try {
@@ -342,10 +350,13 @@ class PushTest extends AbstractGitTest {
             .branch(Property.ofValue(branchName))
             .build();
         RunContext runContext = runContextFactory.of();
+        runContextFactory.initializer().forExecutor((DefaultRunContext) runContext);
         Push.Output firstPush = push.run(runContext);
 
         try {
-            Push.Output run = push.run(runContextFactory.of());
+            var rc3 = runContextFactory.of();
+            runContextFactory.initializer().forExecutor((DefaultRunContext) rc3);
+            Push.Output run = push.run(rc3);
             assertThat(run.getCommitId(), nullValue());
 
             runContext = runContextFactory.of();
@@ -369,6 +380,7 @@ class PushTest extends AbstractGitTest {
     void oneTaskPush_WithSpecifiedDirectory() throws Exception {
         String branchName = IdUtils.create();
         RunContext runContext = runContextFactory.of();
+        runContextFactory.initializer().forExecutor((DefaultRunContext) runContext);
 
         String expectedInputFileContent = IdUtils.create();
         String expectedNestedInputFileContent = IdUtils.create();
@@ -438,6 +450,7 @@ class PushTest extends AbstractGitTest {
                 "description", "One-task push"
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) runContext);
 
         FlowWithSource createdFlow = this.createFlow(tenantId, namespace);
         FlowWithSource createdSubNsFlow = this.createFlow(tenantId, namespace + ".sub-namespace");
@@ -494,6 +507,7 @@ class PushTest extends AbstractGitTest {
                 "description", "One-task push"
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) runContext);
 
         FlowWithSource createdFlow = this.createFlow(tenantId, namespace);
         FlowWithSource createdSubNsFlow = this.createFlow(tenantId, namespace + ".sub-namespace");
@@ -559,6 +573,7 @@ class PushTest extends AbstractGitTest {
                 "description", "One-task push"
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) runContext);
 
         FlowWithSource createdFlow = this.createFlow(tenantId, namespace);
         FlowWithSource createdSubNsFlow = this.createFlow(tenantId, namespace + ".sub-namespace");

@@ -20,6 +20,7 @@ import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.flows.GenericFlow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.repositories.FlowRepositoryInterface;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
@@ -190,7 +191,9 @@ public class NamespaceSyncTest extends AbstractGitTest {
                 "gitDirectory", GIT_DIRECTORY
             )
         );
-        return runContextFactory.of(ctx);
+        var rc = runContextFactory.of(ctx);
+        runContextFactory.initializer().forExecutor((DefaultRunContext) rc);
+        return rc;
     }
 
     private void createFlowInKestra(String id, String namespace) {

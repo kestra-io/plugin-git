@@ -25,6 +25,7 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.queues.QueueFactoryInterface;
 import io.kestra.core.queues.QueueInterface;
 import io.kestra.core.repositories.FlowRepositoryInterface;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.storages.StorageContext;
@@ -169,17 +170,17 @@ class SyncTest extends AbstractGitTest {
             .gitDirectory(Property.ofValue(clonedGitDirectory))
             .namespaceFilesDirectory(Property.ofValue(destinationDirectory))
             .build();
-        task.run(
-            runContextFactory.of(
-                Map.of(
-                    "flow", Map.of(
-                        "namespace", NAMESPACE,
-                        "id", selfFlowId,
-                        "tenantId", TENANT_ID
-                    )
+        var syncRc1 = runContextFactory.of(
+            Map.of(
+                "flow", Map.of(
+                    "namespace", NAMESPACE,
+                    "id", selfFlowId,
+                    "tenantId", TENANT_ID
                 )
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) syncRc1);
+        task.run(syncRc1);
         // endregion
 
         // region THEN
@@ -275,17 +276,17 @@ class SyncTest extends AbstractGitTest {
             .branch(Property.ofValue(BRANCH))
             .build();
 
-        task.run(
-            runContextFactory.of(
-                Map.of(
-                    "flow", Map.of(
-                        "namespace", NAMESPACE,
-                        "id", selfFlowId,
-                        "tenantId", TENANT_ID
-                    )
+        var syncRc2 = runContextFactory.of(
+            Map.of(
+                "flow", Map.of(
+                    "namespace", NAMESPACE,
+                    "id", selfFlowId,
+                    "tenantId", TENANT_ID
                 )
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) syncRc2);
+        task.run(syncRc2);
         // endregion
 
         // region THEN

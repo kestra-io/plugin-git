@@ -20,6 +20,7 @@ import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.dashboards.Dashboard;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.repositories.DashboardRepositoryInterface;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.tenant.TenantService;
@@ -202,7 +203,9 @@ public class PushDahboardsTest extends AbstractGitTest {
                 }
             }
         }
-        return runContextFactory.of(map);
+        var rc = runContextFactory.of(map);
+        runContextFactory.initializer().forExecutor((DefaultRunContext) rc);
+        return rc;
     }
 
     private static RevCommit assertIsLastCommit(RunContext cloneRunContext, PushDashboards.Output pushOutput) throws IOException, GitAPIException {

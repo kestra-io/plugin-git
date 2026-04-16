@@ -17,6 +17,7 @@ import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.dashboards.Dashboard;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.repositories.DashboardRepositoryInterface;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
@@ -187,7 +188,7 @@ public class SyncDashboardsTest extends AbstractGitTest {
     }
 
     private RunContext runContext() {
-        return runContextFactory.of(
+        var rc = runContextFactory.of(
             Map.of(
                 "flow", Map.of(
                     "tenantId", SyncDashboardsTest.TENANT_ID,
@@ -201,6 +202,8 @@ public class SyncDashboardsTest extends AbstractGitTest {
                 "gitDirectory", SyncDashboardsTest.GIT_DIRECTORY
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) rc);
+        return rc;
     }
 
     static DashboardDiffOutput diffMapToDashboardDiffOutput(Map<String, Object> diffMap) {
