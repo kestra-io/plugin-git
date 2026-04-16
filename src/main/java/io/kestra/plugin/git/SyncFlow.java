@@ -64,7 +64,7 @@ import io.kestra.core.models.annotations.PluginProperty;
 public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlow.Output> {
 
     public static final Pattern NAMESPACE_FINDER_PATTERN = Pattern.compile("(?m)^\\s*namespace:\\s*(.*)$");
-    private static final Pattern FLOW_ID_FINDER_PATTERN = Pattern.compile("(?m)^\\s*id:\\s*(.*)$");
+    private static final Pattern FLOW_ID_FINDER_PATTERN = Pattern.compile("(?m)^id:\\s*(.*)$");
 
     @Schema(
         title = "Branch to clone",
@@ -171,7 +171,7 @@ public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlo
                 .revision(projectedRevision);
         } else {
             // Import the flow
-            var tempFile = toNamedTempFile(flowId + ".yaml", flowSource);
+            var tempFile = toNamedTempFile(flowId + ".yaml", flowSource.stripTrailing());
             kestraClient.flows().importFlows(true, tenantId, tempFile);
 
             // Fetch the saved flow to populate the output
