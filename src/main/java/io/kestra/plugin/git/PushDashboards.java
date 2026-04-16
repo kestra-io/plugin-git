@@ -1,16 +1,17 @@
 package io.kestra.plugin.git;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -18,23 +19,20 @@ import java.util.stream.Stream;
 import com.google.common.annotations.VisibleForTesting;
 
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
-import io.kestra.core.models.dashboards.Dashboard;
 import io.kestra.core.models.property.Property;
-import io.kestra.core.repositories.ArrayListTotal;
-import io.kestra.core.repositories.DashboardRepositoryInterface;
-import io.micronaut.data.model.Pageable;
-import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.runners.SDK;
+import io.kestra.sdk.KestraClient;
+import io.kestra.sdk.model.PagedResultsDashboard;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-import static io.kestra.core.utils.Rethrow.throwFunction;
-import static io.kestra.core.utils.Rethrow.throwSupplier;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -123,21 +121,25 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
     }
 
     protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path flowDirectory, List<String> globs) throws IllegalVariableEvaluationException {
-        DashboardRepositoryInterface dashboardRepository = ((DefaultRunContext) runContext).services().additionalService(DashboardRepositoryInterface.class);
-
         Map<String, String> flowProps = Optional.ofNullable((Map<String, String>) runContext.getVariables().get("flow")).orElse(Collections.emptyMap());
         String tenantId = flowProps.get("tenantId");
+        KestraClient kestraClient = kestraClient(runContext);
 
-        List<Dashboard> dashboardsToPush = new ArrayList<>();
-        final int pageSize = 100;
+        List<io.kestra.sdk.model.Dashboard> allDashboards = new ArrayList<>();
         int page = 1;
-        ArrayListTotal<Dashboard> pageResult;
+        int size = 200;
+        PagedResultsDashboard pagedResults;
         do {
-            pageResult = dashboardRepository.list(Pageable.from(page++, pageSize), tenantId, null);
-            dashboardsToPush.addAll(pageResult);
-        } while (dashboardsToPush.size() < pageResult.getTotal());
+            try {
+                pagedResults = kestraClient.dashboards().searchDashboards(page, size, tenantId, null, null);
+            } catch (Exception e) {
+                throw new KestraRuntimeException("Failed to fetch dashboards from Kestra", e);
+            }
+            allDashboards.addAll(pagedResults.getResults());
+            page++;
+        } while (pagedResults.getResults().size() == size);
 
-        Stream<Dashboard> dashboardStream = dashboardsToPush.stream();
+        Stream<io.kestra.sdk.model.Dashboard> dashboardStream = allDashboards.stream();
         if (globs != null) {
             List<PathMatcher> matchers = globs.stream().map(glob -> FileSystems.getDefault().getPathMatcher("glob:" + glob)).toList();
             dashboardStream = dashboardStream.filter(dashboard ->
@@ -147,13 +149,66 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
             });
         }
 
-        return dashboardStream.collect(Collectors.toMap(dashboard ->
-        {
-            Path path = flowDirectory;
-            return path.resolve(dashboard.getId() + ".yml");
-        },
-            throwFunction(dashboard -> (throwSupplier(() -> new ByteArrayInputStream(dashboard.getSourceCode().getBytes()))))
+        return dashboardStream.collect(Collectors.toMap(
+            dashboard -> flowDirectory.resolve(dashboard.getId() + ".yml"),
+            dashboard -> () ->
+            {
+                try {
+                    String sourceCode = fetchDashboardSourceCode(kestraClient, runContext, tenantId, dashboard.getId());
+                    return new ByteArrayInputStream(sourceCode.getBytes(StandardCharsets.UTF_8));
+                } catch (Exception e) {
+                    throw new KestraRuntimeException("Failed to fetch dashboard source for " + dashboard.getId(), e);
+                }
+            }
         ));
+    }
+
+    private String fetchDashboardSourceCode(KestraClient kestraClient, RunContext runContext, String tenantId, String dashboardId) throws Exception {
+        var apiClient = kestraClient.dashboards().getApiClient();
+        String path = tenantId == null
+            ? "/api/v1/dashboards/" + dashboardId
+            : "/api/v1/" + tenantId + "/dashboards/" + dashboardId;
+        String url = apiClient.getBaseURL() + path;
+
+        var requestBuilder = HttpRequest.newBuilder()
+            .uri(java.net.URI.create(url))
+            .header("Accept", "application/x-yaml")
+            .GET();
+
+        var autoAuth = runContext.sdk().defaultAuthentication();
+        if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+            String encoded = Base64.getEncoder().encodeToString(
+                (autoAuth.get().username().get() + ":" + autoAuth.get().password().get()).getBytes(StandardCharsets.UTF_8));
+            requestBuilder.header("Authorization", "Basic " + encoded);
+        }
+
+        var response = HttpClient.newHttpClient().send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() == 401) {
+            throw new KestraRuntimeException("Authentication required to fetch dashboard YAML for " + dashboardId + ". Check your Kestra credentials.");
+        }
+        if (response.statusCode() != 200) {
+            throw new KestraRuntimeException("Failed to fetch dashboard YAML for " + dashboardId + ": HTTP " + response.statusCode());
+        }
+        return response.body();
+    }
+
+    private KestraClient kestraClient(RunContext runContext) throws IllegalVariableEvaluationException {
+        String rKestraUrl;
+        try {
+            rKestraUrl = runContext.render("{{ kestra.url }}");
+        } catch (IllegalVariableEvaluationException e) {
+            rKestraUrl = "http://localhost:8080";
+        }
+        if (rKestraUrl == null || rKestraUrl.isBlank()) {
+            rKestraUrl = "http://localhost:8080";
+        }
+        String normalizedUrl = rKestraUrl.trim().replaceAll("/+$", "");
+        var builder = KestraClient.builder().url(normalizedUrl);
+        Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
+        if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+            return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
+        }
+        return builder.build();
     }
 
     @Override

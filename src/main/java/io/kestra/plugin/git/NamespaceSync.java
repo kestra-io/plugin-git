@@ -16,6 +16,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 import org.eclipse.jgit.api.AddCommand;
 import org.eclipse.jgit.api.CommitCommand;
@@ -31,16 +33,20 @@ import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.models.flows.FlowSource;
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
-import io.kestra.core.repositories.FlowRepositoryInterface;
-import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.runners.SDK;
 import io.kestra.core.serializers.YamlParser;
-import io.kestra.core.services.FlowService;
 import io.kestra.core.storages.NamespaceFile;
+import io.kestra.sdk.KestraClient;
+import io.kestra.sdk.internal.ApiException;
+import io.kestra.sdk.model.QueryFilter;
+import io.kestra.sdk.model.QueryFilterField;
+import io.kestra.sdk.model.QueryFilterOp;
 import io.kestra.plugin.git.services.GitService;
 
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -215,10 +221,6 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     private static final String FLOWS_DIR = "flows";
     private static final String FILES_DIR = "files";
 
-    private FlowService flowService(RunContext rc) {
-        return ((DefaultRunContext) rc).services().additionalService(FlowService.class);
-    }
-
     @Override
     public Output run(RunContext runContext) throws Exception {
         var gitService = new GitService(this);
@@ -228,11 +230,15 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
         runContext.logger().info("Now in NamespaceSync for namespace {}", rNamespace);
 
-        var flowRepository = ((DefaultRunContext) runContext).services().additionalService(FlowRepositoryInterface.class);
         var tenantId = runContext.flowInfo().tenantId();
-        var distinctNamespaces = flowRepository.findDistinctNamespace(tenantId);
-        if (!distinctNamespaces.contains(rNamespace)) {
-            throw new IllegalArgumentException("The namespace does not exist in the '" + tenantId + "' tenant.");
+        var kestraClient = kestraClient(runContext);
+        try {
+            kestraClient.namespaces().namespace(rNamespace, tenantId);
+        } catch (ApiException e) {
+            if (e.getCode() == 404) {
+                throw new IllegalArgumentException("The namespace does not exist in the '" + tenantId + "' tenant.");
+            }
+            throw e;
         }
 
         var rGitDirectory = runContext.render(this.gitDirectory).as(String.class).orElse(null);
@@ -331,7 +337,6 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         SourceOfTruth rSource, WhenMissingInSource rMissing, OnInvalidSyntax rInvalid,
         List<String> protectedNamespace, boolean rDryRun,
         List<DiffLine> diff, List<Runnable> apply) {
-        FlowService fs = flowService(rc);
         Map<String, GitNode> gitByKey = gitTree.nodes;
         Map<String, FlowWithSource> kesByKey = kes.flows;
         String tenant = rc.flowInfo().tenantId();
@@ -350,12 +355,14 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                         apply.add(() ->
                         {
                             try {
-                                var flowValidated = fs.validate(rc.flowInfo().tenantId(), List.of(new FlowSource(key, gitNode.rawYaml))).getFirst();
+                                var kestraClient = kestraClient(rc);
+                                var flowValidated = kestraClient.flows().validateFlows(tenant, gitNode.rawYaml).getFirst();
 
                                 if (flowValidated.getConstraints() != null) {
                                     throw new FlowProcessingException(flowValidated.getConstraints());
                                 }
-                                fs.importFlow(tenant, gitNode.rawYaml, false);
+                                var flowId = YamlParser.parse(gitNode.rawYaml, io.kestra.core.models.flows.Flow.class).getId();
+                                kestraClient.flows().importFlows(false, tenant, toNamedTempFile(flowId + ".yaml", gitNode.rawYaml));
                             } catch (Exception e) {
                                 handleInvalid(rc, rInvalid, "FLOW " + key, e);
                             }
@@ -397,7 +404,15 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                             }
                             diff.add(DiffLine.deletedKestra(fileRelFromKey(FLOWS_DIR, key), key, Kind.FLOW));
                             if (!rDryRun)
-                                apply.add(() -> deleteFlow(rc, kestraFlowWithSource));
+                                apply.add(() ->
+                                {
+                                    try {
+                                        kestraClient(rc).flows().deleteFlow(
+                                            kestraFlowWithSource.getNamespace(), kestraFlowWithSource.getId(), tenant);
+                                    } catch (ApiException | IllegalVariableEvaluationException e) {
+                                        handleInvalid(rc, rInvalid, "FLOW " + key, e);
+                                    }
+                                });
                         }
                         case FAIL ->
                             throw new KestraRuntimeException("Sync failed: FLOW missing in Git but present in KESTRA for key " + key);
@@ -415,13 +430,14 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                         apply.add(() ->
                         {
                             try {
-                                var flowValidated = fs.validate(rc.flowInfo().tenantId(), List.of(new FlowSource(key, gitNode.rawYaml))).getFirst();
+                                var kestraClient = kestraClient(rc);
+                                var flowValidated = kestraClient.flows().validateFlows(tenant, gitNode.rawYaml).getFirst();
 
                                 if (flowValidated.getConstraints() != null) {
                                     throw new FlowProcessingException(flowValidated.getConstraints());
                                 }
-
-                                fs.importFlow(tenant, gitNode.rawYaml, false);
+                                var flowId = YamlParser.parse(gitNode.rawYaml, io.kestra.core.models.flows.Flow.class).getId();
+                                kestraClient.flows().importFlows(false, tenant, toNamedTempFile(flowId + ".yaml", gitNode.rawYaml));
                             } catch (Exception e) {
                                 handleInvalid(rc, rInvalid, "FLOW " + key, e);
                             }
@@ -526,12 +542,11 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     }
 
     private KestraState loadKestraState(RunContext rc, String rootNamespace, OnInvalidSyntax rOnInvalidSyntax) {
-        FlowService fs = flowService(rc);
         String tenant = rc.flowInfo().tenantId();
 
         List<FlowWithSource> allFlows;
         try {
-            allFlows = fs.findByNamespaceWithSource(tenant, rootNamespace);
+            allFlows = fetchFlowsFromKestra(rc, tenant, rootNamespace);
         } catch (Exception e) {
             handleInvalid(rc, rOnInvalidSyntax, "flows for namespace " + rootNamespace, e);
             allFlows = List.of();
@@ -541,6 +556,67 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
             .collect(Collectors.toMap(f -> key(f.getNamespace(), f.getId()), Function.identity(), (a, b) -> a));
 
         return new KestraState(flowsWithSource);
+    }
+
+    private List<FlowWithSource> fetchFlowsFromKestra(RunContext rc, String tenantId, String namespace) {
+        try {
+            byte[] zippedFlows = kestraClient(rc).flows().exportFlowsByQuery(
+                tenantId,
+                List.of(new QueryFilter().field(QueryFilterField.NAMESPACE).operation(QueryFilterOp.EQUALS).value(namespace))
+            );
+            List<FlowWithSource> flows = new ArrayList<>();
+            try (
+                var bais = new ByteArrayInputStream(zippedFlows);
+                var zis = new ZipInputStream(bais)
+            ) {
+                ZipEntry entry;
+                while ((entry = zis.getNextEntry()) != null) {
+                    if (!entry.getName().endsWith(".yml") && !entry.getName().endsWith(".yaml")) {
+                        continue;
+                    }
+                    var yaml = new String(zis.readAllBytes(), StandardCharsets.UTF_8);
+                    try {
+                        flows.add(FlowWithSource.of(YamlParser.parse(yaml, io.kestra.core.models.flows.Flow.class), yaml));
+                    } catch (Exception e) {
+                        rc.logger().warn("Skipping invalid flow from entry {}: {}", entry.getName(), e.getMessage());
+                    }
+                }
+            }
+            return flows;
+        } catch (IOException | ApiException | IllegalVariableEvaluationException e) {
+            throw new KestraRuntimeException("Failed to export flows from Kestra for namespace " + namespace, e);
+        }
+    }
+
+    private File toNamedTempFile(String fileName, String yaml) {
+        try {
+            Path tmpPath = Files.createTempDirectory("kestra-import")
+                .resolve(fileName.endsWith(".yaml") ? fileName : fileName + ".yaml");
+            Files.createDirectories(tmpPath.getParent());
+            Files.writeString(tmpPath, yaml, StandardCharsets.UTF_8);
+            return tmpPath.toFile();
+        } catch (IOException e) {
+            throw new KestraRuntimeException("Failed to create named file for: " + fileName, e);
+        }
+    }
+
+    private KestraClient kestraClient(RunContext runContext) throws IllegalVariableEvaluationException {
+        String rKestraUrl;
+        try {
+            rKestraUrl = runContext.render("{{ kestra.url }}");
+        } catch (IllegalVariableEvaluationException e) {
+            rKestraUrl = "http://localhost:8080";
+        }
+        if (rKestraUrl == null || rKestraUrl.isBlank()) {
+            rKestraUrl = "http://localhost:8080";
+        }
+        String normalizedUrl = rKestraUrl.trim().replaceAll("/+$", "");
+        var builder = KestraClient.builder().url(normalizedUrl);
+        Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
+        if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+            return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
+        }
+        return builder.build();
     }
 
     private GitTree readGitTreeNamespaceFirst(Path baseDir) throws IOException {
@@ -692,10 +768,6 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
             } catch (IOException ignored) {
             }
         }
-    }
-
-    private void deleteFlow(RunContext rc, FlowWithSource flow) {
-        flowService(rc).delete(flow);
     }
 
     private static boolean isProtected(String namespace, List<String> protectedNamespace) {

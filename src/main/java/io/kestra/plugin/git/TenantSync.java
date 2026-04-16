@@ -2,6 +2,9 @@ package io.kestra.plugin.git;
 
 import java.io.*;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
@@ -845,9 +848,15 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             do {
                 pagedResults = kestraClient.dashboards().searchDashboards(page, size, runContext.flowInfo().tenantId(), null, null);
 
+                String tenantForFetch = runContext.flowInfo().tenantId();
                 pagedResults.getResults().forEach(dash ->
                 {
-                    dashboards.put(dash.getTitle(), dash.getSourceCode());
+                    try {
+                        String sourceCode = fetchDashboardSourceCode(kestraClient, runContext, tenantForFetch, dash.getId());
+                        dashboards.put(dash.getTitle(), sourceCode);
+                    } catch (Exception e) {
+                        throw new KestraRuntimeException("Failed to fetch source code for dashboard " + dash.getId(), e);
+                    }
                 });
 
                 page++;
@@ -1006,6 +1015,44 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                 runContext.logger().warn("{} couldn't be synced due to invalid syntax: {}", what, e.getMessage());
             case FAIL -> throw new KestraRuntimeException("Invalid syntax for " + what + ": " + e.getMessage(), e);
         }
+    }
+
+    private String fetchDashboardSourceCode(KestraClient kestraClient, RunContext runContext, String tenantId, String dashboardId) throws Exception {
+        var apiClient = kestraClient.dashboards().getApiClient();
+        String path = tenantId == null
+            ? "/api/v1/dashboards/" + dashboardId
+            : "/api/v1/" + tenantId + "/dashboards/" + dashboardId;
+        String url = apiClient.getBaseURL() + path;
+
+        var requestBuilder = HttpRequest.newBuilder()
+            .uri(URI.create(url))
+            .header("Accept", "application/x-yaml")
+            .GET();
+
+        // Apply authentication: explicit auth property first, then SDK default
+        var authProperty = getAuth();
+        if (authProperty != null) {
+            var maybeUsername = runContext.render(authProperty.getUsername()).as(String.class);
+            var maybePassword = runContext.render(authProperty.getPassword()).as(String.class);
+            if (maybeUsername.isPresent() && maybePassword.isPresent()) {
+                String encoded = Base64.getEncoder().encodeToString(
+                    (maybeUsername.get() + ":" + maybePassword.get()).getBytes(StandardCharsets.UTF_8));
+                requestBuilder.header("Authorization", "Basic " + encoded);
+            }
+        } else {
+            var autoAuth = runContext.sdk().defaultAuthentication();
+            if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+                String encoded = Base64.getEncoder().encodeToString(
+                    (autoAuth.get().username().get() + ":" + autoAuth.get().password().get()).getBytes(StandardCharsets.UTF_8));
+                requestBuilder.header("Authorization", "Basic " + encoded);
+            }
+        }
+
+        var response = HttpClient.newHttpClient().send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200) {
+            throw new KestraRuntimeException("Failed to fetch dashboard YAML for " + dashboardId + ": HTTP " + response.statusCode());
+        }
+        return response.body();
     }
 
     private File toNamedTempFile(String fileName, String yaml) {

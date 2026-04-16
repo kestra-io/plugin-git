@@ -1,28 +1,38 @@
 package io.kestra.plugin.git;
 
+import java.io.ByteArrayInputStream;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Objects;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 import org.apache.commons.io.IOUtils;
 
 import io.kestra.core.exceptions.FlowProcessingException;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.flows.Flow;
-import io.kestra.core.models.flows.FlowSource;
 import io.kestra.core.models.flows.FlowWithException;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
-import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.services.FlowService;
+import io.kestra.core.runners.SDK;
+import io.kestra.core.serializers.YamlParser;
+import io.kestra.sdk.KestraClient;
+import io.kestra.sdk.internal.ApiException;
+import io.kestra.sdk.model.QueryFilter;
+import io.kestra.sdk.model.QueryFilterField;
+import io.kestra.sdk.model.QueryFilterOp;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
@@ -158,16 +168,6 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     @PluginProperty(group = "advanced")
     private Property<Boolean> ignoreInvalidFlows = Property.ofValue(false);
 
-    @Getter(AccessLevel.NONE)
-    private FlowService flowService;
-
-    private FlowService flowService(RunContext runContext) {
-        if (flowService == null) {
-            flowService = ((DefaultRunContext) runContext).services().additionalService(FlowService.class);
-        }
-        return flowService;
-    }
-
     @Override
     public Property<String> fetchedNamespace() {
         return this.targetNamespace;
@@ -175,7 +175,11 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
     @Override
     protected void deleteResource(RunContext runContext, String renderedNamespace, Flow flow) {
-        flowService(runContext).delete(FlowWithSource.of(flow, ""));
+        try {
+            kestraClient(runContext).flows().deleteFlow(flow.getNamespace(), flow.getId(), runContext.flowInfo().tenantId());
+        } catch (ApiException | IllegalVariableEvaluationException e) {
+            throw new KestraRuntimeException("Failed to delete flow " + flow.getId(), e);
+        }
     }
 
     @Override
@@ -187,24 +191,40 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
         String flowSource = SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream);
 
-        var flowValidated = flowService.validate(runContext.flowInfo().tenantId(), List.of(new FlowSource(null, flowSource))).getFirst();
+        var flowValidated = kestraClient(runContext).flows().validateFlows(runContext.flowInfo().tenantId(), flowSource).getFirst();
 
         if (flowValidated.getConstraints() != null) {
             var ref = uri.getPath();
-
             if (ref.startsWith("/")) {
                 ref = ref.substring(1);
             }
-
             if (runContext.render(this.ignoreInvalidFlows).as(Boolean.class).orElse(false)) {
                 runContext.logger().warn("Invalid flow imported from Git ({}): {}", ref, flowValidated.getConstraints());
                 return null;
             }
-
             throw new FlowProcessingException("Invalid flow imported from Git (" + ref + "): " + flowValidated.getConstraints());
         }
 
-        return flowService(runContext).importFlow(runContext.flowInfo().tenantId(), flowSource, true);
+        // Simulate: parse the source and determine if it differs from the current Kestra state
+        var parsedFromSource = YamlParser.parse(flowSource, Flow.class);
+        var tenantId = runContext.flowInfo().tenantId();
+        var currentFlow = fetchSingleFlow(kestraClient(runContext), tenantId, parsedFromSource.getNamespace(), parsedFromSource.getId());
+
+        if (currentFlow == null) {
+            // New flow — revision will be 1 after import
+            return parsedFromSource.toBuilder().revision(1).build();
+        }
+
+        // Compare normalised source to detect changes
+        var normalised = flowSource.replace("\r\n", "\n").strip();
+        var currentNormalised = currentFlow.getSource().replace("\r\n", "\n").strip();
+        if (normalised.equals(currentNormalised)) {
+            // Unchanged — return the current flow so wrapper detects UNCHANGED
+            return currentFlow;
+        }
+
+        // Changed — simulate next revision
+        return parsedFromSource.toBuilder().revision(currentFlow.getRevision() + 1).build();
     }
 
     @Override
@@ -228,25 +248,30 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         }
 
         String flowSource = SyncFlows.replaceNamespace(renderedNamespace, uri, inputStream);
+        var kestraClient = kestraClient(runContext);
+        var tenantId = runContext.flowInfo().tenantId();
 
-        var flowValidated = flowService.validate(runContext.flowInfo().tenantId(), List.of(new FlowSource(null, flowSource))).getFirst();
+        var flowValidated = kestraClient.flows().validateFlows(tenantId, flowSource).getFirst();
 
         if (flowValidated.getConstraints() != null) {
             var ref = uri.getPath();
-
             if (ref.startsWith("/")) {
                 ref = ref.substring(1);
             }
-
             if (runContext.render(this.ignoreInvalidFlows).as(Boolean.class).orElse(false)) {
                 runContext.logger().warn("Invalid flow imported from Git ({}): {}", ref, flowValidated.getConstraints());
                 return null;
             }
-
             throw new FlowProcessingException("Invalid flow imported from Git (" + ref + "): " + flowValidated.getConstraints());
         }
 
-        return flowService(runContext).importFlow(runContext.flowInfo().tenantId(), flowSource, false);
+        var parsedId = YamlParser.parse(flowSource, Flow.class).getId();
+        kestraClient.flows().importFlows(true, tenantId, toNamedTempFile(parsedId + ".yaml", flowSource.stripTrailing()));
+
+        // Re-fetch from Kestra to get the updated revision
+        var parsedNamespace = YamlParser.parse(flowSource, Flow.class).getNamespace();
+        var updated = fetchSingleFlow(kestraClient, tenantId, parsedNamespace, parsedId);
+        return updated != null ? updated : YamlParser.parse(flowSource, Flow.class);
     }
 
     private static String replaceNamespace(String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
@@ -295,12 +320,9 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
     @Override
     protected List<Flow> fetchResources(RunContext runContext, String renderedNamespace) throws IllegalVariableEvaluationException {
-        List<Flow> flows;
-        if (runContext.render(this.includeChildNamespaces).as(Boolean.class).orElseThrow()) {
-            flows = flowService(runContext).findByNamespacePrefix(runContext.flowInfo().tenantId(), renderedNamespace);
-        } else {
-            flows = flowService(runContext).findByNamespace(runContext.flowInfo().tenantId(), renderedNamespace);
-        }
+        boolean includeChildren = runContext.render(this.includeChildNamespaces).as(Boolean.class).orElseThrow();
+        var op = includeChildren ? QueryFilterOp.STARTS_WITH : QueryFilterOp.EQUALS;
+        List<Flow> flows = fetchFlowsFromKestra(kestraClient(runContext), runContext, runContext.flowInfo().tenantId(), renderedNamespace, op);
         if (runContext.render(this.ignoreInvalidFlows).as(Boolean.class).orElse(false)) {
             flows = flows.stream()
                 .filter(flow ->
@@ -314,6 +336,98 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
                 .toList();
         }
         return flows;
+    }
+
+    private List<Flow> fetchFlowsFromKestra(KestraClient kestraClient, RunContext runContext, String tenantId, String namespace, QueryFilterOp op) {
+        try {
+            byte[] zippedFlows = kestraClient.flows().exportFlowsByQuery(
+                tenantId,
+                List.of(new QueryFilter().field(QueryFilterField.NAMESPACE).operation(op).value(namespace))
+            );
+
+            List<Flow> flows = new ArrayList<>();
+            try (
+                var bais = new ByteArrayInputStream(zippedFlows);
+                var zis = new ZipInputStream(bais)
+            ) {
+                ZipEntry entry;
+                while ((entry = zis.getNextEntry()) != null) {
+                    if (!entry.getName().endsWith(".yml") && !entry.getName().endsWith(".yaml")) {
+                        continue;
+                    }
+                    var yaml = new String(zis.readAllBytes(), StandardCharsets.UTF_8);
+                    try {
+                        flows.add(FlowWithSource.of(YamlParser.parse(yaml, Flow.class), yaml));
+                    } catch (Exception e) {
+                        runContext.logger().warn("Skipping invalid flow from entry {}: {}", entry.getName(), e.getMessage());
+                    }
+                }
+            }
+            return flows;
+        } catch (IOException e) {
+            throw new KestraRuntimeException("Failed to export flows from Kestra for namespace " + namespace, e);
+        } catch (ApiException e) {
+            throw new KestraRuntimeException("Failed to export flows from Kestra for namespace " + namespace, e);
+        }
+    }
+
+    private FlowWithSource fetchSingleFlow(KestraClient kestraClient, String tenantId, String namespace, String flowId) {
+        try {
+            byte[] zippedFlows = kestraClient.flows().exportFlowsByQuery(
+                tenantId,
+                List.of(
+                    new QueryFilter().field(QueryFilterField.NAMESPACE).operation(QueryFilterOp.EQUALS).value(namespace),
+                    new QueryFilter().field(QueryFilterField.ID).operation(QueryFilterOp.EQUALS).value(flowId)
+                )
+            );
+            try (
+                var bais = new ByteArrayInputStream(zippedFlows);
+                var zis = new ZipInputStream(bais)
+            ) {
+                ZipEntry entry;
+                while ((entry = zis.getNextEntry()) != null) {
+                    if (!entry.getName().endsWith(".yml") && !entry.getName().endsWith(".yaml")) {
+                        continue;
+                    }
+                    var yaml = new String(zis.readAllBytes(), StandardCharsets.UTF_8);
+                    return FlowWithSource.of(YamlParser.parse(yaml, Flow.class), yaml);
+                }
+            }
+            return null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private File toNamedTempFile(String fileName, String yaml) {
+        try {
+            Path tmpPath = Files.createTempDirectory("kestra-import")
+                .resolve(fileName.endsWith(".yaml") ? fileName : fileName + ".yaml");
+            Files.createDirectories(tmpPath.getParent());
+            Files.writeString(tmpPath, yaml, StandardCharsets.UTF_8);
+            return tmpPath.toFile();
+        } catch (IOException e) {
+            throw new KestraRuntimeException("Failed to create named file for: " + fileName, e);
+        }
+    }
+
+    private KestraClient kestraClient(RunContext runContext) throws IllegalVariableEvaluationException {
+        String rKestraUrl;
+        try {
+            rKestraUrl = runContext.render("{{ kestra.url }}");
+        } catch (IllegalVariableEvaluationException e) {
+            rKestraUrl = "http://localhost:8080";
+        }
+        if (rKestraUrl == null || rKestraUrl.isBlank()) {
+            rKestraUrl = "http://localhost:8080";
+        }
+        String normalizedUrl = rKestraUrl.trim().replaceAll("/+$", "");
+        var builder = KestraClient.builder().url(normalizedUrl);
+        Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
+        if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+            return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
+        }
+        return builder.build();
     }
 
     @Override
