@@ -1,10 +1,14 @@
 package io.kestra.plugin.git;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.AddCommand;
@@ -20,6 +24,7 @@ import org.slf4j.Logger;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
@@ -29,11 +34,16 @@ import io.kestra.core.models.tasks.InputFilesInterface;
 import io.kestra.core.models.tasks.NamespaceFiles;
 import io.kestra.core.models.tasks.NamespaceFilesInterface;
 import io.kestra.core.models.tasks.RunnableTask;
-import io.kestra.core.repositories.FlowRepositoryInterface;
-import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.FilesService;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.runners.SDK;
+import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.utils.Rethrow;
+import io.kestra.sdk.KestraClient;
+import io.kestra.sdk.internal.ApiException;
+import io.kestra.sdk.model.QueryFilter;
+import io.kestra.sdk.model.QueryFilterField;
+import io.kestra.sdk.model.QueryFilterOp;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.annotation.Nullable;
@@ -278,14 +288,8 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
             String tenantId = flowProps.get("tenantId");
             String namespace = flowProps.get("namespace");
 
-            FlowRepositoryInterface flowRepository = ((DefaultRunContext) runContext).services().additionalService(FlowRepositoryInterface.class);
-
-            List<FlowWithSource> flows;
-            if (Boolean.TRUE.equals(runContext.render(this.flows.childNamespaces).as(Boolean.class).orElse(true))) {
-                flows = flowRepository.findByNamespacePrefixWithSource(tenantId, namespace);
-            } else {
-                flows = flowRepository.findByNamespaceWithSource(tenantId, namespace);
-            }
+            boolean includeChildren = Boolean.TRUE.equals(runContext.render(this.flows.childNamespaces).as(Boolean.class).orElse(true));
+            List<FlowWithSource> flows = fetchFlowsFromKestra(kestraClient(runContext), runContext, tenantId, namespace, includeChildren);
 
             Path flowsDirectory = this.flows.gitDirectory == null
                 ? basePath
@@ -339,6 +343,60 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
                     .map(ObjectId::getName)
                     .orElse(null)
             ).build();
+    }
+
+    private List<FlowWithSource> fetchFlowsFromKestra(KestraClient kestraClient, RunContext runContext, String tenantId, String namespace, boolean includeChildren) {
+        try {
+            var op = includeChildren ? QueryFilterOp.STARTS_WITH : QueryFilterOp.EQUALS;
+            byte[] zippedFlows = kestraClient.flows().exportFlowsByQuery(
+                tenantId,
+                List.of(new QueryFilter().field(QueryFilterField.NAMESPACE).operation(op).value(namespace))
+            );
+
+            List<FlowWithSource> flows = new ArrayList<>();
+            try (
+                var bais = new ByteArrayInputStream(zippedFlows);
+                var zis = new ZipInputStream(bais)
+            ) {
+                ZipEntry entry;
+                while ((entry = zis.getNextEntry()) != null) {
+                    if (!entry.getName().endsWith(".yml") && !entry.getName().endsWith(".yaml")) {
+                        continue;
+                    }
+                    var yaml = new String(zis.readAllBytes(), StandardCharsets.UTF_8);
+                    try {
+                        var parsed = YamlParser.parse(yaml, io.kestra.core.models.flows.Flow.class);
+                        flows.add(FlowWithSource.of(parsed, yaml));
+                    } catch (Exception e) {
+                        runContext.logger().warn("Skipping invalid flow from entry {}: {}", entry.getName(), e.getMessage());
+                    }
+                }
+            }
+            return flows;
+        } catch (IOException e) {
+            throw new KestraRuntimeException("Failed to export flows from Kestra for namespace " + namespace, e);
+        } catch (ApiException e) {
+            throw new KestraRuntimeException("Failed to export flows from Kestra for namespace " + namespace, e);
+        }
+    }
+
+    private KestraClient kestraClient(RunContext runContext) throws IllegalVariableEvaluationException {
+        String rKestraUrl;
+        try {
+            rKestraUrl = runContext.render("{{ kestra.url }}");
+        } catch (IllegalVariableEvaluationException e) {
+            rKestraUrl = "http://localhost:8080";
+        }
+        if (rKestraUrl == null || rKestraUrl.isBlank()) {
+            rKestraUrl = "http://localhost:8080";
+        }
+        String normalizedUrl = rKestraUrl.trim().replaceAll("/+$", "");
+        var builder = KestraClient.builder().url(normalizedUrl);
+        Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
+        if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+            return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
+        }
+        return builder.build();
     }
 
     private PersonIdent author(RunContext runContext) throws IllegalVariableEvaluationException {
