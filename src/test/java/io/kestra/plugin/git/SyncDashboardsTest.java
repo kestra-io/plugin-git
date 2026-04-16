@@ -158,6 +158,7 @@ public class SyncDashboardsTest extends AbstractGitTest {
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
             .delete(Property.ofValue(delete))
             .dryRun(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         SyncDashboards.Output syncOutput = task.run(runContext);
