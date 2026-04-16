@@ -22,8 +22,7 @@ import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.GenericFlow;
 import io.kestra.core.models.property.Property;
-import io.kestra.core.queues.QueueFactoryInterface;
-import io.kestra.core.queues.QueueInterface;
+import io.kestra.core.queues.DispatchQueueInterface;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
@@ -34,8 +33,6 @@ import io.kestra.core.utils.KestraIgnore;
 import io.kestra.core.utils.TestsUtils;
 
 import jakarta.inject.Inject;
-import jakarta.inject.Named;
-import reactor.core.publisher.Flux;
 
 import static io.kestra.core.utils.Rethrow.throwFunction;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -59,8 +56,7 @@ class SyncTest extends AbstractGitTest {
     private StorageInterface storageInterface;
 
     @Inject
-    @Named(QueueFactoryInterface.WORKERTASKLOG_NAMED)
-    private QueueInterface<LogEntry> logQueue;
+    private DispatchQueueInterface<LogEntry> logQueue;
 
     @BeforeEach
     void init() throws IOException {
@@ -79,7 +75,7 @@ class SyncTest extends AbstractGitTest {
 
             tasks:
               - id: old-task
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: Hello from old-task""";
         GenericFlow genericFlow = GenericFlow.fromYaml(TENANT_ID, flowSource);
         flowRepositoryInterface.create(genericFlow);
@@ -235,7 +231,7 @@ class SyncTest extends AbstractGitTest {
 
             tasks:
               - id: old-task
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: Hello from old-task""";
         GenericFlow flowToDelete = GenericFlow.fromYaml(TENANT_ID, flowSource);
         flowRepositoryInterface.create(flowToDelete);
@@ -315,7 +311,7 @@ class SyncTest extends AbstractGitTest {
     @Test
     void reconcile_DryRun_ShouldDoNothing() throws Exception {
         List<LogEntry> logs = new CopyOnWriteArrayList<>();
-        Flux<LogEntry> receive = TestsUtils.receive(logQueue, l -> logs.add(l.getLeft()));
+        logQueue.addListener(logs::add);
         String namespace = SyncTest.class.getName().toLowerCase();
 
         String flowSource = """
@@ -324,7 +320,7 @@ class SyncTest extends AbstractGitTest {
 
             tasks:
               - id: old-task
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: Hello from old-task""";
 
         GenericFlow genericFlow = GenericFlow.fromYaml(TENANT_ID, flowSource);
@@ -386,7 +382,6 @@ class SyncTest extends AbstractGitTest {
         assertHasInfoLog(logs, "~ " + toUpdateFilePath);
         assertHasInfoLog(logs, "- " + someFilePath);
         assertHasInfoLog(logs, "+ /cloned.json");
-        receive.blockLast();
     }
 
     private static void assertHasInfoLog(List<LogEntry> logs, String expectedMessage) {

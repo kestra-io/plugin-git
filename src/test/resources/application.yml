@@ -1,4 +1,10 @@
 kestra:
+  worker:
+    controllers:
+      type: STATIC
+      static:
+        endpoints:
+          - host: localhost
   git:
     repository-url: https://github.com/kestra-io/unit-tests
     user:
