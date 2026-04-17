@@ -27,8 +27,6 @@ import static org.hamcrest.Matchers.*;
  * GitHub credentials are read from the {@code kestra.git.pat} Micronaut property (set via {@code GH_PERSONAL_TOKEN}).
  */
 @KestraTest
-@io.micronaut.context.annotation.Property(name = "kestra.tasks.sdk.authentication.username", value = "admin@admin.com")
-@io.micronaut.context.annotation.Property(name = "kestra.tasks.sdk.authentication.password", value = "Root!1234")
 public class SyncFlowsContainerTest extends AbstractKestraContainerTest {
 
     private static final String TARGET_NAMESPACE = "io.kestra.tests.container";
