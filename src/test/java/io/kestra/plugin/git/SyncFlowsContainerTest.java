@@ -63,7 +63,7 @@ public class SyncFlowsContainerTest extends AbstractKestraContainerTest {
 
         assertThat("diff file URI must be present", output.getFlows(), notNullValue());
 
-        List<Flow> flows = kestraTestDataUtils.listFlowsByNamespace(TARGET_NAMESPACE, null);
+        List<Flow> flows = kestraTestDataUtils.listFlowsByNamespace(TARGET_NAMESPACE, TENANT_ID);
         assertThat("at least one flow must have been synced to the target namespace", flows, not(empty()));
     }
 

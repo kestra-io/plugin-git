@@ -20,6 +20,7 @@ public abstract class AbstractKestraContainerTest {
 
     protected static final String USERNAME = "admin@admin.com";
     protected static final String PASSWORD = "Root!1234";
+    protected static final String TENANT_ID = "main";
 
     @Container
     protected static final GenericContainer<?> KESTRA_CONTAINER = new GenericContainer<>(
