@@ -10,9 +10,10 @@ public class KestraContainerTestDataUtils {
 
     private final KestraClient kestraClient;
 
-    public KestraContainerTestDataUtils(String kestraUrl) {
+    public KestraContainerTestDataUtils(String kestraUrl, String username, String password) {
         this.kestraClient = KestraClient.builder()
             .url(kestraUrl)
+            .basicAuth(username, password)
             .build();
     }
 
