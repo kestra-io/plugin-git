@@ -30,10 +30,13 @@ import io.kestra.core.tenant.TenantService;
  */
 public class MockKestraApiServer implements AutoCloseable {
 
-    private static final Pattern NAMESPACE_FILTER_PATTERN = Pattern.compile("NAMESPACE,[^,]+,(.+?)(?:&|$)");
-    private static final Pattern ID_FILTER_PATTERN = Pattern.compile("ID,[^,]+,(.+?)(?:&|$)");
+    // SDK serializes QueryFilter as filters[namespace][EQUALS]=... or filters[namespace][STARTS_WITH]=...
+    private static final Pattern NS_EQUALS_PATTERN = Pattern.compile("[&?]?filters%5Bnamespace%5D%5BEQUALS%5D=([^&]+)");
+    private static final Pattern NS_STARTS_WITH_PATTERN = Pattern.compile("[&?]?filters%5Bnamespace%5D%5BSTARTS_WITH%5D=([^&]+)");
+    private static final Pattern ID_EQUALS_PATTERN = Pattern.compile("[&?]?filters%5Bid%5D%5BEQUALS%5D=([^&]+)");
     private static final Pattern FLOW_ID_PATTERN = Pattern.compile("(?m)^id:\\s*(.+)$");
     private static final Pattern FLOW_NS_PATTERN = Pattern.compile("(?m)^namespace:\\s*(.+)$");
+    private static final Pattern FLOW_REVISION_PATTERN = Pattern.compile("(?m)^revision:\\s*(.+)$");
     // Matches multipart boundary lines to extract file content
     private static final Pattern MULTIPART_BOUNDARY_PATTERN = Pattern.compile("boundary=([^\\r\\n;]+)");
 
@@ -123,28 +126,33 @@ public class MockKestraApiServer implements AutoCloseable {
     // ---- flow handlers -------------------------------------------------------
 
     /**
-     * GET /api/v1/{tenantId}/flows/export/by-query?filters=NAMESPACE,EQUALS,...
+     * GET /api/v1/{tenantId}/flows/export/by-query?filters%5Bnamespace%5D%5BEQUALS%5D=...
      * Returns a ZIP archive of flow YAML files from the in-memory repo.
+     * The SDK serializes QueryFilter as filters[field][OP]=value (URL-encoded brackets).
      */
     private void handleExportFlows(HttpExchange exchange) throws IOException {
-        var query = exchange.getRequestURI().getRawQuery();
+        var rawQuery = exchange.getRequestURI().getRawQuery();
         var tenantId = extractTenantId(exchange.getRequestURI().getPath(), "flows");
 
-        // Parse namespace filter (EQUALS or STARTS_WITH)
+        // Parse namespace filter: SDK sends filters[namespace][EQUALS]=... or filters[namespace][STARTS_WITH]=...
+        // The brackets are URL-encoded as %5B and %5D
         String namespace = null;
         boolean startsWithMode = false;
-        if (query != null) {
-            Matcher nsMatcher = Pattern.compile("NAMESPACE,([^,]+),([^&]+)").matcher(query);
-            if (nsMatcher.find()) {
-                startsWithMode = "STARTS_WITH".equals(decode(nsMatcher.group(1)));
-                namespace = decode(nsMatcher.group(2));
+        if (rawQuery != null) {
+            Matcher nsEqMatcher = NS_EQUALS_PATTERN.matcher(rawQuery);
+            Matcher nsSwMatcher = NS_STARTS_WITH_PATTERN.matcher(rawQuery);
+            if (nsSwMatcher.find()) {
+                startsWithMode = true;
+                namespace = decode(nsSwMatcher.group(1));
+            } else if (nsEqMatcher.find()) {
+                namespace = decode(nsEqMatcher.group(1));
             }
         }
 
-        // Parse optional ID filter
+        // Parse optional ID filter: filters[id][EQUALS]=...
         String flowIdFilter = null;
-        if (query != null) {
-            Matcher idMatcher = Pattern.compile("ID,[^,]+,([^&]+)").matcher(query);
+        if (rawQuery != null) {
+            Matcher idMatcher = ID_EQUALS_PATTERN.matcher(rawQuery);
             if (idMatcher.find()) {
                 flowIdFilter = decode(idMatcher.group(1));
             }
@@ -157,10 +165,7 @@ public class MockKestraApiServer implements AutoCloseable {
 
         List<FlowWithSource> flows;
         if (namespace == null || namespace.isBlank()) {
-            flows = flowRepo.findAllForAllTenants().stream()
-                .filter(f -> f instanceof FlowWithSource)
-                .map(f -> (FlowWithSource) f)
-                .toList();
+            flows = flowRepo.findAllWithSourceForAllTenants();
         } else if (startsWithMode) {
             flows = flowRepo.findByNamespacePrefixWithSource(tenantId, namespace);
         } else {
@@ -178,8 +183,12 @@ public class MockKestraApiServer implements AutoCloseable {
             for (var f : flows) {
                 var source = f.getSource();
                 if (source == null || source.isBlank()) {
-                    // Build a minimal YAML from the flow model
-                    source = "id: " + f.getId() + "\nnamespace: " + f.getNamespace() + "\n";
+                    // Build a minimal YAML with revision so the parsed flow has a non-null revision
+                    source = "id: " + f.getId() + "\nnamespace: " + f.getNamespace()
+                        + "\nrevision: " + (f.getRevision() != null ? f.getRevision() : 1) + "\n";
+                } else if (!FLOW_REVISION_PATTERN.matcher(source).find() && f.getRevision() != null) {
+                    // Inject revision into the source YAML when it's missing
+                    source = "revision: " + f.getRevision() + "\n" + source;
                 }
                 var bytes = source.getBytes(StandardCharsets.UTF_8);
                 zos.putNextEntry(new ZipEntry(f.getNamespace() + "." + f.getId() + ".yml"));
@@ -328,7 +337,11 @@ public class MockKestraApiServer implements AutoCloseable {
         for (int i = 0; i < dashboards.size(); i++) {
             var d = dashboards.get(i);
             if (i > 0) sb.append(",");
-            sb.append("{\"id\":\"").append(d.getId()).append("\",\"title\":\"").append(d.getId()).append("\"}");
+            // Include a non-null updated timestamp so production code can compare revisions
+            var updatedTs = d.getUpdated() != null ? d.getUpdated().toString() : "1970-01-01T00:00:00Z";
+            sb.append("{\"id\":\"").append(d.getId())
+              .append("\",\"title\":\"").append(d.getId())
+              .append("\",\"updated\":\"").append(updatedTs).append("\"}");
         }
         sb.append("],\"total\":").append(dashboards.size()).append("}");
         sendJson(exchange, 200, sb.toString());
@@ -349,8 +362,9 @@ public class MockKestraApiServer implements AutoCloseable {
             exchange.sendResponseHeaders(200, yaml.length);
             exchange.getResponseBody().write(yaml);
         } else if (match.isPresent()) {
-            // If no source code in memory, generate minimal YAML
-            var yaml = ("id: " + dashboardId + "\ntitle: " + dashboardId + "\n").getBytes(StandardCharsets.UTF_8);
+            // If no source code in memory, generate minimal YAML with a non-null updated timestamp
+            var updated = match.get().getUpdated() != null ? match.get().getUpdated().toString() : "1970-01-01T00:00:00Z";
+            var yaml = ("id: " + dashboardId + "\ntitle: " + dashboardId + "\nupdated: " + updated + "\n").getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/x-yaml");
             exchange.sendResponseHeaders(200, yaml.length);
             exchange.getResponseBody().write(yaml);
