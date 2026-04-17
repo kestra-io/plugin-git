@@ -72,6 +72,7 @@ public class SyncFlowsTest extends AbstractGitTest {
 
     @BeforeEach
     void init() {
+        previousRevisionByUid.clear();
         flowRepositoryInterface.findAllForAllTenants().forEach(f ->
         {
             Flow deleted = flowRepositoryInterface.delete(FlowWithSource.of(f, ""));

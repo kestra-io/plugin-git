@@ -203,6 +203,14 @@ public class MockKestraApiServer implements AutoCloseable {
                 if (!FLOW_REVISION_PATTERN.matcher(source).find() && f.getRevision() != null) {
                     source = "revision: " + f.getRevision() + "\n" + source;
                 }
+                // Skip flows whose source YAML id/namespace doesn't match the actual flow
+                // (test flows with inconsistent source cause Duplicate key in AbstractSyncTask.beforeUpdateResourcesByUri)
+                Matcher srcIdMatcher = FLOW_ID_PATTERN.matcher(source);
+                Matcher srcNsMatcher = FLOW_NS_PATTERN.matcher(source);
+                if ((srcIdMatcher.find() && !f.getId().equals(srcIdMatcher.group(1).trim()))
+                    || (srcNsMatcher.find() && !f.getNamespace().equals(srcNsMatcher.group(1).trim()))) {
+                    continue;
+                }
                 var bytes = source.getBytes(StandardCharsets.UTF_8);
                 zos.putNextEntry(new ZipEntry(f.getNamespace() + "." + f.getId() + ".yml"));
                 zos.write(bytes);
@@ -406,7 +414,21 @@ public class MockKestraApiServer implements AutoCloseable {
                     .tenantId(tenantId)
                     .sourceCode(yamlBody)
                     .build();
-                dashboardRepo.save(parsed, yamlBody);
+                // Preserve updated timestamp if content is unchanged, otherwise set now
+                var existing = dashboardRepo.findAll(tenantId).stream()
+                    .filter(d -> d.getId().equals(parsed.getId()))
+                    .findFirst()
+                    .orElse(null);
+                java.time.Instant updated;
+                if (existing != null
+                    && existing.getSourceCode() != null
+                    && existing.getSourceCode().strip().equals(yamlBody.strip())) {
+                    // Same content — preserve existing timestamp (use EPOCH if null so handleGetDashboardYaml fallback matches)
+                    updated = existing.getUpdated() != null ? existing.getUpdated() : java.time.Instant.EPOCH;
+                } else {
+                    updated = java.time.Instant.now();
+                }
+                dashboardRepo.save(parsed.toBuilder().updated(updated).build(), yamlBody);
             } catch (Exception e) {
                 // log and ignore parse errors
             }

@@ -170,9 +170,10 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
                     if (dashboardId.equals(sdkDash.getId())) {
                         // Fetch YAML source via raw HTTP call
                         String sourceCode = fetchDashboardSourceCode(kestraClient, runContext, tenantId, dashboardId);
-                        return Optional.of(YamlParser.parse(sourceCode, Dashboard.class).toBuilder()
+                        Dashboard parsed = YamlParser.parse(sourceCode, Dashboard.class);  // preserves getUpdated() from updated: injection
+                        return Optional.of(parsed.toBuilder()
                             .tenantId(tenantId)
-                            .sourceCode(sourceCode)
+                            .sourceCode(sourceCode.replaceAll("(?m)^updated:.*\\R?", ""))
                             .build());
                     }
                 }
@@ -196,7 +197,7 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
             syncState = SyncState.DELETED;
         } else if (dashboardBeforeUpdate == null) {
             syncState = SyncState.ADDED;
-        } else if (dashboardBeforeUpdate.getUpdated().equals(Objects.requireNonNull(dashboardAfterUpdate).getUpdated())) {
+        } else if (Objects.equals(dashboardBeforeUpdate.getUpdated(), Objects.requireNonNull(dashboardAfterUpdate).getUpdated())) {
             syncState = SyncState.UNCHANGED;
         } else {
             syncState = SyncState.UPDATED;
@@ -229,9 +230,10 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
                 for (var sdkDash : pagedResults.getResults()) {
                     try {
                         String sourceCode = fetchDashboardSourceCode(kestraClient, runContext, tenantId, sdkDash.getId());
-                        dashboards.add(YamlParser.parse(sourceCode, Dashboard.class).toBuilder()
+                        Dashboard parsed = YamlParser.parse(sourceCode, Dashboard.class);
+                        dashboards.add(parsed.toBuilder()
                             .tenantId(tenantId)
-                            .sourceCode(sourceCode)
+                            .sourceCode(sourceCode.replaceAll("(?m)^updated:.*\\R?", ""))
                             .build());
                     } catch (Exception e) {
                         runContext.logger().warn("Skipping dashboard {} — failed to fetch source: {}", sdkDash.getId(), e.getMessage());

@@ -154,7 +154,8 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
             {
                 try {
                     String sourceCode = fetchDashboardSourceCode(kestraClient, runContext, tenantId, dashboard.getId());
-                    return new ByteArrayInputStream(sourceCode.getBytes(StandardCharsets.UTF_8));
+                    String cleanSourceCode = sourceCode.replaceAll("(?m)^updated:.*\\R?", "");
+                    return new ByteArrayInputStream(cleanSourceCode.getBytes(StandardCharsets.UTF_8));
                 } catch (Exception e) {
                     throw new KestraRuntimeException("Failed to fetch dashboard source for " + dashboard.getId(), e);
                 }

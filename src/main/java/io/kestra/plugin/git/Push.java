@@ -301,7 +301,7 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
                 throwConsumer(
                     flowWithSource -> FileUtils.writeStringToFile(
                         flowsDirectory.resolve(flowWithSource.getNamespace() + "." + flowWithSource.getId() + ".yml").toFile(),
-                        flowWithSource.getSource(),
+                        flowWithSource.getSource().replaceAll("(?m)^revision:\\s*\\d+\\n?", ""),
                         StandardCharsets.UTF_8
                     )
                 )
