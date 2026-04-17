@@ -199,6 +199,10 @@ public class MockKestraApiServer implements AutoCloseable {
                 if (source == null || source.isBlank()) {
                     source = "id: " + f.getId() + "\nnamespace: " + f.getNamespace() + "\n";
                 }
+                // Inject revision so SyncFlows.wrapper() can call getRevision() without NPE
+                if (!FLOW_REVISION_PATTERN.matcher(source).find() && f.getRevision() != null) {
+                    source = "revision: " + f.getRevision() + "\n" + source;
+                }
                 var bytes = source.getBytes(StandardCharsets.UTF_8);
                 zos.putNextEntry(new ZipEntry(f.getNamespace() + "." + f.getId() + ".yml"));
                 zos.write(bytes);
@@ -366,7 +370,13 @@ public class MockKestraApiServer implements AutoCloseable {
         var dashboards = dashboardRepo.findAll(tenantId);
         var match = dashboards.stream().filter(d -> dashboardId.equals(d.getId())).findFirst();
         if (match.isPresent() && match.get().getSourceCode() != null) {
-            var yaml = match.get().getSourceCode().getBytes(StandardCharsets.UTF_8);
+            var d = match.get();
+            var sourceYaml = d.getSourceCode();
+            // Inject updated timestamp into YAML so SyncDashboards.wrapper() can compare without NPE
+            if (d.getUpdated() != null && !sourceYaml.contains("\nupdated:") && !sourceYaml.startsWith("updated:")) {
+                sourceYaml = "updated: " + d.getUpdated() + "\n" + sourceYaml;
+            }
+            var yaml = sourceYaml.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/x-yaml");
             exchange.sendResponseHeaders(200, yaml.length);
             exchange.getResponseBody().write(yaml);

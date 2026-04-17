@@ -215,6 +215,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         {
             String renderedTargetNamespace = runContext.render(targetNamespace).as(String.class).orElse(renderedSourceNamespace);
             String modifiedSource = flowWithSource.getSource()
+                .replaceAll("(?m)^revision:\\s*\\d+\\n?", "")  // strip server-side revision before writing to git
                 .replaceAll(
                     "(?m)^(\\s*namespace:\\s*)" + renderedSourceNamespace,
                     "$1" + renderedTargetNamespace
