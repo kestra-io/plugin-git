@@ -215,8 +215,10 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         }
 
         // Compare normalised source to detect changes
+        // Strip revision: from the exported source — the Kestra ZIP export injects it but git sources never have it
         var normalised = flowSource.replace("\r\n", "\n").strip();
-        var currentNormalised = currentFlow.getSource().replace("\r\n", "\n").strip();
+        var currentSourceWithoutRevision = currentFlow.getSource().replaceAll("(?m)^revision:\\s*\\d+\\n?", "");
+        var currentNormalised = currentSourceWithoutRevision.replace("\r\n", "\n").strip();
         if (normalised.equals(currentNormalised)) {
             // Unchanged — return the current flow so wrapper detects UNCHANGED
             return currentFlow;

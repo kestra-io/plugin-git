@@ -147,6 +147,17 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
                 return parsedDashboard.toBuilder().id(previous.getId()).created(previous.getCreated()).updated(Instant.now()).build();
             }).orElseGet(() -> parsedDashboard.toBuilder().created(Instant.now()).updated(Instant.now()).build());
         } else {
+            // Skip createDashboard if content is unchanged to preserve the updated timestamp
+            // (UNCHANGED detection in wrapper() compares before/after updated timestamps)
+            boolean contentChanged = prevDashboard.map(previous -> {
+                String prevSource = previous.getSourceCode() != null ? previous.getSourceCode() : "";
+                return !prevSource.replace("\r\n", "\n").strip().equals(dashboardSource.replace("\r\n", "\n").strip());
+            }).orElse(true);
+
+            if (!contentChanged) {
+                return prevDashboard.get();
+            }
+
             try {
                 kestraClient(runContext).dashboards().createDashboard(tenantId, dashboardSource);
             } catch (Exception e) {

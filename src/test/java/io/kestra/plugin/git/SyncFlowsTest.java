@@ -174,8 +174,6 @@ public class SyncFlowsTest extends AbstractGitTest {
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 
-        flowRepositoryInterface.delete(invalidFlow);
-
         flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(6));
 
@@ -198,6 +196,16 @@ public class SyncFlowsTest extends AbstractGitTest {
                     Map.of(
                         "syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace.child", "revision",
                         previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1)
+                    )
+                ) {
+                    {
+                        this.put("gitPath", null);
+                    }
+                },
+                new HashMap<>(
+                    Map.of(
+                        "syncState", "DELETED", "flowId", "validation-failed-flow", "namespace", NAMESPACE, "revision",
+                        previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, NAMESPACE, "validation-failed-flow"), 1)
                     )
                 ) {
                     {
