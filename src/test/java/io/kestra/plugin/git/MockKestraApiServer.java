@@ -178,17 +178,23 @@ public class MockKestraApiServer implements AutoCloseable {
             flows = flows.stream().filter(f -> fId.equals(f.getId())).toList();
         }
 
+        // Deduplicate: keep only the latest revision per (namespace, id)
+        Map<String, FlowWithSource> latest = new java.util.LinkedHashMap<>();
+        for (var f : flows) {
+            String key = f.getNamespace() + "." + f.getId();
+            FlowWithSource existing = latest.get(key);
+            if (existing == null || (f.getRevision() != null && (existing.getRevision() == null || f.getRevision() > existing.getRevision()))) {
+                latest.put(key, f);
+            }
+        }
+        flows = new java.util.ArrayList<>(latest.values());
+
         var baos = new ByteArrayOutputStream();
         try (var zos = new ZipOutputStream(baos)) {
             for (var f : flows) {
                 var source = f.getSource();
                 if (source == null || source.isBlank()) {
-                    // Build a minimal YAML with revision so the parsed flow has a non-null revision
-                    source = "id: " + f.getId() + "\nnamespace: " + f.getNamespace()
-                        + "\nrevision: " + (f.getRevision() != null ? f.getRevision() : 1) + "\n";
-                } else if (!FLOW_REVISION_PATTERN.matcher(source).find() && f.getRevision() != null) {
-                    // Inject revision into the source YAML when it's missing
-                    source = "revision: " + f.getRevision() + "\n" + source;
+                    source = "id: " + f.getId() + "\nnamespace: " + f.getNamespace() + "\n";
                 }
                 var bytes = source.getBytes(StandardCharsets.UTF_8);
                 zos.putNextEntry(new ZipEntry(f.getNamespace() + "." + f.getId() + ".yml"));

@@ -229,9 +229,12 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     @Override
     protected boolean mustKeep(RunContext runContext, Flow instanceResource) {
         RunContext.FlowInfo flowInfo = runContext.flowInfo();
+        String resourceTenantId = instanceResource.getTenantId();
+        // Flows parsed from ZIP export YAML never carry a tenantId field — treat null as matching
+        boolean tenantMatches = resourceTenantId == null || Objects.equals(flowInfo.tenantId(), resourceTenantId);
         return flowInfo.id().equals(instanceResource.getId()) &&
             flowInfo.namespace().equals(instanceResource.getNamespace()) &&
-            Objects.equals(flowInfo.tenantId(), instanceResource.getTenantId());
+            tenantMatches;
     }
 
     @Override
