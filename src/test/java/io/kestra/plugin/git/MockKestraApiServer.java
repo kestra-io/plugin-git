@@ -5,7 +5,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -179,7 +182,7 @@ public class MockKestraApiServer implements AutoCloseable {
         }
 
         // Deduplicate: keep only the latest revision per (namespace, id)
-        Map<String, FlowWithSource> latest = new java.util.LinkedHashMap<>();
+        Map<String, FlowWithSource> latest = new LinkedHashMap<>();
         for (var f : flows) {
             String key = f.getNamespace() + "." + f.getId();
             FlowWithSource existing = latest.get(key);
@@ -187,7 +190,7 @@ public class MockKestraApiServer implements AutoCloseable {
                 latest.put(key, f);
             }
         }
-        flows = new java.util.ArrayList<>(latest.values());
+        flows = new ArrayList<>(latest.values());
 
         var baos = new ByteArrayOutputStream();
         try (var zos = new ZipOutputStream(baos)) {
