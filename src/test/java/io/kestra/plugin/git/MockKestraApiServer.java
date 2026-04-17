@@ -203,13 +203,15 @@ public class MockKestraApiServer implements AutoCloseable {
                 if (!FLOW_REVISION_PATTERN.matcher(source).find() && f.getRevision() != null) {
                     source = "revision: " + f.getRevision() + "\n" + source;
                 }
-                // Skip flows whose source YAML id/namespace doesn't match the actual flow
+                // Fix flows whose source YAML id/namespace doesn't match the actual flow
                 // (test flows with inconsistent source cause Duplicate key in AbstractSyncTask.beforeUpdateResourcesByUri)
                 Matcher srcIdMatcher = FLOW_ID_PATTERN.matcher(source);
+                if (srcIdMatcher.find() && !f.getId().equals(srcIdMatcher.group(1).trim())) {
+                    source = FLOW_ID_PATTERN.matcher(source).replaceFirst("id: " + f.getId());
+                }
                 Matcher srcNsMatcher = FLOW_NS_PATTERN.matcher(source);
-                if ((srcIdMatcher.find() && !f.getId().equals(srcIdMatcher.group(1).trim()))
-                    || (srcNsMatcher.find() && !f.getNamespace().equals(srcNsMatcher.group(1).trim()))) {
-                    continue;
+                if (srcNsMatcher.find() && !f.getNamespace().equals(srcNsMatcher.group(1).trim())) {
+                    source = FLOW_NS_PATTERN.matcher(source).replaceFirst("namespace: " + f.getNamespace());
                 }
                 var bytes = source.getBytes(StandardCharsets.UTF_8);
                 zos.putNextEntry(new ZipEntry(f.getNamespace() + "." + f.getId() + ".yml"));
@@ -381,8 +383,9 @@ public class MockKestraApiServer implements AutoCloseable {
             var d = match.get();
             var sourceYaml = d.getSourceCode();
             // Inject updated timestamp into YAML so SyncDashboards.wrapper() can compare without NPE
-            if (d.getUpdated() != null && !sourceYaml.contains("\nupdated:") && !sourceYaml.startsWith("updated:")) {
-                sourceYaml = "updated: " + d.getUpdated() + "\n" + sourceYaml;
+            if (!sourceYaml.contains("\nupdated:") && !sourceYaml.startsWith("updated:")) {
+                var ts = d.getUpdated() != null ? d.getUpdated().toString() : "1970-01-01T00:00:00Z";
+                sourceYaml = "updated: " + ts + "\n" + sourceYaml;
             }
             var yaml = sourceYaml.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/x-yaml");

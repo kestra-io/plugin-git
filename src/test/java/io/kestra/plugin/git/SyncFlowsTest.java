@@ -72,7 +72,6 @@ public class SyncFlowsTest extends AbstractGitTest {
 
     @BeforeEach
     void init() {
-        previousRevisionByUid.clear();
         flowRepositoryInterface.findAllForAllTenants().forEach(f ->
         {
             Flow deleted = flowRepositoryInterface.delete(FlowWithSource.of(f, ""));
@@ -194,6 +193,7 @@ public class SyncFlowsTest extends AbstractGitTest {
             runContext, syncOutput.diffFileUri(),
             defaultCaseDiffs(
                 true,
+                false,
                 new HashMap<>(
                     Map.of(
                         "syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace.child", "revision",
@@ -285,7 +285,7 @@ public class SyncFlowsTest extends AbstractGitTest {
             .run(cloneRunContext);
         assertFlows(cloneRunContext.workingDir().path().resolve(Path.of(GIT_DIRECTORY)).toFile(), true, selfFlowSource, nonVersionedFlowSource);
 
-        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true));
+        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true, false));
     }
 
     @Test
@@ -382,6 +382,7 @@ public class SyncFlowsTest extends AbstractGitTest {
         assertDiffs(
             runContext, syncOutput.diffFileUri(),
             defaultCaseDiffs(
+                false,
                 false,
                 new HashMap<>(
                     Map.of(
@@ -482,6 +483,7 @@ public class SyncFlowsTest extends AbstractGitTest {
         assertDiffs(
             runContext, syncOutput.diffFileUri(),
             defaultCaseDiffs(
+                true,
                 true,
                 new HashMap<>(
                     Map.of(
@@ -625,7 +627,7 @@ public class SyncFlowsTest extends AbstractGitTest {
         assertThat(ex.getMessage(), containsString("demo-invalid-flow"));
     }
 
-    private List<Map<String, Object>> defaultCaseDiffs(boolean includeSubNamespaces, Map<String, Object>... additionalDiffs) {
+    private List<Map<String, Object>> defaultCaseDiffs(boolean includeSubNamespaces, boolean dryRun, Map<String, Object>... additionalDiffs) {
         List<Map<String, Object>> diffs = new ArrayList<>(
             List.of(
                 Map.of(
@@ -638,7 +640,7 @@ public class SyncFlowsTest extends AbstractGitTest {
                 ),
                 Map.of(
                     "gitPath", "to_clone/_flows/second-flow.yml", "syncState", "ADDED", "flowId", "second-flow", "namespace", NAMESPACE, "revision",
-                    previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, NAMESPACE, "second-flow"), 0) + 1
+                    dryRun ? 1 : previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, NAMESPACE, "second-flow"), 0) + 1
                 )
             )
         );
@@ -647,7 +649,7 @@ public class SyncFlowsTest extends AbstractGitTest {
             diffs.add(
                 Map.of(
                     "gitPath", "to_clone/_flows/nested/namespace/nested_flow.yaml", "syncState", "ADDED", "flowId", "nested-flow", "namespace", "my.namespace.nested.namespace", "revision",
-                    previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, "my.namespace.nested.namespace", "nested-flow"), 0) + 1
+                    dryRun ? 1 : previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, "my.namespace.nested.namespace", "nested-flow"), 0) + 1
                 )
             );
         }
