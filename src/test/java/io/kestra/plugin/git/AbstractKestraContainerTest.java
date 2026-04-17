@@ -23,7 +23,7 @@ public abstract class AbstractKestraContainerTest {
 
     @Container
     protected static final GenericContainer<?> KESTRA_CONTAINER = new GenericContainer<>(
-        DockerImageName.parse("kestra/kestra:v1.3-no-plugins")
+        DockerImageName.parse("kestra/kestra:develop-no-plugins")
     )
         .withExposedPorts(8080)
         .withEnv("KESTRA_SECURITY_SUPER_ADMIN_USERNAME", USERNAME)
