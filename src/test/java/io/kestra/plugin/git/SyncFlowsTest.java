@@ -73,7 +73,7 @@ public class SyncFlowsTest extends AbstractGitTest {
 
             tasks:
               - id: old-task
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: Hello from old-task""";
         GenericFlow flow = GenericFlow.fromYaml(TENANT_ID, flowSource);
         flowRepositoryInterface.create(flow);
@@ -105,7 +105,7 @@ public class SyncFlowsTest extends AbstractGitTest {
 
             tasks:
               - id: old-task
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: Hello from old-task""";
         flow = GenericFlow.fromYaml(TENANT_ID, flowSource);
         flowRepositoryInterface.create(flow);
@@ -118,7 +118,7 @@ public class SyncFlowsTest extends AbstractGitTest {
 
             tasks:
               - id: old-task
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: Hello from old-task""";
         GenericFlow invalidFlow = GenericFlow.builder()
             .id("validation-failed-flow")
@@ -202,7 +202,7 @@ public class SyncFlowsTest extends AbstractGitTest {
 
             tasks:
               - id: old-task
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: Hello from old-task""";
         GenericFlow genericFlow = GenericFlow.fromYaml(TENANT_ID, flowSource);
         flowRepositoryInterface.create(genericFlow);
@@ -235,7 +235,7 @@ public class SyncFlowsTest extends AbstractGitTest {
 
             tasks:
               - id: old-task
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: Hello from old-task""";
         genericFlow = GenericFlow.fromYaml(TENANT_ID, flowSource);
         flowRepositoryInterface.create(genericFlow);
@@ -281,7 +281,7 @@ public class SyncFlowsTest extends AbstractGitTest {
 
             tasks:
               - id: old-task
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: Hello from old-task""";
         GenericFlow genericFlow = GenericFlow.fromYaml(TENANT_ID, flowSource);
         flowRepositoryInterface.create(genericFlow);
@@ -327,7 +327,7 @@ public class SyncFlowsTest extends AbstractGitTest {
 
             tasks:
               - id: old-task
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: Hello from old-task""";
         genericFlow = GenericFlow.fromYaml(TENANT_ID, flowSource);
         flowRepositoryInterface.create(genericFlow);
@@ -389,7 +389,7 @@ public class SyncFlowsTest extends AbstractGitTest {
 
             tasks:
               - id: old-task
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: Hello from old-task""";
         GenericFlow genericFlow = GenericFlow.fromYaml(TENANT_ID, flowSource);
         flowRepositoryInterface.create(genericFlow);
@@ -425,7 +425,7 @@ public class SyncFlowsTest extends AbstractGitTest {
 
             tasks:
               - id: old-task
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: Hello from old-task""";
         genericFlow = GenericFlow.fromYaml(TENANT_ID, flowSource);
         flowRepositoryInterface.create(genericFlow);
