@@ -89,11 +89,11 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
     @Getter
     public static class Auth {
         @Schema(title = "Username for HTTP Basic authentication.")
-        @PluginProperty(group = "connection")
+        @PluginProperty(secret = true, group = "connection")
         private Property<String> username;
 
         @Schema(title = "Password for HTTP Basic authentication.")
-        @PluginProperty(group = "connection")
+        @PluginProperty(secret = true, group = "connection")
         private Property<String> password;
 
         @Schema(
