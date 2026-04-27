@@ -17,6 +17,7 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.dashboards.Dashboard;
 import io.kestra.core.models.property.Property;
+import io.kestra.core.repositories.ArrayListTotal;
 import io.kestra.core.repositories.DashboardRepositoryInterface;
 import io.micronaut.data.model.Pageable;
 import io.kestra.core.runners.DefaultRunContext;
@@ -184,11 +185,11 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
         List<Dashboard> all = new ArrayList<>();
         final int pageSize = 100;
         int page = 1;
-        List<Dashboard> pageResult;
+        ArrayListTotal<Dashboard> pageResult;
         do {
             pageResult = repo.list(Pageable.from(page++, pageSize), tenantId, null);
             all.addAll(pageResult);
-        } while (pageResult.size() == pageSize);
+        } while (all.size() < pageResult.getTotal());
         return all;
     }
 
