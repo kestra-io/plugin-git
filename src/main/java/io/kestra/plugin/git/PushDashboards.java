@@ -6,6 +6,7 @@ import java.net.URI;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,7 @@ import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.dashboards.Dashboard;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.repositories.DashboardRepositoryInterface;
+import io.micronaut.data.model.Pageable;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 
@@ -125,7 +127,14 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
         Map<String, String> flowProps = Optional.ofNullable((Map<String, String>) runContext.getVariables().get("flow")).orElse(Collections.emptyMap());
         String tenantId = flowProps.get("tenantId");
 
-        List<Dashboard> dashboardsToPush = dashboardRepository.findAll(tenantId);
+        List<Dashboard> dashboardsToPush = new ArrayList<>();
+        final int pageSize = 100;
+        int page = 1;
+        List<Dashboard> pageResult;
+        do {
+            pageResult = dashboardRepository.list(Pageable.from(page++, pageSize), tenantId, null);
+            dashboardsToPush.addAll(pageResult);
+        } while (pageResult.size() == pageSize);
 
         Stream<Dashboard> dashboardStream = dashboardsToPush.stream();
         if (globs != null) {

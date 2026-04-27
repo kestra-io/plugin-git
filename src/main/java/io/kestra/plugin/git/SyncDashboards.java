@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -17,6 +18,7 @@ import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.dashboards.Dashboard;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.repositories.DashboardRepositoryInterface;
+import io.micronaut.data.model.Pageable;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.YamlParser;
@@ -177,7 +179,17 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
 
     @Override
     protected List<Dashboard> fetchResources(RunContext runContext, String renderedNamespace) {
-        return repository(runContext).findAll(runContext.flowInfo().tenantId());
+        String tenantId = runContext.flowInfo().tenantId();
+        DashboardRepositoryInterface repo = repository(runContext);
+        List<Dashboard> all = new ArrayList<>();
+        final int pageSize = 100;
+        int page = 1;
+        List<Dashboard> pageResult;
+        do {
+            pageResult = repo.list(Pageable.from(page++, pageSize), tenantId, null);
+            all.addAll(pageResult);
+        } while (pageResult.size() == pageSize);
+        return all;
     }
 
     @Override
