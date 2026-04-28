@@ -2,9 +2,7 @@ package io.kestra.plugin.git;
 
 import java.io.*;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
@@ -26,6 +24,11 @@ import org.eclipse.jgit.transport.RemoteRefUpdate;
 import io.kestra.core.exceptions.FlowProcessingException;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
+import io.kestra.core.http.HttpRequest;
+import io.kestra.core.http.client.HttpClient;
+import io.kestra.core.http.client.configurations.BasicAuthConfiguration;
+import io.kestra.core.http.client.configurations.HttpConfiguration;
+import io.kestra.core.runners.SDK;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.flows.FlowWithSource;
@@ -1018,41 +1021,46 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
     }
 
     private String fetchDashboardSourceCode(KestraClient kestraClient, RunContext runContext, String tenantId, String dashboardId) throws Exception {
-        var apiClient = kestraClient.dashboards().getApiClient();
+        String basePath = kestraClient.dashboards().getApiClient().getBasePath();
+        String encodedId = URLEncoder.encode(dashboardId, StandardCharsets.UTF_8);
         String path = tenantId == null
-            ? "/api/v1/dashboards/" + dashboardId
-            : "/api/v1/" + tenantId + "/dashboards/" + dashboardId;
-        String url = apiClient.getBaseURL() + path;
+            ? "/api/v1/dashboards/" + encodedId
+            : "/api/v1/" + tenantId + "/dashboards/" + encodedId;
 
-        var requestBuilder = HttpRequest.newBuilder()
-            .uri(URI.create(url))
-            .header("Accept", "application/x-yaml")
-            .GET();
-
-        // Apply authentication: explicit auth property first, then SDK default
-        var authProperty = getAuth();
-        if (authProperty != null) {
-            var maybeUsername = runContext.render(authProperty.getUsername()).as(String.class);
-            var maybePassword = runContext.render(authProperty.getPassword()).as(String.class);
+        HttpConfiguration.HttpConfigurationBuilder configBuilder = HttpConfiguration.builder();
+        AbstractKestraTask.Auth auth = getAuth();
+        if (auth != null) {
+            Optional<String> maybeUsername = runContext.render(auth.getUsername()).as(String.class);
+            Optional<String> maybePassword = runContext.render(auth.getPassword()).as(String.class);
             if (maybeUsername.isPresent() && maybePassword.isPresent()) {
-                String encoded = Base64.getEncoder().encodeToString(
-                    (maybeUsername.get() + ":" + maybePassword.get()).getBytes(StandardCharsets.UTF_8));
-                requestBuilder.header("Authorization", "Basic " + encoded);
+                configBuilder.auth(BasicAuthConfiguration.builder()
+                    .username(Property.ofValue(maybeUsername.get()))
+                    .password(Property.ofValue(maybePassword.get()))
+                    .build());
             }
         } else {
-            var autoAuth = runContext.sdk().defaultAuthentication();
+            Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
             if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-                String encoded = Base64.getEncoder().encodeToString(
-                    (autoAuth.get().username().get() + ":" + autoAuth.get().password().get()).getBytes(StandardCharsets.UTF_8));
-                requestBuilder.header("Authorization", "Basic " + encoded);
+                configBuilder.auth(BasicAuthConfiguration.builder()
+                    .username(Property.ofValue(autoAuth.get().username().get()))
+                    .password(Property.ofValue(autoAuth.get().password().get()))
+                    .build());
             }
         }
 
-        var response = HttpClient.newHttpClient().send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() != 200) {
-            throw new KestraRuntimeException("Failed to fetch dashboard YAML for " + dashboardId + ": HTTP " + response.statusCode());
+        try (var httpClient = HttpClient.builder()
+                .runContext(runContext)
+                .configuration(configBuilder.build())
+                .build()) {
+            var response = httpClient.request(
+                HttpRequest.builder()
+                    .uri(URI.create(basePath + path))
+                    .addHeader("Accept", "application/x-yaml")
+                    .build(),
+                String.class
+            );
+            return response.getBody();
         }
-        return response.body();
     }
 
     private File toNamedTempFile(String fileName, String yaml) {
