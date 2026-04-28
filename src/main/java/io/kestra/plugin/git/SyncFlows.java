@@ -1,5 +1,16 @@
 package io.kestra.plugin.git;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Objects;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.commons.io.IOUtils;
+
 import io.kestra.core.exceptions.FlowProcessingException;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.Example;
@@ -12,20 +23,12 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.services.FlowService;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.apache.commons.io.IOUtils;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Objects;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -112,6 +115,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         description = "Defaults to `main`."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
@@ -119,6 +123,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         description = "Flows are rewritten to this namespace (and nested namespaces when applicable)."
     )
     @NotNull
+    @PluginProperty(group = "main")
     private Property<String> targetNamespace;
 
     @Schema(
@@ -126,6 +131,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         description = "Relative path containing flow YAML; defaults to `_flows`. Subdirectories map to child namespaces when `includeChildNamespaces` is true."
     )
     @Builder.Default
+    @PluginProperty(group = "destination")
     private Property<String> gitDirectory = Property.ofValue("_flows");
 
     @Schema(
@@ -133,6 +139,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         description = "Default false. When true, subdirectories under `gitDirectory` are synced to corresponding child namespaces."
     )
     @Builder.Default
+    @PluginProperty(group = "source")
     private Property<Boolean> includeChildNamespaces = Property.ofValue(false);
 
     @Schema(
@@ -140,6 +147,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         description = "Default false to avoid destructive syncs. When true (and especially with `includeChildNamespaces`), removes flows not present in Git."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<Boolean> delete = Property.ofValue(false);
 
     @Schema(
@@ -147,19 +155,18 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         description = "If true, skips flows that fail validation instead of failing the task."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<Boolean> ignoreInvalidFlows = Property.ofValue(false);
 
     @Getter(AccessLevel.NONE)
     private FlowService flowService;
 
-
     private FlowService flowService(RunContext runContext) {
         if (flowService == null) {
-            flowService = ((DefaultRunContext) runContext).getApplicationContext().getBean(FlowService.class);
+            flowService = ((DefaultRunContext) runContext).services().additionalService(FlowService.class);
         }
         return flowService;
     }
-
 
     @Override
     public Property<String> fetchedNamespace() {
@@ -172,7 +179,8 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     }
 
     @Override
-    protected Flow simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, FlowProcessingException, IllegalVariableEvaluationException {
+    protected Flow simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream)
+        throws IOException, FlowProcessingException, IllegalVariableEvaluationException {
         if (inputStream == null) {
             return null;
         }
@@ -213,7 +221,8 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     }
 
     @Override
-    protected Flow writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException, FlowProcessingException, IllegalVariableEvaluationException {
+    protected Flow writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream)
+        throws IOException, FlowProcessingException, IllegalVariableEvaluationException {
         if (inputStream == null) {
             return null;
         }
@@ -264,7 +273,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             syncState = SyncState.DELETED;
         } else if (flowBeforeUpdate == null) {
             syncState = SyncState.ADDED;
-        } else if (flowBeforeUpdate.getRevision().equals(Objects.requireNonNull(flowAfterUpdate).getRevision())){
+        } else if (flowBeforeUpdate.getRevision().equals(Objects.requireNonNull(flowAfterUpdate).getRevision())) {
             syncState = SyncState.UNCHANGED;
         } else {
             syncState = SyncState.UPDATED;
@@ -288,13 +297,14 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     protected List<Flow> fetchResources(RunContext runContext, String renderedNamespace) throws IllegalVariableEvaluationException {
         List<Flow> flows;
         if (runContext.render(this.includeChildNamespaces).as(Boolean.class).orElseThrow()) {
-            flows=  flowService(runContext).findByNamespacePrefix(runContext.flowInfo().tenantId(), renderedNamespace);
+            flows = flowService(runContext).findByNamespacePrefix(runContext.flowInfo().tenantId(), renderedNamespace);
         } else {
             flows = flowService(runContext).findByNamespace(runContext.flowInfo().tenantId(), renderedNamespace);
         }
         if (runContext.render(this.ignoreInvalidFlows).as(Boolean.class).orElse(false)) {
-            flows= flows.stream()
-                .filter(flow -> {
+            flows = flows.stream()
+                .filter(flow ->
+                {
                     if (flow instanceof FlowWithException flowWithException) {
                         runContext.logger().warn("Flow {} is not valid: {}", flowWithException.getId(), flowWithException.getException());
                         return false;
@@ -338,7 +348,6 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             return this.flows;
         }
     }
-
 
     @SuperBuilder
     @Getter

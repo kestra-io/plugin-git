@@ -35,13 +35,18 @@
 </p>
 <p align="center" style="color:grey;"><i>Get started with Kestra in 3 minutes.</i></p>
 
-
 # Kestra Git plugin
 
-Plugin to sync your code from Git, push your workflow code and namespace files from Kestra to Git, or clone custom Git repositories at runtime. Check our [Version Control with Git](https://kestra.io/docs/developer-guide/git) documentation for more details.
+## Why
 
-![Kestra orchestrator](https://kestra.io/video.gif)
+- What user problem does this solve? Teams need to clone, fetch, and interact with Git repositories from orchestrated workflows instead of relying on manual console work, ad hoc scripts, or disconnected schedulers.
+- Why would a team adopt this plugin in a workflow? It keeps Git steps in the same Kestra flow as upstream preparation, approvals, retries, notifications, and downstream systems.
+- What operational/business outcome does it enable? It reduces manual handoffs and fragmented tooling while improving reliability, traceability, and delivery speed for processes that depend on Git.
 
+## What
+
+- Provides plugin components under `io.kestra.plugin.git`.
+- Includes classes such as `SyncFlow`, `Sync`, `SyncNamespaceFiles`, `PushNamespaceFiles`.
 
 ## Documentation
 * Full documentation can be found under [kestra.io/docs](https://kestra.io/docs)

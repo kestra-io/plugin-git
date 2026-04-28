@@ -1,16 +1,13 @@
 package io.kestra.plugin.git;
 
-import io.kestra.core.junit.annotations.KestraTest;
-import io.kestra.core.models.flows.FlowWithSource;
-import io.kestra.core.models.flows.GenericFlow;
-import io.kestra.core.models.property.Property;
-import io.kestra.core.models.tasks.NamespaceFiles;
-import io.kestra.core.repositories.FlowRepositoryInterface;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.runners.RunContextFactory;
-import io.kestra.core.tenant.TenantService;
-import io.kestra.core.utils.IdUtils;
-import jakarta.inject.Inject;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.StreamSupport;
+
 import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
@@ -21,13 +18,18 @@ import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.StreamSupport;
+import io.kestra.core.junit.annotations.KestraTest;
+import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.flows.GenericFlow;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.models.tasks.NamespaceFiles;
+import io.kestra.core.repositories.FlowRepositoryInterface;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.tenant.TenantService;
+import io.kestra.core.utils.IdUtils;
+
+import jakarta.inject.Inject;
 
 import static org.eclipse.jgit.lib.Constants.R_HEADS;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -47,6 +49,7 @@ class PushTest extends AbstractGitTest {
 
     @Test
     void cloneThenPush_OnlyNeedsCredentialsForPush() throws Exception {
+        String branchName = IdUtils.create();
         Clone clone = Clone.builder()
             .id("clone")
             .type(Clone.class.getName())
@@ -71,29 +74,46 @@ class PushTest extends AbstractGitTest {
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
-            .flows(Push.FlowFiles.builder()
-                .enabled(Property.ofValue(false))
-                .build())
+            .flows(
+                Push.FlowFiles.builder()
+                    .enabled(Property.ofValue(false))
+                    .build()
+            )
             .commitMessage(Property.ofValue("Push from CI - Clone then push"))
-            .inputFiles(Map.of(
-                INPUT_FILE_NAME, expectedInputFileContent
-            ))
+            .inputFiles(
+                Map.of(
+                    INPUT_FILE_NAME, expectedInputFileContent
+                )
+            )
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
-            .branch(Property.ofValue(BRANCH))
+            .branch(Property.ofValue(branchName))
             .build();
         Push.Output pushOutput = push.run(cloneRunContext);
 
+        Clone cloneNewBranch = Clone.builder()
+            .id("clone")
+            .type(Clone.class.getName())
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(branchName))
+            .build();
+
         cloneRunContext = runContextFactory.of();
-        Clone.Output cloneOutput = clone.run(cloneRunContext);
+        try {
+            Clone.Output cloneOutput = cloneNewBranch.run(cloneRunContext);
 
-        String fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(INPUT_FILE_NAME).toFile(), "UTF-8");
-        assertThat(fileContent, is(expectedInputFileContent));
+            String fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(INPUT_FILE_NAME).toFile(), "UTF-8");
+            assertThat(fileContent, is(expectedInputFileContent));
 
-        fileContent = FileUtils.readFileToString(extraFile, "UTF-8");
-        assertThat(fileContent, is(extraFileContent));
+            fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve("some_file.txt").toFile(), "UTF-8");
+            assertThat(fileContent, is(extraFileContent));
 
-        assertThat(pushOutput.getCommitId(), is(getLastCommitId(cloneRunContext)));
+            assertThat(pushOutput.getCommitId(), is(getLastCommitId(cloneRunContext)));
+        } finally {
+            deleteRemoteBranch(cloneRunContext.workingDir().path().toString(), branchName);
+        }
     }
 
     private static String getLastCommitId(RunContext runContext) throws GitAPIException, IOException {
@@ -125,9 +145,11 @@ class PushTest extends AbstractGitTest {
         Push push = Push.builder()
             .id("push")
             .type(Push.class.getName())
-            .flows(Push.FlowFiles.builder()
-                .enabled(Property.ofValue(false))
-                .build())
+            .flows(
+                Push.FlowFiles.builder()
+                    .enabled(Property.ofValue(false))
+                    .build()
+            )
             .commitMessage(Property.ofValue("Push from CI - Clone then push"))
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
@@ -151,23 +173,25 @@ class PushTest extends AbstractGitTest {
     void oneTaskPush_ExistingBranch() throws Exception {
         String namespace = "my-namespace";
         String tenantId = TenantService.MAIN_TENANT;
+        String branchName = IdUtils.create();
         FlowWithSource flow = this.createFlow(tenantId, namespace);
 
-        RunContext runContext = runContextFactory.of(flow, Map.of(
-            "description", "One-task push"
-        ));
+        RunContext runContext = runContextFactory.of(
+            flow, Map.of(
+                "description", "One-task push"
+            )
+        );
 
         String expectedInputFileContent = IdUtils.create();
         String expectedNamespaceFileContent = IdUtils.create();
 
         String namespaceFileName = "namespace_file.txt";
-        try(ByteArrayInputStream is = new ByteArrayInputStream(expectedNamespaceFileContent.getBytes())) {
+        try (ByteArrayInputStream is = new ByteArrayInputStream(expectedNamespaceFileContent.getBytes())) {
             runContext.storage().namespace(namespace).putFile(
                 Path.of(namespaceFileName),
                 is
             );
         }
-
 
         String shouldNotBeCommitted = "do_not_commit";
         Push push = Push.builder()
@@ -175,24 +199,33 @@ class PushTest extends AbstractGitTest {
             .type(Push.class.getName())
             .url(Property.ofValue(repositoryUrl))
             .commitMessage(Property.ofValue("Push from CI - {{description}}"))
-            .flows(Push.FlowFiles.builder()
-                .enabled(Property.ofValue(false))
-                .build())
+            .flows(
+                Push.FlowFiles.builder()
+                    .enabled(Property.ofValue(false))
+                    .build()
+            )
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
-            .inputFiles(Map.of(
-                INPUT_FILE_NAME, expectedInputFileContent,
-                shouldNotBeCommitted, "should not be committed"
-            ))
-            .namespaceFiles(NamespaceFiles.builder()
-                .enabled(Property.ofValue(true))
-                .build()
+            .inputFiles(
+                Map.of(
+                    INPUT_FILE_NAME, expectedInputFileContent,
+                    shouldNotBeCommitted, "should not be committed"
+                )
             )
-            .addFilesPattern(Property.ofValue(List.of(
-                INPUT_FILE_NAME,
-                namespaceFileName
-            )))
-            .branch(Property.ofValue(BRANCH))
+            .namespaceFiles(
+                NamespaceFiles.builder()
+                    .enabled(Property.ofValue(true))
+                    .build()
+            )
+            .addFilesPattern(
+                Property.ofValue(
+                    List.of(
+                        INPUT_FILE_NAME,
+                        namespaceFileName
+                    )
+                )
+            )
+            .branch(Property.ofValue(branchName))
             .build();
 
         var ot = push.run(runContext);
@@ -203,18 +236,23 @@ class PushTest extends AbstractGitTest {
             .url(Property.ofValue(repositoryUrl))
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
-            .branch(Property.ofValue(BRANCH))
+            .branch(Property.ofValue(branchName))
             .build();
 
-        Clone.Output cloneOutput = clone.run(runContextFactory.of());
+        RunContext cloneRunContext = runContextFactory.of();
+        try {
+            Clone.Output cloneOutput = clone.run(cloneRunContext);
 
-        String fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(INPUT_FILE_NAME).toFile(), "UTF-8");
-        assertThat(fileContent, is(expectedInputFileContent));
-        assertThat(new File(cloneOutput.getDirectory(), shouldNotBeCommitted).exists(), is(false));
-        assertThat(new File(Path.of(cloneOutput.getDirectory(), Sync.FLOWS_DIRECTORY).toString()).exists(), is(false));
+            String fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(INPUT_FILE_NAME).toFile(), "UTF-8");
+            assertThat(fileContent, is(expectedInputFileContent));
+            assertThat(new File(cloneOutput.getDirectory(), shouldNotBeCommitted).exists(), is(false));
+            assertThat(new File(Path.of(cloneOutput.getDirectory(), Sync.FLOWS_DIRECTORY).toString()).exists(), is(false));
 
-        fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(namespaceFileName).toFile(), "UTF-8");
-        assertThat(fileContent, is(expectedNamespaceFileContent));
+            fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(namespaceFileName).toFile(), "UTF-8");
+            assertThat(fileContent, is(expectedNamespaceFileContent));
+        } finally {
+            deleteRemoteBranch(cloneRunContext.workingDir().path().toString(), branchName);
+        }
     }
 
     @Test
@@ -236,12 +274,16 @@ class PushTest extends AbstractGitTest {
             .id("push")
             .type(Push.class.getName())
             .url(Property.ofValue(repositoryUrl))
-            .inputFiles(Map.of(
-                toDeleteFileName, "some content"
-            ))
-            .flows(Push.FlowFiles.builder()
-                .enabled(Property.ofValue(false))
-                .build())
+            .inputFiles(
+                Map.of(
+                    toDeleteFileName, "some content"
+                )
+            )
+            .flows(
+                Push.FlowFiles.builder()
+                    .enabled(Property.ofValue(false))
+                    .build()
+            )
             .commitMessage(Property.ofValue("Branch creation"))
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
@@ -284,12 +326,16 @@ class PushTest extends AbstractGitTest {
             .id("push")
             .type(Push.class.getName())
             .url(Property.ofValue(repositoryUrl))
-            .inputFiles(Map.of(
-                toDeleteFileName, "some content"
-            ))
-            .flows(Push.FlowFiles.builder()
-                .enabled(Property.ofValue(false))
-                .build())
+            .inputFiles(
+                Map.of(
+                    toDeleteFileName, "some content"
+                )
+            )
+            .flows(
+                Push.FlowFiles.builder()
+                    .enabled(Property.ofValue(false))
+                    .build()
+            )
             .commitMessage(Property.ofValue("Branch creation"))
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
@@ -321,6 +367,7 @@ class PushTest extends AbstractGitTest {
 
     @Test
     void oneTaskPush_WithSpecifiedDirectory() throws Exception {
+        String branchName = IdUtils.create();
         RunContext runContext = runContextFactory.of();
 
         String expectedInputFileContent = IdUtils.create();
@@ -333,19 +380,23 @@ class PushTest extends AbstractGitTest {
             .type(Push.class.getName())
             .url(Property.ofValue(repositoryUrl))
             .commitMessage(Property.ofValue("Push from CI - One-task push with specified directory"))
-            .flows(Push.FlowFiles.builder()
-                .enabled(Property.ofValue(false))
-                .build())
+            .flows(
+                Push.FlowFiles.builder()
+                    .enabled(Property.ofValue(false))
+                    .build()
+            )
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
             .directory(Property.ofValue(directory))
-            .inputFiles(Map.of(
-                "not_included_file.txt", "not included",
-                INPUT_FILE_NAME, "not included neither",
-                directory + "/" + INPUT_FILE_NAME, expectedInputFileContent,
-                directory + "/" + nestedFilePath, expectedNestedInputFileContent
-            ))
-            .branch(Property.ofValue(BRANCH))
+            .inputFiles(
+                Map.of(
+                    "not_included_file.txt", "not included",
+                    INPUT_FILE_NAME, "not included neither",
+                    directory + "/" + INPUT_FILE_NAME, expectedInputFileContent,
+                    directory + "/" + nestedFilePath, expectedNestedInputFileContent
+                )
+            )
+            .branch(Property.ofValue(branchName))
             .build();
 
         push.run(runContext);
@@ -356,16 +407,21 @@ class PushTest extends AbstractGitTest {
             .url(Property.ofValue(repositoryUrl))
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
-            .branch(Property.ofValue(BRANCH))
+            .branch(Property.ofValue(branchName))
             .build();
 
-        Clone.Output cloneOutput = clone.run(runContextFactory.of());
+        RunContext cloneRunContext = runContextFactory.of();
+        try {
+            Clone.Output cloneOutput = clone.run(cloneRunContext);
 
-        String fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(INPUT_FILE_NAME).toFile(), "UTF-8");
-        assertThat(fileContent, is(expectedInputFileContent));
+            String fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(INPUT_FILE_NAME).toFile(), "UTF-8");
+            assertThat(fileContent, is(expectedInputFileContent));
 
-        fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(nestedFilePath).toFile(), "UTF-8");
-        assertThat(fileContent, is(expectedNestedInputFileContent));
+            fileContent = FileUtils.readFileToString(Path.of(cloneOutput.getDirectory()).resolve(nestedFilePath).toFile(), "UTF-8");
+            assertThat(fileContent, is(expectedNestedInputFileContent));
+        } finally {
+            deleteRemoteBranch(cloneRunContext.workingDir().path().toString(), branchName);
+        }
     }
 
     @Test
@@ -373,13 +429,15 @@ class PushTest extends AbstractGitTest {
         String namespace = IdUtils.create().toLowerCase();
         String tenantId = TenantService.MAIN_TENANT;
         String branchName = IdUtils.create();
-        RunContext runContext = runContextFactory.of(Map.of(
-            "flow", Map.of(
-                "tenantId", tenantId,
-                "namespace", namespace
-            ),
-            "description", "One-task push"
-        ));
+        RunContext runContext = runContextFactory.of(
+            Map.of(
+                "flow", Map.of(
+                    "tenantId", tenantId,
+                    "namespace", namespace
+                ),
+                "description", "One-task push"
+            )
+        );
 
         FlowWithSource createdFlow = this.createFlow(tenantId, namespace);
         FlowWithSource createdSubNsFlow = this.createFlow(tenantId, namespace + ".sub-namespace");
@@ -427,13 +485,15 @@ class PushTest extends AbstractGitTest {
         String namespace = IdUtils.create().toLowerCase();
         String tenantId = TenantService.MAIN_TENANT;
         String branchName = IdUtils.create();
-        RunContext runContext = runContextFactory.of(Map.of(
-            "flow", Map.of(
-                "tenantId", tenantId,
-                "namespace", namespace
-            ),
-            "description", "One-task push"
-        ));
+        RunContext runContext = runContextFactory.of(
+            Map.of(
+                "flow", Map.of(
+                    "tenantId", tenantId,
+                    "namespace", namespace
+                ),
+                "description", "One-task push"
+            )
+        );
 
         FlowWithSource createdFlow = this.createFlow(tenantId, namespace);
         FlowWithSource createdSubNsFlow = this.createFlow(tenantId, namespace + ".sub-namespace");
@@ -443,15 +503,19 @@ class PushTest extends AbstractGitTest {
             .type(Push.class.getName())
             .url(Property.ofValue(repositoryUrl))
             .commitMessage(Property.ofValue("Push from CI - {{description}}"))
-            .flows(Push.FlowFiles.builder()
-                .childNamespaces(Property.ofValue(false))
-                .build())
+            .flows(
+                Push.FlowFiles.builder()
+                    .childNamespaces(Property.ofValue(false))
+                    .build()
+            )
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
-            .author(Push.Author.builder()
-                .name(Property.ofValue(gitUserName))
-                .email(Property.ofValue(gitUserEmail))
-                .build())
+            .author(
+                Push.Author.builder()
+                    .name(Property.ofValue(gitUserName))
+                    .email(Property.ofValue(gitUserEmail))
+                    .build()
+            )
             .branch(Property.ofValue(branchName))
             .build();
 
@@ -486,13 +550,15 @@ class PushTest extends AbstractGitTest {
         String namespace = IdUtils.create().toLowerCase();
         String tenantId = TenantService.MAIN_TENANT;
         String branchName = IdUtils.create();
-        RunContext runContext = runContextFactory.of(Map.of(
-            "flow", Map.of(
-                "tenantId", tenantId,
-                "namespace", namespace
-            ),
-            "description", "One-task push"
-        ));
+        RunContext runContext = runContextFactory.of(
+            Map.of(
+                "flow", Map.of(
+                    "tenantId", tenantId,
+                    "namespace", namespace
+                ),
+                "description", "One-task push"
+            )
+        );
 
         FlowWithSource createdFlow = this.createFlow(tenantId, namespace);
         FlowWithSource createdSubNsFlow = this.createFlow(tenantId, namespace + ".sub-namespace");
@@ -504,13 +570,17 @@ class PushTest extends AbstractGitTest {
             .commitMessage(Property.ofValue("Push from CI - {{description}}"))
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
-            .author(Push.Author.builder()
-                .email(Property.ofValue(gitUserEmail))
-                .build())
+            .author(
+                Push.Author.builder()
+                    .email(Property.ofValue(gitUserEmail))
+                    .build()
+            )
             .branch(Property.ofValue(branchName))
-            .flows(Push.FlowFiles.builder()
-                .gitDirectory(Property.ofValue("my-flows"))
-                .build())
+            .flows(
+                Push.FlowFiles.builder()
+                    .gitDirectory(Property.ofValue("my-flows"))
+                    .build()
+            )
             .build();
 
         try {
@@ -542,7 +612,7 @@ class PushTest extends AbstractGitTest {
     }
 
     private void deleteRemoteBranch(String gitDirectory, String branchName) throws GitAPIException, IOException {
-        try(Git git = Git.open(new File(gitDirectory))) {
+        try (Git git = Git.open(new File(gitDirectory))) {
             git.checkout().setName("tmp").setCreateBranch(true).call();
             git.branchDelete().setBranchNames(R_HEADS + branchName).call();
             RefSpec refSpec = new RefSpec()

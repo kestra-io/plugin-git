@@ -1,5 +1,15 @@
 package io.kestra.plugin.git;
 
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.commons.io.IOUtils;
+import org.eclipse.jgit.api.Git;
+
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.flows.Flow;
@@ -9,18 +19,12 @@ import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.services.FlowService;
 import io.kestra.plugin.git.services.GitService;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.apache.commons.io.IOUtils;
-import org.eclipse.jgit.api.Git;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -62,6 +66,7 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
         description = "Defaults to `main`."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<String> branch = Property.ofValue("main");
 
     @Override
@@ -74,6 +79,7 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
         description = "Replaces any namespace declared in the flow file."
     )
     @NotNull
+    @PluginProperty(group = "main")
     private Property<String> targetNamespace;
 
     @Schema(
@@ -81,6 +87,7 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
         description = "Relative path to the flow YAML inside the repository."
     )
     @NotNull
+    @PluginProperty(group = "main")
     private Property<String> flowPath;
 
     @Schema(
@@ -88,6 +95,7 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
         description = "When true, validates and logs without importing."
     )
     @Builder.Default
+    @PluginProperty(group = "reliability")
     private Property<Boolean> dryRun = Property.ofValue(Boolean.FALSE);
 
     @Override
@@ -99,7 +107,7 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
         configureEnvironmentWithSsl(runContext);
 
         GitService gitService = new GitService(this);
-        FlowService flowService = ((DefaultRunContext) runContext).getApplicationContext().getBean(FlowService.class);
+        FlowService flowService = ((DefaultRunContext) runContext).services().additionalService(FlowService.class);
 
         Git git = gitService.cloneBranch(runContext, runContext.render(this.getBranch()).as(String.class).orElse(null), Property.ofValue(Boolean.FALSE));
         Path cloneDir = git.getRepository().getWorkTree().toPath();

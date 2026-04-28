@@ -1,28 +1,33 @@
 package io.kestra.plugin.git;
 
-import io.kestra.core.exceptions.IllegalVariableEvaluationException;
-import io.kestra.core.models.annotations.Example;
-import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.models.dashboards.Dashboard;
-import io.kestra.core.models.property.Property;
-import io.kestra.core.repositories.DashboardRepositoryInterface;
-import io.kestra.core.runners.DefaultRunContext;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.serializers.YamlParser;
-import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.*;
-import lombok.experimental.SuperBuilder;
-import org.apache.commons.io.IOUtils;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Pattern;
+
+import org.apache.commons.io.IOUtils;
+
+import io.kestra.core.models.annotations.Example;
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.dashboards.Dashboard;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.repositories.ArrayListTotal;
+import io.kestra.core.repositories.DashboardRepositoryInterface;
+import io.micronaut.data.model.Pageable;
+import io.kestra.core.runners.DefaultRunContext;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.YamlParser;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -73,6 +78,7 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
         description = "Defaults to `main`."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
@@ -80,6 +86,7 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
         description = "Relative path containing dashboard YAML; defaults to `_dashboards`."
     )
     @Builder.Default
+    @PluginProperty(group = "destination")
     private Property<String> gitDirectory = Property.ofValue("_dashboards");
 
     @Schema(
@@ -87,10 +94,11 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
         description = "Default false to avoid destructive syncs."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<Boolean> delete = Property.ofValue(false);
 
     private DashboardRepositoryInterface repository(RunContext runContext) {
-        return ((DefaultRunContext) runContext).getApplicationContext().getBean(DashboardRepositoryInterface.class);
+        return ((DefaultRunContext) runContext).services().additionalService(DashboardRepositoryInterface.class);
     }
 
     @Override
@@ -127,7 +135,8 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
 
         Optional<Dashboard> prevDashboard = dashboardRepositoryInterface.get(dashboardWithTenant.getTenantId(), dashboardWithTenant.getId());
         if (dryRun) {
-            return prevDashboard.map(previous -> {
+            return prevDashboard.map(previous ->
+            {
                 if (previous.equals(dashboardWithTenant) && !previous.isDeleted()) {
                     return previous;
                 }
@@ -139,7 +148,8 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
     }
 
     @Override
-    protected SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, Dashboard dashboardBeforeUpdate, Dashboard dashboardAfterUpdate) {
+    protected SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, Dashboard dashboardBeforeUpdate,
+        Dashboard dashboardAfterUpdate) {
         if (resourceUri != null && resourceUri.toString().endsWith("/")) {
             return null;
         }
@@ -149,7 +159,7 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
             syncState = SyncState.DELETED;
         } else if (dashboardBeforeUpdate == null) {
             syncState = SyncState.ADDED;
-        } else if (dashboardBeforeUpdate.getUpdated().equals(Objects.requireNonNull(dashboardAfterUpdate).getUpdated())){
+        } else if (dashboardBeforeUpdate.getUpdated().equals(Objects.requireNonNull(dashboardAfterUpdate).getUpdated())) {
             syncState = SyncState.UNCHANGED;
         } else {
             syncState = SyncState.UPDATED;
@@ -170,7 +180,17 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
 
     @Override
     protected List<Dashboard> fetchResources(RunContext runContext, String renderedNamespace) {
-        return repository(runContext).findAll(runContext.flowInfo().tenantId());
+        String tenantId = runContext.flowInfo().tenantId();
+        DashboardRepositoryInterface repo = repository(runContext);
+        List<Dashboard> all = new ArrayList<>();
+        final int pageSize = 100;
+        int page = 1;
+        ArrayListTotal<Dashboard> pageResult;
+        do {
+            pageResult = repo.list(Pageable.from(page++, pageSize), tenantId, null);
+            all.addAll(pageResult);
+        } while (all.size() < pageResult.getTotal());
+        return all;
     }
 
     @Override
@@ -202,7 +222,6 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
             return this.dashboards;
         }
     }
-
 
     @SuperBuilder
     @Getter

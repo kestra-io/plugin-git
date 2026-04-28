@@ -1,19 +1,5 @@
 package io.kestra.plugin.git;
 
-import com.google.common.annotations.VisibleForTesting;
-import io.kestra.core.exceptions.IllegalVariableEvaluationException;
-import io.kestra.core.models.annotations.Example;
-import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.models.annotations.PluginProperty;
-import io.kestra.core.models.flows.FlowWithSource;
-import io.kestra.core.models.property.Property;
-import io.kestra.core.repositories.FlowRepositoryInterface;
-import io.kestra.core.runners.DefaultRunContext;
-import io.kestra.core.runners.RunContext;
-import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.*;
-import lombok.experimental.SuperBuilder;
-
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.net.URI;
@@ -24,6 +10,22 @@ import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import com.google.common.annotations.VisibleForTesting;
+
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.models.annotations.Example;
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.repositories.FlowRepositoryInterface;
+import io.kestra.core.runners.DefaultRunContext;
+import io.kestra.core.runners.RunContext;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.*;
 
@@ -112,6 +114,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         description = "Defaults to `main`; created if absent."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
@@ -119,6 +122,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         description = "Relative path inside the repo; defaults to `_flows`. Child namespaces are nested under this path when `includeChildNamespaces` is true."
     )
     @Builder.Default
+    @PluginProperty(group = "destination")
     private Property<String> gitDirectory = Property.ofValue("_flows");
 
     @Schema(
@@ -126,21 +130,23 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         description = "Namespace to export flows from; defaults to the current flow namespace."
     )
     @Builder.Default
-    private Property<String> sourceNamespace = new Property<>("{{ flow.namespace }}");
+    @PluginProperty(group = "source")
+    private Property<String> sourceNamespace = Property.ofExpression("{{ flow.namespace }}");
 
     @Schema(
         title = "Target namespace override",
         description = "If set, rewrites the `namespace` field in exported flows to this value."
     )
+    @PluginProperty(group = "source")
     private Property<String> targetNamespace;
 
     @Schema(
         title = "Flows to include",
         description = "Glob pattern(s) against flow IDs; defaults to all (`**`).",
-        oneOf = {String.class, String[].class},
+        oneOf = { String.class, String[].class },
         defaultValue = "**"
     )
-    @PluginProperty(dynamic = true)
+    @PluginProperty(dynamic = true, group = "advanced")
     private Object flows;
 
     @Schema(
@@ -148,6 +154,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         description = "When true, exports flows from child namespaces into nested directories under `gitDirectory`."
     )
     @Builder.Default
+    @PluginProperty(group = "source")
     private Property<Boolean> includeChildNamespaces = Property.ofValue(false);
 
     @Schema(
@@ -156,7 +163,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     )
     @Override
     public Property<String> getCommitMessage() {
-        return Optional.ofNullable(this.commitMessage).orElse(new Property<>("Add flows from " + this.sourceNamespace.toString() + " namespace"));
+        return Optional.ofNullable(this.commitMessage).orElse(Property.ofValue("Add flows from " + this.sourceNamespace.toString() + " namespace"));
     }
 
     @Override
@@ -170,7 +177,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     }
 
     protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path flowDirectory, List<String> globs) throws IllegalVariableEvaluationException {
-        FlowRepositoryInterface flowRepository = ((DefaultRunContext)runContext).getApplicationContext().getBean(FlowRepositoryInterface.class);
+        FlowRepositoryInterface flowRepository = ((DefaultRunContext) runContext).services().additionalService(FlowRepositoryInterface.class);
 
         Map<String, String> flowProps = Optional.ofNullable((Map<String, String>) runContext.getVariables().get("flow")).orElse(Collections.emptyMap());
         String tenantId = flowProps.get("tenantId");
@@ -185,25 +192,29 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         Stream<FlowWithSource> filteredFlowsToPush = flowsToPush.stream();
         if (globs != null) {
             List<PathMatcher> matchers = globs.stream().map(glob -> FileSystems.getDefault().getPathMatcher("glob:" + glob)).toList();
-            filteredFlowsToPush = filteredFlowsToPush.filter(flowWithSource -> {
+            filteredFlowsToPush = filteredFlowsToPush.filter(flowWithSource ->
+            {
                 String flowId = flowWithSource.getId();
                 return matchers.stream().anyMatch(matcher -> matcher.matches(Path.of(flowId)));
             });
         }
 
-        return filteredFlowsToPush.collect(Collectors.toMap(flowWithSource -> {
+        return filteredFlowsToPush.collect(Collectors.toMap(flowWithSource ->
+        {
             Path path = flowDirectory;
             if (flowWithSource.getNamespace().length() > renderedSourceNamespace.length()) {
                 path = path.resolve(flowWithSource.getNamespace().substring(renderedSourceNamespace.length() + 1).replace(".", "/"));
             }
 
             return path.resolve(flowWithSource.getId() + ".yml");
-        }, throwFunction(flowWithSource -> (throwSupplier(() -> {
+        }, throwFunction(flowWithSource -> (throwSupplier(() ->
+        {
             String renderedTargetNamespace = runContext.render(targetNamespace).as(String.class).orElse(renderedSourceNamespace);
             String modifiedSource = flowWithSource.getSource()
                 .replaceAll(
-                "(?m)^(\\s*namespace:\\s*)" + renderedSourceNamespace,
-                "$1" + renderedTargetNamespace);
+                    "(?m)^(\\s*namespace:\\s*)" + renderedSourceNamespace,
+                    "$1" + renderedTargetNamespace
+                );
             return new ByteArrayInputStream(modifiedSource.getBytes());
         })))));
     }

@@ -1,15 +1,5 @@
 package io.kestra.plugin.git;
 
-import io.kestra.core.models.annotations.Example;
-import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.models.property.Property;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.storages.Namespace;
-import io.kestra.core.storages.NamespaceFile;
-import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.*;
-import lombok.experimental.SuperBuilder;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
@@ -20,6 +10,18 @@ import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+
+import io.kestra.core.models.annotations.Example;
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.storages.Namespace;
+import io.kestra.core.storages.NamespaceFile;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -103,6 +105,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
         description = "Defaults to `main`."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
@@ -110,6 +113,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
         description = "Namespace receiving the files; defaults to the current flow namespace."
     )
     @Builder.Default
+    @PluginProperty(group = "source")
     private Property<String> namespace = Property.ofExpression("{{ flow.namespace }}");
 
     @Schema(
@@ -117,6 +121,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
         description = "Relative path containing files; defaults to `_files`."
     )
     @Builder.Default
+    @PluginProperty(group = "destination")
     private Property<String> gitDirectory = Property.ofValue("_files");
 
     @Schema(
@@ -124,6 +129,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
         description = "Default false. When true, removes Namespace Files absent from Git."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<Boolean> delete = Property.ofValue(false);
 
     @Override
@@ -137,8 +143,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
     }
 
     @Override
-    protected NamespaceFile
-    simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+    protected NamespaceFile simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
         var namespace = runContext.storage().namespace(renderedNamespace);
         var path = Path.of(uri.getPath());
         var existingResource = this.findExistingResource(namespace, renderedNamespace, uri);
@@ -247,7 +252,8 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
     }
 
     @Override
-    protected SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, NamespaceFile resourceBeforeUpdate, NamespaceFile resourceAfterUpdate) {
+    protected SyncResult wrapper(RunContext runContext, String renderedGitDirectory, String renderedNamespace, URI resourceUri, NamespaceFile resourceBeforeUpdate,
+        NamespaceFile resourceAfterUpdate) {
         SyncState syncState;
         if (resourceUri == null) {
             syncState = SyncState.DELETED;
@@ -259,10 +265,12 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
             syncState = SyncState.OVERWRITTEN;
         }
 
-        String kestraPath = Optional.ofNullable(this.toUri(
-            renderedNamespace,
-            resourceAfterUpdate == null ? resourceBeforeUpdate : resourceAfterUpdate
-        )).map(URI::getPath).orElse(null);
+        String kestraPath = Optional.ofNullable(
+            this.toUri(
+                renderedNamespace,
+                resourceAfterUpdate == null ? resourceBeforeUpdate : resourceAfterUpdate
+            )
+        ).map(URI::getPath).orElse(null);
         SyncResult.SyncResultBuilder<?, ?> builder = SyncResult.builder()
             .syncState(syncState)
             .kestraPath(kestraPath);
@@ -316,7 +324,6 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
             return this.files;
         }
     }
-
 
     @SuperBuilder
     @Getter

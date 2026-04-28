@@ -1,10 +1,5 @@
 package io.kestra.plugin.git;
 
-import io.kestra.core.models.property.Property;
-import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Ref;
@@ -14,6 +9,14 @@ import org.eclipse.jgit.revwalk.RevWalk;
 import org.eclipse.jgit.transport.RefSpec;
 import org.slf4j.Logger;
 
+import io.kestra.core.models.property.Property;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+import io.kestra.core.models.annotations.PluginProperty;
+
 @SuperBuilder(toBuilder = true)
 @NoArgsConstructor
 @Getter
@@ -22,6 +25,7 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
         title = "Clone submodules",
         description = "Default false; enable to fetch and initialize nested submodules."
     )
+    @PluginProperty(group = "advanced")
     protected Property<Boolean> cloneSubmodules;
 
     protected void checkoutCommit(Git git, String sha, Logger logger) throws Exception {

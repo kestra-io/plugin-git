@@ -1,5 +1,20 @@
 package io.kestra.plugin.git;
 
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Map;
+
+import org.apache.commons.io.FileUtils;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.eclipse.jgit.transport.RefSpec;
+import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.junit.jupiter.api.Test;
+
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
@@ -8,21 +23,8 @@ import io.kestra.core.storages.StorageContext;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.plugin.git.services.GitService;
-import jakarta.inject.Inject;
-import org.apache.commons.io.FileUtils;
-import org.eclipse.jgit.api.Git;
-import org.eclipse.jgit.api.errors.GitAPIException;
-import org.eclipse.jgit.transport.RefSpec;
-import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
-import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Map;
+import jakarta.inject.Inject;
 
 import static org.eclipse.jgit.lib.Constants.R_HEADS;
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -48,22 +50,25 @@ class PushExecutionFilesTest extends AbstractGitTest {
             )
         );
 
-        RunContext runContext = runContextFactory.of(Map.of(
-            "flow", Map.of(
-                "tenantId", TenantService.MAIN_TENANT,
-                "namespace", namespace
-            ),
-            "url", repositoryUrl,
-            "branch", branch,
-            "pat", pat,
-            "outputs", outputs
-        ));
+        RunContext runContext = runContextFactory.of(
+            Map.of(
+                "flow", Map.of(
+                    "tenantId", TenantService.MAIN_TENANT,
+                    "namespace", namespace
+                ),
+                "url", repositoryUrl,
+                "branch", branch,
+                "pat", pat,
+                "outputs", outputs
+            )
+        );
 
         String filePath = "report.txt";
         String fileContent = "hello from storage";
         runContext.storage().namespace(namespace)
-            .putFile(Path.of(filePath), new ByteArrayInputStream(fileContent.getBytes(StandardCharsets.UTF_8))
-        );
+            .putFile(
+                Path.of(filePath), new ByteArrayInputStream(fileContent.getBytes(StandardCharsets.UTF_8))
+            );
 
         PushExecutionFiles push = PushExecutionFiles.builder()
             .id("push")
@@ -84,10 +89,10 @@ class PushExecutionFilesTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(new Property<>(repositoryUrl))
-                .username(new Property<>(pat))
-                .password(new Property<>(pat))
-                .branch(new Property<>(branch))
+                .url(Property.ofValue(repositoryUrl))
+                .username(Property.ofValue(pat))
+                .password(Property.ofValue(pat))
+                .branch(Property.ofValue(branch))
                 .build();
 
             Clone.Output cloneOutput = clone.run(runContextFactory.of());
@@ -109,9 +114,10 @@ class PushExecutionFilesTest extends AbstractGitTest {
         String filePath = "report.txt";
         String fileContent = "log here";
         var nsFile = runContext.storage().namespace(namespace)
-            .putFile(Path.of(filePath),
-            new ByteArrayInputStream(fileContent.getBytes(StandardCharsets.UTF_8))
-        ).stream().filter(namespaceFile -> !namespaceFile.isDirectory()).findFirst().orElseThrow();
+            .putFile(
+                Path.of(filePath),
+                new ByteArrayInputStream(fileContent.getBytes(StandardCharsets.UTF_8))
+            ).stream().filter(namespaceFile -> !namespaceFile.isDirectory()).findFirst().orElseThrow();
 
         PushExecutionFiles push = PushExecutionFiles.builder()
             .id("push")
@@ -132,10 +138,10 @@ class PushExecutionFilesTest extends AbstractGitTest {
             Clone clone = Clone.builder()
                 .id("clone")
                 .type(Clone.class.getName())
-                .url(new Property<>(repositoryUrl))
-                .username(new Property<>(pat))
-                .password(new Property<>(pat))
-                .branch(new Property<>(branch))
+                .url(Property.ofValue(repositoryUrl))
+                .username(Property.ofValue(pat))
+                .password(Property.ofValue(pat))
+                .branch(Property.ofValue(branch))
                 .build();
 
             Clone.Output cloneOutput = clone.run(runContextFactory.of());
@@ -185,9 +191,10 @@ class PushExecutionFilesTest extends AbstractGitTest {
         String filePath = "file.csv";
         String fileContent = "id,val\n1,2";
         runContext.storage().namespace(namespace)
-            .putFile(Path.of(filePath),
-            new ByteArrayInputStream(fileContent.getBytes(StandardCharsets.UTF_8))
-        );
+            .putFile(
+                Path.of(filePath),
+                new ByteArrayInputStream(fileContent.getBytes(StandardCharsets.UTF_8))
+            );
 
         PushExecutionFiles push = PushExecutionFiles.builder()
             .id("push")
@@ -232,15 +239,17 @@ class PushExecutionFilesTest extends AbstractGitTest {
     }
 
     private RunContext runContext(String namespace, String branch) {
-        return runContextFactory.of(Map.of(
-            "flow", Map.of(
-                "tenantId", TenantService.MAIN_TENANT,
-                "namespace", namespace
-            ),
-            "url", repositoryUrl,
-            "branch", branch,
-            "pat", pat
-        ));
+        return runContextFactory.of(
+            Map.of(
+                "flow", Map.of(
+                    "tenantId", TenantService.MAIN_TENANT,
+                    "namespace", namespace
+                ),
+                "url", repositoryUrl,
+                "branch", branch,
+                "pat", pat
+            )
+        );
     }
 
 }

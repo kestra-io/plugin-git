@@ -1,17 +1,5 @@
 package io.kestra.plugin.git;
 
-import io.kestra.core.exceptions.KestraRuntimeException;
-import io.kestra.core.models.annotations.Example;
-import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.models.annotations.PluginProperty;
-import io.kestra.core.models.property.Property;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.storages.Namespace;
-import io.kestra.core.utils.PathMatcherPredicate;
-import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.*;
-import lombok.experimental.SuperBuilder;
-
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.file.Path;
@@ -21,6 +9,19 @@ import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+
+import io.kestra.core.exceptions.KestraRuntimeException;
+import io.kestra.core.models.annotations.Example;
+import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.storages.Namespace;
+import io.kestra.core.utils.PathMatcherPredicate;
+
+import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.throwFunction;
 import static io.kestra.core.utils.Rethrow.throwSupplier;
@@ -107,6 +108,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         description = "Defaults to `main`; created if absent."
     )
     @Builder.Default
+    @PluginProperty(group = "advanced")
     private Property<String> branch = Property.ofValue("main");
 
     @Schema(
@@ -114,13 +116,15 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         description = "Namespace whose files are exported; defaults to the current flow namespace."
     )
     @Builder.Default
-    private Property<String> namespace = new Property<>("{{ flow.namespace }}");
+    @PluginProperty(group = "source")
+    private Property<String> namespace = Property.ofExpression("{{ flow.namespace }}");
 
     @Schema(
         title = "Destination directory",
         description = "Relative path inside the repo; defaults to `_files`. Paths under the namespace are preserved beneath this directory."
     )
     @Builder.Default
+    @PluginProperty(group = "destination")
     private Property<String> gitDirectory = Property.ofValue("_files");
 
     @Schema(
@@ -129,7 +133,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         defaultValue = "**"
 
     )
-    @PluginProperty(dynamic = true)
+    @PluginProperty(dynamic = true, group = "deprecated")
     private Object files;
 
     @Schema(
@@ -138,7 +142,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     )
     @Override
     public Property<String> getCommitMessage() {
-        return Optional.ofNullable(this.commitMessage).orElse(new Property<>("Add files from " + this.namespace.toString() + " namespace"));
+        return Optional.ofNullable(this.commitMessage).orElse(Property.ofValue("Add files from " + this.namespace.toString() + " namespace"));
     }
 
     @Schema(
@@ -146,6 +150,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         description = "If true, throws when the glob finds no files; otherwise logs and skips."
     )
     @Builder.Default
+    @PluginProperty(group = "reliability")
     private Property<Boolean> errorOnMissing = Property.ofValue(false);
 
     @Override
@@ -167,10 +172,12 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         Map<Path, Supplier<InputStream>> filesMap = storage
             .findAllFilesMatching(matcher)
             .stream()
-            .collect(Collectors.toMap(
-                nsFile -> baseDirectory.resolve(nsFile.path()),
-                throwFunction(nsFile -> throwSupplier(() -> storage.getFileContent(Path.of(nsFile.path()))))
-            ));
+            .collect(
+                Collectors.toMap(
+                    nsFile -> baseDirectory.resolve(nsFile.path()),
+                    throwFunction(nsFile -> throwSupplier(() -> storage.getFileContent(Path.of(nsFile.path()))))
+                )
+            );
 
         if (runContext.render(errorOnMissing).as(Boolean.class).orElse(false) && filesMap.isEmpty()) {
             throw new KestraRuntimeException("No Namespace Files matched the provided 'files' parameter to commit.");

@@ -1,6 +1,19 @@
 package io.kestra.plugin.git;
 
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
+
+import org.apache.commons.io.IOUtils;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
 import com.fasterxml.jackson.core.type.TypeReference;
+
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.FlowWithSource;
@@ -13,18 +26,8 @@ import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.storages.NamespaceFile;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.tenant.TenantService;
-import jakarta.inject.Inject;
-import org.apache.commons.io.IOUtils;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.*;
+import jakarta.inject.Inject;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -121,10 +124,10 @@ public class NamespaceSyncTest extends AbstractGitTest {
 
         RunContext cloneCtx = runContextFactory.of();
         Clone.builder()
-            .url(new Property<>(repositoryUrl))
-            .username(new Property<>(pat))
-            .password(new Property<>(pat))
-            .branch(new Property<>(branch))
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(branch))
             .build()
             .run(cloneCtx);
 
@@ -174,17 +177,19 @@ public class NamespaceSyncTest extends AbstractGitTest {
     }
 
     private RunContext runContext() {
-        Map<String, Object> ctx = new HashMap<>(Map.of(
-            "flow", Map.of(
-                "tenantId", TENANT_ID,
-                "namespace", NAMESPACE
-            ),
-            "url", repositoryUrl,
-            "pat", pat,
-            "branch", branch,
-            "namespace", NAMESPACE,
-            "gitDirectory", GIT_DIRECTORY
-        ));
+        Map<String, Object> ctx = new HashMap<>(
+            Map.of(
+                "flow", Map.of(
+                    "tenantId", TENANT_ID,
+                    "namespace", NAMESPACE
+                ),
+                "url", repositoryUrl,
+                "pat", pat,
+                "branch", branch,
+                "namespace", NAMESPACE,
+                "gitDirectory", GIT_DIRECTORY
+            )
+        );
         return runContextFactory.of(ctx);
     }
 

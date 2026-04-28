@@ -1,9 +1,7 @@
 package io.kestra.plugin.git.services;
 
-import com.jcraft.jsch.JSch;
-import com.jcraft.jsch.JSchException;
-import com.jcraft.jsch.Session;
-import lombok.AllArgsConstructor;
+import java.nio.charset.StandardCharsets;
+
 import org.eclipse.jgit.api.TransportConfigCallback;
 import org.eclipse.jgit.transport.SshTransport;
 import org.eclipse.jgit.transport.Transport;
@@ -11,8 +9,11 @@ import org.eclipse.jgit.transport.ssh.jsch.JschConfigSessionFactory;
 import org.eclipse.jgit.transport.ssh.jsch.OpenSshConfig;
 import org.eclipse.jgit.util.FS;
 
-import java.io.File;
-import java.nio.charset.StandardCharsets;
+import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.JSchException;
+import com.jcraft.jsch.Session;
+
+import lombok.AllArgsConstructor;
 
 @AllArgsConstructor
 public class SshTransportConfigCallback implements TransportConfigCallback {
