@@ -4,9 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
@@ -20,11 +18,16 @@ import com.google.common.annotations.VisibleForTesting;
 
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
+import io.kestra.core.http.HttpRequest;
+import io.kestra.core.http.client.HttpClient;
+import io.kestra.core.http.client.configurations.BasicAuthConfiguration;
+import io.kestra.core.http.client.configurations.HttpConfiguration;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.runners.SDK;
 import io.kestra.sdk.KestraClient;
 import io.kestra.sdk.model.PagedResultsDashboard;
 
@@ -164,32 +167,34 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
     }
 
     private String fetchDashboardSourceCode(KestraClient kestraClient, RunContext runContext, String tenantId, String dashboardId) throws Exception {
-        var apiClient = kestraClient.dashboards().getApiClient();
+        String basePath = kestraClient.dashboards().getApiClient().getBasePath();
+        String encodedId = URLEncoder.encode(dashboardId, StandardCharsets.UTF_8);
         String path = tenantId == null
-            ? "/api/v1/dashboards/" + dashboardId
-            : "/api/v1/" + tenantId + "/dashboards/" + dashboardId;
-        String url = apiClient.getBaseURL() + path;
+            ? "/api/v1/dashboards/" + encodedId
+            : "/api/v1/" + tenantId + "/dashboards/" + encodedId;
 
-        var requestBuilder = HttpRequest.newBuilder()
-            .uri(java.net.URI.create(url))
-            .header("Accept", "application/x-yaml")
-            .GET();
-
-        var autoAuth = runContext.sdk().defaultAuthentication();
+        HttpConfiguration.HttpConfigurationBuilder configBuilder = HttpConfiguration.builder();
+        Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
         if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-            String encoded = Base64.getEncoder().encodeToString(
-                (autoAuth.get().username().get() + ":" + autoAuth.get().password().get()).getBytes(StandardCharsets.UTF_8));
-            requestBuilder.header("Authorization", "Basic " + encoded);
+            configBuilder.auth(BasicAuthConfiguration.builder()
+                .username(Property.ofValue(autoAuth.get().username().get()))
+                .password(Property.ofValue(autoAuth.get().password().get()))
+                .build());
         }
 
-        var response = HttpClient.newHttpClient().send(requestBuilder.build(), HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() == 401) {
-            throw new KestraRuntimeException("Authentication required to fetch dashboard YAML for " + dashboardId + ". Check your Kestra credentials.");
+        try (var httpClient = HttpClient.builder()
+                .runContext(runContext)
+                .configuration(configBuilder.build())
+                .build()) {
+            var response = httpClient.request(
+                HttpRequest.builder()
+                    .uri(URI.create(basePath + path))
+                    .addHeader("Accept", "application/x-yaml")
+                    .build(),
+                String.class
+            );
+            return response.getBody();
         }
-        if (response.statusCode() != 200) {
-            throw new KestraRuntimeException("Failed to fetch dashboard YAML for " + dashboardId + ": HTTP " + response.statusCode());
-        }
-        return response.body();
     }
 
     @Override
