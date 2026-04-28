@@ -22,6 +22,11 @@ import org.eclipse.jgit.transport.RemoteRefUpdate;
 import io.kestra.core.exceptions.FlowProcessingException;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
+import io.kestra.core.http.HttpRequest;
+import io.kestra.core.http.client.HttpClient;
+import io.kestra.core.http.client.configurations.BasicAuthConfiguration;
+import io.kestra.core.http.client.configurations.HttpConfiguration;
+import io.kestra.core.runners.SDK;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.flows.FlowWithSource;
@@ -840,9 +845,15 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             do {
                 pagedResults = kestraClient.dashboards().searchDashboards(page, size, runContext.flowInfo().tenantId(), null, null);
 
+                String tenantForFetch = runContext.flowInfo().tenantId();
                 pagedResults.getResults().forEach(dash ->
                 {
-                    dashboards.put(dash.getTitle(), dash.getSourceCode());
+                    try {
+                        String sourceCode = fetchDashboardSourceCode(kestraClient, runContext, tenantForFetch, dash.getTitle());
+                        dashboards.put(dash.getTitle(), sourceCode);
+                    } catch (Exception e) {
+                        throw new KestraRuntimeException("Failed to fetch source code for dashboard " + dash.getTitle(), e);
+                    }
                 });
 
                 page++;
@@ -852,6 +863,49 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
         } catch (Exception e) {
             throw new KestraRuntimeException("Failed to fetch dashboards from Kestra", e);
+        }
+    }
+
+    private String fetchDashboardSourceCode(KestraClient kestraClient, RunContext runContext, String tenantId, String dashboardTitle) throws Exception {
+        String basePath = kestraClient.dashboards().getApiClient().getBasePath();
+        String encodedTitle = java.net.URLEncoder.encode(dashboardTitle, StandardCharsets.UTF_8);
+        String path = tenantId == null
+            ? "/api/v1/dashboards/" + encodedTitle
+            : "/api/v1/" + tenantId + "/dashboards/" + encodedTitle;
+
+        HttpConfiguration.HttpConfigurationBuilder configBuilder = HttpConfiguration.builder();
+        AbstractKestraTask.Auth auth = getAuth();
+        if (auth != null) {
+            Optional<String> maybeUsername = runContext.render(auth.getUsername()).as(String.class);
+            Optional<String> maybePassword = runContext.render(auth.getPassword()).as(String.class);
+            if (maybeUsername.isPresent() && maybePassword.isPresent()) {
+                configBuilder.auth(BasicAuthConfiguration.builder()
+                    .username(Property.ofValue(maybeUsername.get()))
+                    .password(Property.ofValue(maybePassword.get()))
+                    .build());
+            }
+        } else {
+            Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
+            if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+                configBuilder.auth(BasicAuthConfiguration.builder()
+                    .username(Property.ofValue(autoAuth.get().username().get()))
+                    .password(Property.ofValue(autoAuth.get().password().get()))
+                    .build());
+            }
+        }
+
+        try (var httpClient = HttpClient.builder()
+                .runContext(runContext)
+                .configuration(configBuilder.build())
+                .build()) {
+            var response = httpClient.request(
+                HttpRequest.builder()
+                    .uri(URI.create(basePath + path))
+                    .addHeader("Accept", "application/x-yaml")
+                    .build(),
+                String.class
+            );
+            return response.getBody();
         }
     }
 
