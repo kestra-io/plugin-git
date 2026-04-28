@@ -36,7 +36,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 @KestraTest
-public class PushDahboardsTest extends AbstractGitTest {
+public class PushDashboardsTest extends AbstractGitTest {
     public static final String DESCRIPTION = "One-task push";
 
     @Inject
@@ -75,7 +75,7 @@ public class PushDahboardsTest extends AbstractGitTest {
 
         try {
             PushDashboards pushDashboards = PushDashboards.builder()
-                .id(PushDahboardsTest.class.getSimpleName())
+                .id(PushDashboardsTest.class.getSimpleName())
                 .type(PushDashboards.class.getName())
                 .branch(Property.ofExpression("{{branch}}"))
                 .url(Property.ofExpression("{{url}}"))
@@ -148,7 +148,7 @@ public class PushDahboardsTest extends AbstractGitTest {
 
         try {
             PushDashboards pushDashboards = PushDashboards.builder()
-                .id(PushDahboardsTest.class.getSimpleName())
+                .id(PushDashboardsTest.class.getSimpleName())
                 .type(PushDashboards.class.getName())
                 .branch(Property.ofExpression("{{branch}}"))
                 .url(Property.ofExpression("{{url}}"))
@@ -198,7 +198,8 @@ public class PushDahboardsTest extends AbstractGitTest {
             Map.of(
                 "flow", Map.of(
                     "tenantId", tenantId,
-                    "namespace", "system"
+                    "namespace", "system",
+                    "id", "PushDashboardsTest"
                 ),
                 "url", url,
                 "description", DESCRIPTION,
