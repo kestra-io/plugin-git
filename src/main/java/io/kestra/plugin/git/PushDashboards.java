@@ -174,12 +174,31 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
             : "/api/v1/" + tenantId + "/dashboards/" + encodedId;
 
         HttpConfiguration.HttpConfigurationBuilder configBuilder = HttpConfiguration.builder();
-        Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
-        if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-            configBuilder.auth(BasicAuthConfiguration.builder()
-                .username(Property.ofValue(autoAuth.get().username().get()))
-                .password(Property.ofValue(autoAuth.get().password().get()))
-                .build());
+        if (auth != null) {
+            Optional<String> maybeUsername = runContext.render(auth.getUsername()).as(String.class);
+            Optional<String> maybePassword = runContext.render(auth.getPassword()).as(String.class);
+            if (maybeUsername.isPresent() && maybePassword.isPresent()) {
+                configBuilder.auth(BasicAuthConfiguration.builder()
+                    .username(Property.ofValue(maybeUsername.get()))
+                    .password(Property.ofValue(maybePassword.get()))
+                    .build());
+            } else if (runContext.render(auth.getAuto()).as(Boolean.class).orElse(Boolean.TRUE)) {
+                Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
+                if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+                    configBuilder.auth(BasicAuthConfiguration.builder()
+                        .username(Property.ofValue(autoAuth.get().username().get()))
+                        .password(Property.ofValue(autoAuth.get().password().get()))
+                        .build());
+                }
+            }
+        } else {
+            Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
+            if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+                configBuilder.auth(BasicAuthConfiguration.builder()
+                    .username(Property.ofValue(autoAuth.get().username().get()))
+                    .password(Property.ofValue(autoAuth.get().password().get()))
+                    .build());
+            }
         }
 
         try (var httpClient = HttpClient.builder()
