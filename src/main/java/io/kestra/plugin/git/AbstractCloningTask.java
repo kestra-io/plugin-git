@@ -21,8 +21,7 @@ import io.kestra.core.runners.SDK;
 import io.kestra.sdk.KestraClient;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import lombok.experimental.SuperBuilder;
 import io.kestra.core.models.annotations.PluginProperty;
 
@@ -50,6 +49,10 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
     @PluginProperty(group = "advanced")
     protected Property<Boolean> cloneSubmodules;
 
+    @Schema(title = "Kestra API authentication")
+    @PluginProperty(group = "connection")
+    protected Auth auth;
+
     protected KestraClient kestraClient(RunContext runContext) throws IllegalVariableEvaluationException {
         String rKestraUrl = runContext.render(kestraUrl).as(String.class)
             .orElseGet(() -> {
@@ -69,11 +72,53 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
 
         var normalizedUrl = rKestraUrl.trim().replaceAll("/+$", "");
         var builder = KestraClient.builder().url(normalizedUrl);
-        Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
-        if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-            return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
+
+        if (auth != null) {
+            Optional<String> maybeUsername = runContext.render(auth.username).as(String.class);
+            Optional<String> maybePassword = runContext.render(auth.password).as(String.class);
+            if (maybeUsername.isPresent() && maybePassword.isPresent()) {
+                return builder.basicAuth(maybeUsername.get(), maybePassword.get()).build();
+            }
+            if (maybeUsername.isPresent() || maybePassword.isPresent()) {
+                throw new IllegalArgumentException("Both username and password are required for HTTP Basic authentication");
+            }
+            if (runContext.render(auth.auto).as(Boolean.class).orElse(Boolean.TRUE)) {
+                Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
+                if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+                    return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
+                }
+            }
+        } else {
+            Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
+            if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+                return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
+            }
         }
+
         return builder.build();
+    }
+
+    @Builder
+    @Getter
+    public static class Auth {
+        @Schema(title = "Username for HTTP Basic authentication.")
+        @PluginProperty(secret = true, group = "connection")
+        private Property<String> username;
+
+        @Schema(title = "Password for HTTP Basic authentication.")
+        @PluginProperty(secret = true, group = "connection")
+        private Property<String> password;
+
+        @Schema(
+            title = "Automatically retrieve credentials from Kestra's configuration if available",
+            description = """
+                Can be configured globally in the Kestra configuration file:
+                - Set `kestra.tasks.sdk.authentication.api-token` for API token auth
+                - Set `kestra.tasks.sdk.authentication.username` and `kestra.tasks.sdk.authentication.password` for HTTP Basic auth"""
+        )
+        @Builder.Default
+        @PluginProperty(group = "advanced")
+        private Property<Boolean> auto = Property.ofValue(Boolean.TRUE);
     }
 
     protected void checkoutCommit(Git git, String sha, Logger logger, boolean noTags) throws Exception {
