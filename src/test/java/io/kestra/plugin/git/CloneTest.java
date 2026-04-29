@@ -341,7 +341,6 @@ class CloneTest extends AbstractGitTest {
             .url(Property.ofValue(remote.toUri().toString()))
             .branch(Property.ofValue("feature/only"))
             .cloneAllBranches(Property.ofValue(false))
-            .branchesToClone(Property.ofValue(List.of("feature/only")))
             .build();
 
         Clone.Output out = task.run(runContext);
@@ -381,25 +380,28 @@ class CloneTest extends AbstractGitTest {
     }
 
     @Test
-    void cloneSingleBranchMismatchFailsFast() throws Exception {
+    void cloneNoTagsMainPath() throws Exception {
         Path remote = Files.createTempDirectory("git-remote-");
         try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
-            Files.writeString(remote.resolve("main.txt"), "main\n");
-            git.add().addFilepattern("main.txt").call();
-            git.commit().setMessage("main").call();
+            Files.writeString(remote.resolve("tagged.txt"), "v1\n");
+            git.add().addFilepattern("tagged.txt").call();
+            git.commit().setMessage("first").call();
+            git.tag().setName("v1.0").call();
         }
 
         RunContext runContext = runContextFactory.of();
 
         Clone task = Clone.builder()
             .url(Property.ofValue(remote.toUri().toString()))
-            .branch(Property.ofValue("feature/only"))
-            .cloneAllBranches(Property.ofValue(false))
-            .branchesToClone(Property.ofValue(List.of("main")))
+            .noTags(Property.ofValue(true))
             .build();
 
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> task.run(runContext));
-        assertThat(ex.getMessage(), containsString("must be included in `branchesToClone`"));
+        Clone.Output out = task.run(runContext);
+        Path repoPath = Path.of(out.getDirectory());
+
+        try (Git cloned = Git.open(repoPath.toFile())) {
+            assertNull(cloned.getRepository().findRef("refs/tags/v1.0"));
+        }
     }
 
     @Test
@@ -416,7 +418,6 @@ class CloneTest extends AbstractGitTest {
         Clone task = Clone.builder()
             .url(Property.ofValue(remote.toUri().toString()))
             .cloneAllBranches(Property.ofValue(false))
-            .branchesToClone(Property.ofValue(List.of("main")))
             .build();
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> task.run(runContext));

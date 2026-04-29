@@ -176,13 +176,6 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     private Property<Boolean> cloneAllBranches;
 
     @Schema(
-        title = "Specific branches to clone",
-        description = "Optional list of branch names to fetch (e.g. `main`), equivalent to JGit `setBranchesToClone`."
-    )
-    @PluginProperty(group = "advanced")
-    private Property<List<String>> branchesToClone;
-
-    @Schema(
         title = "Do not fetch tags",
         description = "When true, skip fetching tags during clone and fetch fallback."
     )
@@ -247,8 +240,8 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
             cloneCommand.setCloneAllBranches(cloneOptions.cloneAllBranches);
         }
 
-        if (!cloneOptions.branchesToClone.isEmpty()) {
-            cloneCommand.setBranchesToClone(cloneOptions.branchesToClone.stream().map(Clone::normalizeBranchRef).toList());
+        if (Boolean.FALSE.equals(cloneOptions.cloneAllBranches) && cloneOptions.branch != null) {
+            cloneCommand.setBranchesToClone(List.of(normalizeBranchRef(shortBranchName(cloneOptions.branch))));
         }
 
         if (cloneOptions.noTags) {
@@ -299,16 +292,10 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
             List<RefSpec> refSpecs = new ArrayList<>();
 
-            if (!cloneOptions.branchesToClone.isEmpty()) {
-                for (String branchToClone : cloneOptions.branchesToClone) {
-                    String branchName = shortBranchName(branchToClone);
-                    refSpecs.add(new RefSpec("+refs/heads/" + branchName + ":refs/remotes/origin/" + branchName));
-                }
-            } else if (Boolean.FALSE.equals(cloneOptions.cloneAllBranches) && cloneOptions.branch != null) {
+            if (Boolean.FALSE.equals(cloneOptions.cloneAllBranches) && cloneOptions.branch != null) {
                 String branchName = shortBranchName(cloneOptions.branch);
                 refSpecs.add(new RefSpec("+refs/heads/" + branchName + ":refs/remotes/origin/" + branchName));
             } else {
-                // Preserve previous behavior when the new properties are not configured.
                 refSpecs.add(new RefSpec("+refs/heads/*:refs/remotes/origin/*"));
             }
 
@@ -419,27 +406,11 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
             ? runContext.render(this.cloneAllBranches).as(Boolean.class).orElse(false)
             : null;
         boolean rNoTags = this.noTags != null && runContext.render(this.noTags).as(Boolean.class).orElse(false);
-        List<String> rBranchesToClone = this.branchesToClone != null
-            ? runContext.render(this.branchesToClone).asList(String.class).stream()
-                .filter(value -> value != null && !value.isBlank())
-                .map(Clone::shortBranchName)
-                .toList()
-            : List.of();
 
         if (Boolean.FALSE.equals(rCloneAllBranches)) {
             if (rBranch == null || rBranch.isBlank()) {
                 throw new IllegalArgumentException(
                     "Invalid clone configuration: when `cloneAllBranches` is false, `branch` must be set."
-                );
-            }
-
-            String checkoutBranch = shortBranchName(rBranch);
-            if (rBranchesToClone.isEmpty()) {
-                rBranchesToClone = List.of(checkoutBranch);
-            } else if (rBranchesToClone.stream().noneMatch(checkoutBranch::equals)) {
-                throw new IllegalArgumentException(
-                    "Invalid clone configuration: when `cloneAllBranches` is false, `branch` ('" +
-                        checkoutBranch + "') must be included in `branchesToClone`."
                 );
             }
         }
@@ -448,13 +419,12 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
             throw new IllegalArgumentException("Invalid clone configuration: `tag` cannot be used with `noTags: true`.");
         }
 
-        return new CloneOptions(rBranch, rCloneAllBranches, rBranchesToClone, rNoTags);
+        return new CloneOptions(rBranch, rCloneAllBranches, rNoTags);
     }
 
     private record CloneOptions(
         String branch,
         Boolean cloneAllBranches,
-        List<String> branchesToClone,
         boolean noTags
     ) {}
 
