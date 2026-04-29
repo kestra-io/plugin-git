@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.time.Instant;
 import java.util.*;
 import java.util.regex.Pattern;
@@ -15,7 +16,6 @@ import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.http.HttpRequest;
 import io.kestra.core.http.client.HttpClient;
-import io.kestra.core.http.client.configurations.BasicAuthConfiguration;
 import io.kestra.core.http.client.configurations.HttpConfiguration;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
@@ -268,26 +268,22 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
             ? "/api/v1/dashboards/" + encodedId
             : "/api/v1/" + tenantId + "/dashboards/" + encodedId;
 
-        HttpConfiguration.HttpConfigurationBuilder configBuilder = HttpConfiguration.builder();
+        HttpRequest.HttpRequestBuilder requestBuilder = HttpRequest.builder()
+            .uri(URI.create(basePath + path))
+            .addHeader("Accept", "application/x-yaml");
         Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
         if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-            configBuilder.auth(BasicAuthConfiguration.builder()
-                .username(Property.ofValue(autoAuth.get().username().get()))
-                .password(Property.ofValue(autoAuth.get().password().get()))
-                .build());
+            String encoded = Base64.getEncoder().encodeToString(
+                (autoAuth.get().username().get() + ":" + autoAuth.get().password().get()).getBytes(StandardCharsets.UTF_8)
+            );
+            requestBuilder.addHeader("Authorization", "Basic " + encoded);
         }
 
         try (var httpClient = HttpClient.builder()
                 .runContext(runContext)
-                .configuration(configBuilder.build())
+                .configuration(HttpConfiguration.builder().build())
                 .build()) {
-            var response = httpClient.request(
-                HttpRequest.builder()
-                    .uri(URI.create(basePath + path))
-                    .addHeader("Accept", "application/x-yaml")
-                    .build(),
-                String.class
-            );
+            var response = httpClient.request(requestBuilder.build(), String.class);
             return response.getBody();
         }
     }
