@@ -1024,14 +1024,14 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             ? "/api/v1/dashboards/" + encodedId
             : "/api/v1/" + tenantId + "/dashboards/" + encodedId;
 
-        byte[] yamlBytes = apiClient.invokeAPI(
+        Map<String, Object> response = apiClient.invokeAPI(
             path, "GET",
             Collections.emptyList(), Collections.emptyList(), null,
             null, Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(),
-            "application/x-yaml", null, new String[0],
-            new TypeReference<byte[]>() {}
+            "application/json", null, new String[0],
+            new TypeReference<Map<String, Object>>() {}
         );
-        return new String(yamlBytes, StandardCharsets.UTF_8);
+        return (String) response.get("sourceCode");
     }
 
     private File toNamedTempFile(String fileName, String yaml) {
