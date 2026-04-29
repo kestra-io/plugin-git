@@ -379,29 +379,36 @@ public class MockKestraApiServer implements AutoCloseable {
 
         var dashboards = dashboardRepo.findAll(tenantId);
         var match = dashboards.stream().filter(d -> dashboardId.equals(d.getId())).findFirst();
-        if (match.isPresent() && match.get().getSourceCode() != null) {
+        if (match.isPresent()) {
             var d = match.get();
-            var sourceYaml = d.getSourceCode();
-            // Inject updated timestamp into YAML so SyncDashboards.wrapper() can compare without NPE
+            var sourceYaml = d.getSourceCode() != null ? d.getSourceCode()
+                : "id: " + dashboardId + "\ntitle: " + dashboardId + "\n";
+            // Inject updated timestamp so SyncDashboards.wrapper() can compare timestamps without NPE
             if (!sourceYaml.contains("\nupdated:") && !sourceYaml.startsWith("updated:")) {
                 var ts = d.getUpdated() != null ? d.getUpdated().toString() : "1970-01-01T00:00:00Z";
                 sourceYaml = "updated: " + ts + "\n" + sourceYaml;
             }
-            var yaml = sourceYaml.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Content-Type", "application/x-yaml");
-            exchange.sendResponseHeaders(200, yaml.length);
-            exchange.getResponseBody().write(yaml);
-        } else if (match.isPresent()) {
-            // If no source code in memory, generate minimal YAML with a non-null updated timestamp
-            var updated = match.get().getUpdated() != null ? match.get().getUpdated().toString() : "1970-01-01T00:00:00Z";
-            var yaml = ("id: " + dashboardId + "\ntitle: " + dashboardId + "\nupdated: " + updated + "\n").getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Content-Type", "application/x-yaml");
-            exchange.sendResponseHeaders(200, yaml.length);
-            exchange.getResponseBody().write(yaml);
+
+            var accept = exchange.getRequestHeaders().getFirst("Accept");
+            if (accept != null && accept.contains("application/json")) {
+                // Production code calls invokeAPI with Accept: application/json and reads response.get("sourceCode")
+                try {
+                    String json = JacksonMapper.ofJson().writeValueAsString(Map.of("id", d.getId(), "sourceCode", sourceYaml));
+                    sendJson(exchange, 200, json);
+                } catch (Exception e) {
+                    sendJson(exchange, 500, "{\"error\":\"serialization failed\"}");
+                }
+            } else {
+                var yaml = sourceYaml.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/x-yaml");
+                exchange.sendResponseHeaders(200, yaml.length);
+                exchange.getResponseBody().write(yaml);
+                exchange.close();
+            }
         } else {
             exchange.sendResponseHeaders(404, -1);
+            exchange.close();
         }
-        exchange.close();
     }
 
     /**
