@@ -53,39 +53,43 @@ public class PushDashboardsContainerTest extends AbstractKestraContainerTest {
         var dashboardId = "push-container-test-" + IdUtils.create().toLowerCase();
         var runContext = buildRunContext();
 
-        var dashboardYaml = "id: " + dashboardId + "\n"
-            + "title: Container Test Dashboard\n"
-            + "description: Created by PushDashboardsContainerTest\n"
-            + "timeWindow:\n"
-            + "  default: P30D\n"
-            + "  max: P365D\n"
-            + "charts:\n"
-            + "  - id: executions_timeseries\n"
-            + "    type: io.kestra.plugin.core.dashboard.chart.TimeSeries\n"
-            + "    chartOptions:\n"
-            + "      displayName: Executions\n"
-            + "      description: Executions duration and count per date\n"
-            + "      legend:\n"
-            + "        enabled: true\n"
-            + "      column: date\n"
-            + "      colorByColumn: state\n"
-            + "    data:\n"
-            + "      type: io.kestra.plugin.core.dashboard.data.Executions\n"
-            + "      columns:\n"
-            + "        date:\n"
-            + "          field: START_DATE\n"
-            + "          displayName: Date\n"
-            + "        state:\n"
-            + "          field: STATE\n"
-            + "        total:\n"
-            + "          displayName: Executions\n"
-            + "          agg: COUNT\n"
-            + "          graphStyle: BARS\n"
-            + "        duration:\n"
-            + "          displayName: Duration\n"
-            + "          field: DURATION\n"
-            + "          agg: SUM\n"
-            + "          graphStyle: LINES\n";
+        var dashboardYaml = """
+            id: \
+            """ + dashboardId + """
+
+            title: Container Test Dashboard
+            description: Created by PushDashboardsContainerTest
+            timeWindow:
+              default: P30D
+              max: P365D
+            charts:
+              - id: executions_timeseries
+                type: io.kestra.plugin.core.dashboard.chart.TimeSeries
+                chartOptions:
+                  displayName: Executions
+                  description: Executions duration and count per date
+                  legend:
+                    enabled: true
+                  column: date
+                  colorByColumn: state
+                data:
+                  type: io.kestra.plugin.core.dashboard.data.Executions
+                  columns:
+                    date:
+                      field: START_DATE
+                      displayName: Date
+                    state:
+                      field: STATE
+                    total:
+                      displayName: Executions
+                      agg: COUNT
+                      graphStyle: BARS
+                    duration:
+                      displayName: Duration
+                      field: DURATION
+                      agg: SUM
+                      graphStyle: LINES
+            """;
 
         kestraTestDataUtils.createDashboard(TENANT_ID, dashboardYaml);
 
