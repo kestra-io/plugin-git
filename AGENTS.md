@@ -2,11 +2,14 @@
 
 ## What
 
-Integrate Git for efficient data workflows in Kestra. Exposes 13 plugin components (tasks, triggers, and/or conditions).
+- Provides plugin components under `io.kestra.plugin.git`.
+- Includes classes such as `SyncFlow`, `Sync`, `SyncNamespaceFiles`, `PushNamespaceFiles`.
 
 ## Why
 
-Enables Kestra workflows to interact with Git, allowing orchestration of Git-based operations as part of data pipelines and automation workflows.
+- What user problem does this solve? Teams need to clone, fetch, and interact with Git repositories from orchestrated workflows instead of relying on manual console work, ad hoc scripts, or disconnected schedulers.
+- Why would a team adopt this plugin in a workflow? It keeps Git steps in the same Kestra flow as upstream preparation, approvals, retries, notifications, and downstream systems.
+- What operational/business outcome does it enable? It reduces manual handoffs and fragmented tooling while improving reliability, traceability, and delivery speed for processes that depend on Git.
 
 ## How
 
@@ -47,24 +50,7 @@ plugin-git/
 └── README.md
 ```
 
-### Important Commands
+## References
 
-```bash
-# Build the plugin
-./gradlew shadowJar
-
-# Run tests
-./gradlew test
-
-# Build without tests
-./gradlew shadowJar -x test
-```
-
-### Configuration
-
-All tasks and triggers accept standard Kestra plugin properties. Credentials should use
-`{{ secret('SECRET_NAME') }}` — never hardcode real values.
-
-## Agents
-
-**IMPORTANT:** This is a Kestra plugin repository (prefixed by `plugin-`, `storage-`, or `secret-`). You **MUST** delegate all coding tasks to the `kestra-plugin-developer` agent. Do NOT implement code changes directly — always use this agent.
+- https://kestra.io/docs/plugin-developer-guide
+- https://kestra.io/docs/plugin-developer-guide/contribution-guidelines

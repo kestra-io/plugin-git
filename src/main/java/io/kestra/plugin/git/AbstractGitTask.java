@@ -72,25 +72,31 @@ public abstract class AbstractGitTask extends Task {
         title = "Username or organization",
         description = "Used for HTTP basic authentication and as a fallback commit author."
     )
-    @PluginProperty(group = "connection")
+    @PluginProperty(secret = true, group = "connection")
     protected Property<String> username;
 
     @Schema(
         title = "Password or personal access token",
-        description = "Supplies HTTP credentials. When a PAT is used, pushes are recorded under that PAT’s user without needing `authorName` and `authorEmail`."
+        description = """
+            Supplies HTTP credentials. When a PAT is used, pushes are recorded under that PAT’s user without needing `authorName` and `authorEmail`.
+
+            **GitHub PAT permissions required:**
+            - Fine-grained PAT: `Contents: Read` (clone/fetch) or `Contents: Read and Write` (push), plus `Metadata: Read` (mandatory base permission). Add `Workflows: Read and Write` when pushing `.github/workflows/` files.
+            - Classic PAT: `repo` scope covers all read/write operations; add `workflow` when pushing workflow files.
+            """
     )
-    @PluginProperty(group = "connection")
+    @PluginProperty(secret = true, group = "connection")
     protected Property<String> password;
 
     @Schema(
         title = "PEM private key",
         description = "PEM-formatted private key matching a public key registered on the Git server. Generate with `ssh-keygen -t ecdsa -b 256 -m PEM`."
     )
-    @PluginProperty(group = "connection")
+    @PluginProperty(secret = true, group = "connection")
     protected Property<String> privateKey;
 
     @Schema(title = "Passphrase for `privateKey`")
-    @PluginProperty(group = "advanced")
+    @PluginProperty(secret = true, group = "advanced")
     protected Property<String> passphrase;
 
     @Schema(
