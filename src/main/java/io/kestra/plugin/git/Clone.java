@@ -2,11 +2,14 @@ package io.kestra.plugin.git;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.eclipse.jgit.api.CloneCommand;
 import org.eclipse.jgit.api.FetchCommand;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.transport.RefSpec;
+import org.eclipse.jgit.transport.TagOpt;
 import org.eclipse.jgit.transport.URIish;
 import org.slf4j.Logger;
 
@@ -165,11 +168,28 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     @PluginProperty(group = "advanced")
     private Property<String> tag;
 
+    @Schema(
+        title = "Clone all branches",
+        description = "When true, clones all remote branches. When false, follows single-branch clone behavior."
+    )
+    @Builder.Default
+    @PluginProperty(group = "advanced")
+    private Property<Boolean> cloneAllBranches = Property.ofValue(true);
+
+    @Schema(
+        title = "Do not fetch tags",
+        description = "When true, skip fetching tags during clone and fetch fallback."
+    )
+    @Builder.Default
+    @PluginProperty(group = "advanced")
+    private Property<Boolean> noTags = Property.ofValue(false);
+
     @Override
     public Clone.Output run(RunContext runContext) throws Exception {
 
         Logger logger = runContext.logger();
         String url = runContext.render(this.url).as(String.class).orElse(null);
+        var cloneOptions = resolveCloneOptions(runContext);
 
         Path path = runContext.workingDir().path();
         if (this.directory != null) {
@@ -194,7 +214,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         // In that case, use git init + fetch + checkout instead.
         if (isNonEmptyDirectory(path)) {
             logger.info("Target directory '{}' is not empty, using init+fetch strategy", path);
-            return initFetchCheckout(runContext, logger, url, path, hasCommit, hasTag);
+            return initFetchCheckout(runContext, logger, url, path, hasCommit, hasTag, cloneOptions);
         }
 
         // Ensure the directory exists for clone
@@ -218,11 +238,21 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
             cloneCommand.setCloneSubmodules(runContext.render(this.cloneSubmodules).as(Boolean.class).orElseThrow());
         }
 
+        cloneCommand.setCloneAllBranches(cloneOptions.cloneAllBranches);
+
+        if (!cloneOptions.cloneAllBranches && cloneOptions.branch != null) {
+            cloneCommand.setBranchesToClone(List.of(normalizeBranchRef(shortBranchName(cloneOptions.branch))));
+        }
+
+        if (cloneOptions.noTags) {
+            cloneCommand.setNoTags();
+        }
+
         cloneCommand = authentified(cloneCommand, runContext);
 
         try (var git = cloneCommand.call()) {
             applyGitConfig(git.getRepository(), runContext);
-            postCloneCheckout(git, runContext, logger, hasCommit, hasTag);
+            postCloneCheckout(git, runContext, logger, hasCommit, hasTag, cloneOptions.noTags);
 
             return Output.builder()
                 .directory(git.getRepository().getDirectory().getParent())
@@ -233,13 +263,13 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     /**
      * Handles post-clone checkout for commit, tag, or branch.
      */
-    private void postCloneCheckout(Git git, RunContext runContext, Logger logger, boolean hasCommit, boolean hasTag) throws Exception {
+    private void postCloneCheckout(Git git, RunContext runContext, Logger logger, boolean hasCommit, boolean hasTag, boolean noTags) throws Exception {
         if (hasCommit) {
             var rSha = runContext.render(this.commit).as(String.class).orElseThrow();
-            checkoutCommit(git, rSha, logger);
+            checkoutCommit(git, rSha, logger, noTags);
         } else if (hasTag) {
             var rTagName = runContext.render(this.tag).as(String.class).orElseThrow();
-            checkoutTag(git, rTagName, logger);
+            checkoutTag(git, rTagName, logger, noTags);
         } else if (this.branch != null) {
             var rTargetBranch = runContext.render(this.branch).as(String.class).orElse(null);
             checkoutBranch(git, rTargetBranch, logger);
@@ -251,7 +281,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
      * This is the standard Git workaround when the target directory already contains files
      * (e.g. from WorkingDirectory inputFiles).
      */
-    private Clone.Output initFetchCheckout(RunContext runContext, Logger logger, String url, Path path, boolean hasCommit, boolean hasTag) throws Exception {
+    private Clone.Output initFetchCheckout(RunContext runContext, Logger logger, String url, Path path, boolean hasCommit, boolean hasTag, CloneOptions cloneOptions) throws Exception {
         try (var git = Git.init().setDirectory(path.toFile()).call()) {
             git.remoteAdd()
                 .setName("origin")
@@ -260,13 +290,26 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
             applyGitConfig(git.getRepository(), runContext);
 
-            // Fetch all branches and tags from remote
+            List<RefSpec> refSpecs = new ArrayList<>();
+
+            if (!cloneOptions.cloneAllBranches && cloneOptions.branch != null) {
+                String branchName = shortBranchName(cloneOptions.branch);
+                refSpecs.add(new RefSpec("+refs/heads/" + branchName + ":refs/remotes/origin/" + branchName));
+            } else {
+                refSpecs.add(new RefSpec("+refs/heads/*:refs/remotes/origin/*"));
+            }
+
+            if (!cloneOptions.noTags) {
+                refSpecs.add(new RefSpec("+refs/tags/*:refs/tags/*"));
+            }
+
             FetchCommand fetchCommand = git.fetch()
                 .setRemote("origin")
-                .setRefSpecs(
-                    new RefSpec("+refs/heads/*:refs/remotes/origin/*"),
-                    new RefSpec("+refs/tags/*:refs/tags/*")
-                );
+                .setRefSpecs(refSpecs);
+
+            if (cloneOptions.noTags) {
+                fetchCommand.setTagOpt(TagOpt.NO_TAGS);
+            }
 
             if (!hasCommit && !hasTag) {
                 var rDepth = runContext.render(this.depth).as(Integer.class).orElse(1);
@@ -277,21 +320,16 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
             authentified(fetchCommand, runContext).call();
 
-            // Determine branch to checkout
-            var rBranch = this.branch != null
-                ? runContext.render(this.branch).as(String.class).orElse(null)
-                : null;
-
             // Checkout the fetched content
             if (hasCommit) {
                 var rSha = runContext.render(this.commit).as(String.class).orElseThrow();
-                checkoutCommit(git, rSha, logger);
+                checkoutCommit(git, rSha, logger, cloneOptions.noTags);
             } else if (hasTag) {
                 var rTagName = runContext.render(this.tag).as(String.class).orElseThrow();
-                checkoutTag(git, rTagName, logger);
+                checkoutTag(git, rTagName, logger, cloneOptions.noTags);
             } else {
                 // Resolve the target branch; fall back to detecting the remote HEAD default branch
-                var targetBranch = rBranch;
+                var targetBranch = cloneOptions.branch;
                 if (targetBranch == null) {
                     var headRef = git.getRepository().exactRef("refs/remotes/origin/HEAD");
                     if (headRef != null && headRef.getTarget() != null) {
@@ -345,6 +383,46 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         var entries = dir.list();
         return entries != null && entries.length > 0;
     }
+
+    private static String normalizeBranchRef(String branch) {
+        if (branch == null || branch.isBlank()) {
+            return branch;
+        }
+        return branch.startsWith("refs/heads/") ? branch : "refs/heads/" + branch;
+    }
+
+    private static String shortBranchName(String branch) {
+        if (branch == null) {
+            return null;
+        }
+        return branch.startsWith("refs/heads/") ? branch.substring("refs/heads/".length()) : branch;
+    }
+
+    private CloneOptions resolveCloneOptions(RunContext runContext) throws Exception {
+        var rBranch = runContext.render(this.branch).as(String.class).orElse(null);
+        var rCloneAllBranches = runContext.render(this.cloneAllBranches).as(Boolean.class).orElse(true);
+        var rNoTags = runContext.render(this.noTags).as(Boolean.class).orElse(false);
+
+        if (!rCloneAllBranches) {
+            if (rBranch == null || rBranch.isBlank()) {
+                throw new IllegalArgumentException(
+                    "Invalid clone configuration: when `cloneAllBranches` is false, `branch` must be set."
+                );
+            }
+        }
+
+        if (this.tag != null && rNoTags) {
+            throw new IllegalArgumentException("Invalid clone configuration: `tag` cannot be used with `noTags: true`.");
+        }
+
+        return new CloneOptions(rBranch, rCloneAllBranches, rNoTags);
+    }
+
+    private record CloneOptions(
+        String branch,
+        boolean cloneAllBranches,
+        boolean noTags
+    ) {}
 
     @Override
     @NotNull

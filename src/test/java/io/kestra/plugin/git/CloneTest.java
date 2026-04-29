@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.io.FileUtils;
@@ -23,6 +24,8 @@ import jakarta.inject.Inject;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 @KestraTest
 class CloneTest extends AbstractGitTest {
@@ -303,6 +306,216 @@ class CloneTest extends AbstractGitTest {
 
         String content = Files.readString(repoPath.resolve("file1.txt"));
         assertThat(content, is("first\n"));
+    }
+
+    @Test
+    void cloneOnlyConfiguredBranches() throws Exception {
+        // Given a local remote with two branches
+        Path remote = Files.createTempDirectory("git-remote-");
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            String initialBranch = git.getRepository().getBranch();
+
+            Files.writeString(remote.resolve("main.txt"), "main\n");
+            git.add().addFilepattern("main.txt").call();
+            git.commit().setMessage("main").call();
+
+            git.checkout().setCreateBranch(true).setName("feature/only").call();
+            Files.writeString(remote.resolve("feature.txt"), "feature\n");
+            git.add().addFilepattern("feature.txt").call();
+            git.commit().setMessage("feature").call();
+
+            git.checkout().setName(initialBranch).call();
+
+            git.checkout().setCreateBranch(true).setName("extra/branch").call();
+            Files.writeString(remote.resolve("extra.txt"), "extra\n");
+            git.add().addFilepattern("extra.txt").call();
+            git.commit().setMessage("extra").call();
+
+            git.checkout().setName(initialBranch).call();
+        }
+
+        RunContext runContext = runContextFactory.of();
+        Files.writeString(runContext.workingDir().path().resolve("pre-existing.txt"), "trigger fallback\n");
+
+        Clone task = Clone.builder()
+            .url(Property.ofValue(remote.toUri().toString()))
+            .branch(Property.ofValue("feature/only"))
+            .cloneAllBranches(Property.ofValue(false))
+            .build();
+
+        Clone.Output out = task.run(runContext);
+        Path repoPath = Path.of(out.getDirectory());
+
+        try (Git cloned = Git.open(repoPath.toFile())) {
+            assertNotNull(cloned.getRepository().exactRef("refs/remotes/origin/feature/only"));
+            assertNull(cloned.getRepository().exactRef("refs/remotes/origin/extra/branch"));
+        }
+    }
+
+    @Test
+    void cloneNoTagsDoesNotFetchTags() throws Exception {
+        // Given a local remote with a tag
+        Path remote = Files.createTempDirectory("git-remote-");
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(remote.resolve("tagged.txt"), "v1\n");
+            git.add().addFilepattern("tagged.txt").call();
+            git.commit().setMessage("first").call();
+            git.tag().setName("v1.0").call();
+        }
+
+        RunContext runContext = runContextFactory.of();
+        Files.writeString(runContext.workingDir().path().resolve("pre-existing.txt"), "trigger fallback\n");
+
+        Clone task = Clone.builder()
+            .url(Property.ofValue(remote.toUri().toString()))
+            .noTags(Property.ofValue(true))
+            .build();
+
+        Clone.Output out = task.run(runContext);
+        Path repoPath = Path.of(out.getDirectory());
+
+        try (Git cloned = Git.open(repoPath.toFile())) {
+            assertNull(cloned.getRepository().findRef("refs/tags/v1.0"));
+        }
+    }
+
+    @Test
+    void cloneNoTagsMainPath() throws Exception {
+        Path remote = Files.createTempDirectory("git-remote-");
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(remote.resolve("tagged.txt"), "v1\n");
+            git.add().addFilepattern("tagged.txt").call();
+            git.commit().setMessage("first").call();
+            git.tag().setName("v1.0").call();
+        }
+
+        RunContext runContext = runContextFactory.of();
+
+        Clone task = Clone.builder()
+            .url(Property.ofValue(remote.toUri().toString()))
+            .noTags(Property.ofValue(true))
+            .build();
+
+        Clone.Output out = task.run(runContext);
+        Path repoPath = Path.of(out.getDirectory());
+
+        try (Git cloned = Git.open(repoPath.toFile())) {
+            assertNull(cloned.getRepository().findRef("refs/tags/v1.0"));
+        }
+    }
+
+    @Test
+    void cloneSingleBranchWithoutBranchFailsFast() throws Exception {
+        Path remote = Files.createTempDirectory("git-remote-");
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(remote.resolve("main.txt"), "main\n");
+            git.add().addFilepattern("main.txt").call();
+            git.commit().setMessage("main").call();
+        }
+
+        RunContext runContext = runContextFactory.of();
+
+        Clone task = Clone.builder()
+            .url(Property.ofValue(remote.toUri().toString()))
+            .cloneAllBranches(Property.ofValue(false))
+            .build();
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> task.run(runContext));
+        assertThat(ex.getMessage(), containsString("`branch` must be set"));
+    }
+
+    @Test
+    void cloneSingleBranchDefaultsToCheckoutBranchWhenNoBranchesConfigured() throws Exception {
+        Path remote = Files.createTempDirectory("git-remote-");
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            String initialBranch = git.getRepository().getBranch();
+
+            Files.writeString(remote.resolve("main.txt"), "main\n");
+            git.add().addFilepattern("main.txt").call();
+            git.commit().setMessage("main").call();
+
+            git.checkout().setCreateBranch(true).setName("feature/only").call();
+            Files.writeString(remote.resolve("feature.txt"), "feature\n");
+            git.add().addFilepattern("feature.txt").call();
+            git.commit().setMessage("feature").call();
+
+            git.checkout().setName(initialBranch).call();
+        }
+
+        RunContext runContext = runContextFactory.of();
+        Files.writeString(runContext.workingDir().path().resolve("pre-existing.txt"), "trigger fallback\n");
+
+        Clone task = Clone.builder()
+            .url(Property.ofValue(remote.toUri().toString()))
+            .branch(Property.ofValue("feature/only"))
+            .cloneAllBranches(Property.ofValue(false))
+            .build();
+
+        Clone.Output out = task.run(runContext);
+        Path repoPath = Path.of(out.getDirectory());
+
+        try (Git cloned = Git.open(repoPath.toFile())) {
+            assertNotNull(cloned.getRepository().exactRef("refs/remotes/origin/feature/only"));
+            assertNull(cloned.getRepository().exactRef("refs/remotes/origin/master"));
+            assertNull(cloned.getRepository().exactRef("refs/remotes/origin/main"));
+        }
+    }
+
+    @Test
+    void cloneCommitWithNoTagsDoesNotFetchTagsInPostCloneCheckout() throws Exception {
+        Path remote = Files.createTempDirectory("git-remote-");
+        Path file = remote.resolve("file.txt");
+        String firstCommitSha;
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(file, "first\n");
+            git.add().addFilepattern("file.txt").call();
+            git.commit().setMessage("first").call();
+            firstCommitSha = git.getRepository().resolve("HEAD").name();
+
+            git.tag().setName("v1.0").call();
+
+            Files.writeString(file, "second\n");
+            git.add().addFilepattern("file.txt").call();
+            git.commit().setMessage("second").call();
+        }
+
+        RunContext runContext = runContextFactory.of();
+
+        Clone task = Clone.builder()
+            .url(Property.ofValue(remote.toUri().toString()))
+            .commit(Property.ofValue(firstCommitSha))
+            .noTags(Property.ofValue(true))
+            .build();
+
+        Clone.Output out = task.run(runContext);
+        Path repoPath = Path.of(out.getDirectory());
+
+        try (Git cloned = Git.open(repoPath.toFile())) {
+            assertThat(cloned.getRepository().getFullBranch(), is(firstCommitSha));
+            assertNull(cloned.getRepository().findRef("refs/tags/v1.0"));
+        }
+    }
+
+    @Test
+    void cloneTagWithNoTagsFailsFast() throws Exception {
+        Path remote = Files.createTempDirectory("git-remote-");
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(remote.resolve("file.txt"), "first\n");
+            git.add().addFilepattern("file.txt").call();
+            git.commit().setMessage("first").call();
+            git.tag().setName("v1.0").call();
+        }
+
+        RunContext runContext = runContextFactory.of();
+
+        Clone task = Clone.builder()
+            .url(Property.ofValue(remote.toUri().toString()))
+            .tag(Property.ofValue("v1.0"))
+            .noTags(Property.ofValue(true))
+            .build();
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> task.run(runContext));
+        assertThat(ex.getMessage(), containsString("`tag` cannot be used with `noTags: true`"));
     }
 
 }
