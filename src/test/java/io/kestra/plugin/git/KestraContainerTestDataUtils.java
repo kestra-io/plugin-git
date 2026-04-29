@@ -39,4 +39,8 @@ public class KestraContainerTestDataUtils {
             Files.deleteIfExists(tmp);
         }
     }
+
+    public void createDashboard(String tenantId, String dashboardYaml) throws ApiException {
+        kestraClient.dashboards().createDashboard(tenantId, dashboardYaml);
+    }
 }
