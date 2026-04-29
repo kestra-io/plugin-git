@@ -172,15 +172,17 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         title = "Clone all branches",
         description = "When true, clones all remote branches. When false, follows single-branch clone behavior."
     )
+    @Builder.Default
     @PluginProperty(group = "advanced")
-    private Property<Boolean> cloneAllBranches;
+    private Property<Boolean> cloneAllBranches = Property.ofValue(true);
 
     @Schema(
         title = "Do not fetch tags",
         description = "When true, skip fetching tags during clone and fetch fallback."
     )
+    @Builder.Default
     @PluginProperty(group = "advanced")
-    private Property<Boolean> noTags;
+    private Property<Boolean> noTags = Property.ofValue(false);
 
     @Override
     public Clone.Output run(RunContext runContext) throws Exception {
@@ -236,11 +238,9 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
             cloneCommand.setCloneSubmodules(runContext.render(this.cloneSubmodules).as(Boolean.class).orElseThrow());
         }
 
-        if (this.cloneAllBranches != null) {
-            cloneCommand.setCloneAllBranches(cloneOptions.cloneAllBranches);
-        }
+        cloneCommand.setCloneAllBranches(cloneOptions.cloneAllBranches);
 
-        if (Boolean.FALSE.equals(cloneOptions.cloneAllBranches) && cloneOptions.branch != null) {
+        if (!cloneOptions.cloneAllBranches && cloneOptions.branch != null) {
             cloneCommand.setBranchesToClone(List.of(normalizeBranchRef(shortBranchName(cloneOptions.branch))));
         }
 
@@ -292,7 +292,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
             List<RefSpec> refSpecs = new ArrayList<>();
 
-            if (Boolean.FALSE.equals(cloneOptions.cloneAllBranches) && cloneOptions.branch != null) {
+            if (!cloneOptions.cloneAllBranches && cloneOptions.branch != null) {
                 String branchName = shortBranchName(cloneOptions.branch);
                 refSpecs.add(new RefSpec("+refs/heads/" + branchName + ":refs/remotes/origin/" + branchName));
             } else {
@@ -399,15 +399,11 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     }
 
     private CloneOptions resolveCloneOptions(RunContext runContext) throws Exception {
-        String rBranch = this.branch != null
-            ? runContext.render(this.branch).as(String.class).orElse(null)
-            : null;
-        Boolean rCloneAllBranches = this.cloneAllBranches != null
-            ? runContext.render(this.cloneAllBranches).as(Boolean.class).orElse(false)
-            : null;
-        boolean rNoTags = this.noTags != null && runContext.render(this.noTags).as(Boolean.class).orElse(false);
+        var rBranch = runContext.render(this.branch).as(String.class).orElse(null);
+        var rCloneAllBranches = runContext.render(this.cloneAllBranches).as(Boolean.class).orElse(true);
+        var rNoTags = runContext.render(this.noTags).as(Boolean.class).orElse(false);
 
-        if (Boolean.FALSE.equals(rCloneAllBranches)) {
+        if (!rCloneAllBranches) {
             if (rBranch == null || rBranch.isBlank()) {
                 throw new IllegalArgumentException(
                     "Invalid clone configuration: when `cloneAllBranches` is false, `branch` must be set."
@@ -424,7 +420,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
     private record CloneOptions(
         String branch,
-        Boolean cloneAllBranches,
+        boolean cloneAllBranches,
         boolean noTags
     ) {}
 

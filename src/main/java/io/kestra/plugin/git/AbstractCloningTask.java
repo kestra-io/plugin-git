@@ -33,8 +33,7 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
         // Ensure we have a full history in case the repo was shallow by default on the remote
         // or if the requested SHA is deep in history.
         try {
-            var fetch = git.fetch()
-                .setRefSpecs(new RefSpec("+refs/heads/*:refs/remotes/origin/*"));
+            var fetch = git.fetch();
 
             if (!noTags) {
                 fetch.setRefSpecs(
@@ -42,7 +41,8 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
                     new RefSpec("+refs/tags/*:refs/tags/*")
                 );
             } else {
-                fetch.setTagOpt(TagOpt.NO_TAGS);
+                fetch.setRefSpecs(new RefSpec("+refs/heads/*:refs/remotes/origin/*"))
+                    .setTagOpt(TagOpt.NO_TAGS);
             }
 
             fetch.call();
