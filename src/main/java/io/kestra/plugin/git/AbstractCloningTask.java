@@ -1,5 +1,8 @@
 package io.kestra.plugin.git;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Ref;
@@ -33,16 +36,14 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
         // Ensure we have a full history in case the repo was shallow by default on the remote
         // or if the requested SHA is deep in history.
         try {
-            var fetch = git.fetch();
-
+            var refSpecs = new ArrayList<>(List.of(new RefSpec("+refs/heads/*:refs/remotes/origin/*")));
             if (!noTags) {
-                fetch.setRefSpecs(
-                    new RefSpec("+refs/heads/*:refs/remotes/origin/*"),
-                    new RefSpec("+refs/tags/*:refs/tags/*")
-                );
-            } else {
-                fetch.setRefSpecs(new RefSpec("+refs/heads/*:refs/remotes/origin/*"))
-                    .setTagOpt(TagOpt.NO_TAGS);
+                refSpecs.add(new RefSpec("+refs/tags/*:refs/tags/*"));
+            }
+
+            var fetch = git.fetch().setRefSpecs(refSpecs);
+            if (noTags) {
+                fetch.setTagOpt(TagOpt.NO_TAGS);
             }
 
             fetch.call();
