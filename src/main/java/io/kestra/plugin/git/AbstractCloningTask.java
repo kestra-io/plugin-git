@@ -23,6 +23,7 @@ import io.kestra.sdk.KestraClient;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import lombok.extern.jackson.Jacksonized;
 import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
@@ -84,14 +85,24 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
             }
             if (runContext.render(auth.auto).as(Boolean.class).orElse(Boolean.TRUE)) {
                 Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
-                if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-                    return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
+                if (autoAuth.isPresent()) {
+                    if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+                        return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
+                    }
+                    if (autoAuth.get().apiToken().isPresent()) {
+                        return builder.tokenAuth(autoAuth.get().apiToken().get()).build();
+                    }
                 }
             }
         } else {
             Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
-            if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-                return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
+            if (autoAuth.isPresent()) {
+                if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+                    return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
+                }
+                if (autoAuth.get().apiToken().isPresent()) {
+                    return builder.tokenAuth(autoAuth.get().apiToken().get()).build();
+                }
             }
         }
 
@@ -100,6 +111,7 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
 
     @Builder
     @Getter
+    @Jacksonized
     public static class Auth {
         @Schema(title = "Username for HTTP Basic authentication.")
         @PluginProperty(secret = true, group = "connection")

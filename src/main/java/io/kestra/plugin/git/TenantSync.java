@@ -26,7 +26,6 @@ import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.http.HttpRequest;
 import io.kestra.core.http.client.HttpClient;
-import io.kestra.core.http.client.configurations.BasicAuthConfiguration;
 import io.kestra.core.http.client.configurations.HttpConfiguration;
 import io.kestra.core.runners.SDK;
 import io.kestra.core.models.annotations.Example;
@@ -1027,38 +1026,54 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             ? "/api/v1/dashboards/" + encodedId
             : "/api/v1/" + tenantId + "/dashboards/" + encodedId;
 
-        HttpConfiguration.HttpConfigurationBuilder configBuilder = HttpConfiguration.builder();
+        String username = null;
+        String password = null;
+        String apiToken = null;
         AbstractKestraTask.Auth auth = getAuth();
         if (auth != null) {
             Optional<String> maybeUsername = runContext.render(auth.getUsername()).as(String.class);
             Optional<String> maybePassword = runContext.render(auth.getPassword()).as(String.class);
             if (maybeUsername.isPresent() && maybePassword.isPresent()) {
-                configBuilder.auth(BasicAuthConfiguration.builder()
-                    .username(Property.ofValue(maybeUsername.get()))
-                    .password(Property.ofValue(maybePassword.get()))
-                    .build());
+                username = maybeUsername.get();
+                password = maybePassword.get();
+            } else if (runContext.render(auth.getAuto()).as(Boolean.class).orElse(Boolean.TRUE)) {
+                Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
+                if (autoAuth.isPresent()) {
+                    if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+                        username = autoAuth.get().username().get();
+                        password = autoAuth.get().password().get();
+                    } else if (autoAuth.get().apiToken().isPresent()) {
+                        apiToken = autoAuth.get().apiToken().get();
+                    }
+                }
             }
         } else {
             Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
-            if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-                configBuilder.auth(BasicAuthConfiguration.builder()
-                    .username(Property.ofValue(autoAuth.get().username().get()))
-                    .password(Property.ofValue(autoAuth.get().password().get()))
-                    .build());
+            if (autoAuth.isPresent()) {
+                if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+                    username = autoAuth.get().username().get();
+                    password = autoAuth.get().password().get();
+                } else if (autoAuth.get().apiToken().isPresent()) {
+                    apiToken = autoAuth.get().apiToken().get();
+                }
             }
+        }
+
+        HttpRequest.HttpRequestBuilder requestBuilder = HttpRequest.builder()
+            .uri(URI.create(basePath + path))
+            .addHeader("Accept", "application/x-yaml");
+        if (username != null && password != null) {
+            String encoded = Base64.getEncoder().encodeToString((username + ":" + password).getBytes(StandardCharsets.UTF_8));
+            requestBuilder.addHeader("Authorization", "Basic " + encoded);
+        } else if (apiToken != null) {
+            requestBuilder.addHeader("Authorization", "Bearer " + apiToken);
         }
 
         try (var httpClient = HttpClient.builder()
                 .runContext(runContext)
-                .configuration(configBuilder.build())
+                .configuration(HttpConfiguration.builder().build())
                 .build()) {
-            var response = httpClient.request(
-                HttpRequest.builder()
-                    .uri(URI.create(basePath + path))
-                    .addHeader("Accept", "application/x-yaml")
-                    .build(),
-                String.class
-            );
+            var response = httpClient.request(requestBuilder.build(), String.class);
             return response.getBody();
         }
     }

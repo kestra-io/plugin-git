@@ -174,6 +174,7 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
 
         String username = null;
         String password = null;
+        String apiToken = null;
         if (auth != null) {
             Optional<String> maybeUsername = runContext.render(auth.getUsername()).as(String.class);
             Optional<String> maybePassword = runContext.render(auth.getPassword()).as(String.class);
@@ -182,16 +183,24 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
                 password = maybePassword.get();
             } else if (runContext.render(auth.getAuto()).as(Boolean.class).orElse(Boolean.TRUE)) {
                 Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
-                if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-                    username = autoAuth.get().username().get();
-                    password = autoAuth.get().password().get();
+                if (autoAuth.isPresent()) {
+                    if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+                        username = autoAuth.get().username().get();
+                        password = autoAuth.get().password().get();
+                    } else if (autoAuth.get().apiToken().isPresent()) {
+                        apiToken = autoAuth.get().apiToken().get();
+                    }
                 }
             }
         } else {
             Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
-            if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-                username = autoAuth.get().username().get();
-                password = autoAuth.get().password().get();
+            if (autoAuth.isPresent()) {
+                if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+                    username = autoAuth.get().username().get();
+                    password = autoAuth.get().password().get();
+                } else if (autoAuth.get().apiToken().isPresent()) {
+                    apiToken = autoAuth.get().apiToken().get();
+                }
             }
         }
 
@@ -201,6 +210,8 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
         if (username != null && password != null) {
             String encoded = Base64.getEncoder().encodeToString((username + ":" + password).getBytes(StandardCharsets.UTF_8));
             requestBuilder.addHeader("Authorization", "Basic " + encoded);
+        } else if (apiToken != null) {
+            requestBuilder.addHeader("Authorization", "Bearer " + apiToken);
         }
 
         try (var httpClient = HttpClient.builder()

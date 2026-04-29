@@ -272,11 +272,15 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
             .uri(URI.create(basePath + path))
             .addHeader("Accept", "application/x-yaml");
         Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
-        if (autoAuth.isPresent() && autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-            String encoded = Base64.getEncoder().encodeToString(
-                (autoAuth.get().username().get() + ":" + autoAuth.get().password().get()).getBytes(StandardCharsets.UTF_8)
-            );
-            requestBuilder.addHeader("Authorization", "Basic " + encoded);
+        if (autoAuth.isPresent()) {
+            if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+                String encoded = Base64.getEncoder().encodeToString(
+                    (autoAuth.get().username().get() + ":" + autoAuth.get().password().get()).getBytes(StandardCharsets.UTF_8)
+                );
+                requestBuilder.addHeader("Authorization", "Basic " + encoded);
+            } else if (autoAuth.get().apiToken().isPresent()) {
+                requestBuilder.addHeader("Authorization", "Bearer " + autoAuth.get().apiToken().get());
+            }
         }
 
         try (var httpClient = HttpClient.builder()
