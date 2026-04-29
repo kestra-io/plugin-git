@@ -1,7 +1,6 @@
 package io.kestra.plugin.git;
 
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -14,20 +13,18 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.annotations.VisibleForTesting;
 
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
-import io.kestra.core.http.HttpRequest;
-import io.kestra.core.http.client.HttpClient;
-import io.kestra.core.http.client.configurations.HttpConfiguration;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.runners.SDK;
 import io.kestra.sdk.KestraClient;
+import io.kestra.sdk.internal.ApiClient;
 import io.kestra.sdk.model.PagedResultsDashboard;
 
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -166,61 +163,20 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
     }
 
     private String fetchDashboardSourceCode(KestraClient kestraClient, RunContext runContext, String tenantId, String dashboardId) throws Exception {
-        String basePath = kestraClient.dashboards().getApiClient().getBasePath();
+        ApiClient apiClient = kestraClient.dashboards().getApiClient();
         String encodedId = URLEncoder.encode(dashboardId, StandardCharsets.UTF_8);
         String path = tenantId == null
             ? "/api/v1/dashboards/" + encodedId
             : "/api/v1/" + tenantId + "/dashboards/" + encodedId;
 
-        String username = null;
-        String password = null;
-        String apiToken = null;
-        if (auth != null) {
-            Optional<String> maybeUsername = runContext.render(auth.getUsername()).as(String.class);
-            Optional<String> maybePassword = runContext.render(auth.getPassword()).as(String.class);
-            if (maybeUsername.isPresent() && maybePassword.isPresent()) {
-                username = maybeUsername.get();
-                password = maybePassword.get();
-            } else if (runContext.render(auth.getAuto()).as(Boolean.class).orElse(Boolean.TRUE)) {
-                Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
-                if (autoAuth.isPresent()) {
-                    if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-                        username = autoAuth.get().username().get();
-                        password = autoAuth.get().password().get();
-                    } else if (autoAuth.get().apiToken().isPresent()) {
-                        apiToken = autoAuth.get().apiToken().get();
-                    }
-                }
-            }
-        } else {
-            Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
-            if (autoAuth.isPresent()) {
-                if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-                    username = autoAuth.get().username().get();
-                    password = autoAuth.get().password().get();
-                } else if (autoAuth.get().apiToken().isPresent()) {
-                    apiToken = autoAuth.get().apiToken().get();
-                }
-            }
-        }
-
-        HttpRequest.HttpRequestBuilder requestBuilder = HttpRequest.builder()
-            .uri(URI.create(basePath + path))
-            .addHeader("Accept", "application/x-yaml");
-        if (username != null && password != null) {
-            String encoded = Base64.getEncoder().encodeToString((username + ":" + password).getBytes(StandardCharsets.UTF_8));
-            requestBuilder.addHeader("Authorization", "Basic " + encoded);
-        } else if (apiToken != null) {
-            requestBuilder.addHeader("Authorization", "Bearer " + apiToken);
-        }
-
-        try (var httpClient = HttpClient.builder()
-                .runContext(runContext)
-                .configuration(HttpConfiguration.builder().build())
-                .build()) {
-            var response = httpClient.request(requestBuilder.build(), String.class);
-            return response.getBody();
-        }
+        byte[] yamlBytes = apiClient.invokeAPI(
+            path, "GET",
+            Collections.emptyList(), Collections.emptyList(), null,
+            null, Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(),
+            "application/x-yaml", null, new String[0],
+            new TypeReference<byte[]>() {}
+        );
+        return new String(yamlBytes, StandardCharsets.UTF_8);
     }
 
     @Override
