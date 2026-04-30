@@ -2,6 +2,7 @@ package io.kestra.plugin.git;
 
 import java.io.*;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
@@ -23,6 +24,7 @@ import org.eclipse.jgit.transport.RemoteRefUpdate;
 import io.kestra.core.exceptions.FlowProcessingException;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.flows.FlowWithSource;
@@ -33,6 +35,7 @@ import io.kestra.core.serializers.YamlParser;
 import io.kestra.plugin.git.services.GitService;
 import io.kestra.sdk.KestraClient;
 import io.kestra.sdk.api.FilesApi;
+import io.kestra.sdk.internal.ApiClient;
 import io.kestra.sdk.internal.ApiException;
 import io.kestra.sdk.model.*;
 
@@ -845,9 +848,15 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             do {
                 pagedResults = kestraClient.dashboards().searchDashboards(page, size, runContext.flowInfo().tenantId(), null, null);
 
+                String tenantForFetch = runContext.flowInfo().tenantId();
                 pagedResults.getResults().forEach(dash ->
                 {
-                    dashboards.put(dash.getTitle(), dash.getSourceCode());
+                    try {
+                        String sourceCode = fetchDashboardSourceCode(kestraClient, runContext, tenantForFetch, dash.getId());
+                        dashboards.put(dash.getTitle(), sourceCode);
+                    } catch (Exception e) {
+                        throw new KestraRuntimeException("Failed to fetch source code for dashboard " + dash.getId(), e);
+                    }
                 });
 
                 page++;
@@ -1006,6 +1015,23 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                 runContext.logger().warn("{} couldn't be synced due to invalid syntax: {}", what, e.getMessage());
             case FAIL -> throw new KestraRuntimeException("Invalid syntax for " + what + ": " + e.getMessage(), e);
         }
+    }
+
+    private String fetchDashboardSourceCode(KestraClient kestraClient, RunContext runContext, String tenantId, String dashboardId) throws Exception {
+        ApiClient apiClient = kestraClient.dashboards().getApiClient();
+        String encodedId = URLEncoder.encode(dashboardId, StandardCharsets.UTF_8);
+        String path = tenantId == null
+            ? "/api/v1/dashboards/" + encodedId
+            : "/api/v1/" + tenantId + "/dashboards/" + encodedId;
+
+        Map<String, Object> response = apiClient.invokeAPI(
+            path, "GET",
+            Collections.emptyList(), Collections.emptyList(), null,
+            null, Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(),
+            "application/json", null, new String[0],
+            new TypeReference<Map<String, Object>>() {}
+        );
+        return (String) response.get("sourceCode");
     }
 
     private File toNamedTempFile(String fileName, String yaml) {
