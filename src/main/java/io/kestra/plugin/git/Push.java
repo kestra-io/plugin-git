@@ -8,6 +8,7 @@ import java.util.*;
 
 import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.AddCommand;
+import org.eclipse.jgit.api.CommitCommand;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ListBranchCommand;
 import org.eclipse.jgit.api.RmCommand;
@@ -316,12 +317,15 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
 
         ObjectId commitId = null;
         try {
-            commitId = git.commit()
+            PersonIdent author = author(runContext);
+            CommitCommand commitCommand = git.commit()
                 .setAllowEmpty(false)
                 .setMessage(runContext.render(this.commitMessage).as(String.class).orElse(null))
-                .setAuthor(author(runContext))
-                .call()
-                .getId();
+                .setAuthor(author);
+            if (author != null) {
+                commitCommand.setCommitter(author);
+            }
+            commitId = commitCommand.call().getId();
             authentified(git.push(), runContext).call();
         } catch (EmptyCommitException e) {
             logger.info("No changes to commit. Skipping push.");

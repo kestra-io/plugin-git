@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 import org.eclipse.jgit.api.AddCommand;
+import org.eclipse.jgit.api.CommitCommand;
 import org.eclipse.jgit.api.DiffCommand;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.EmptyCommitException;
@@ -318,12 +319,15 @@ public abstract class AbstractPushTask<O extends AbstractPushTask.Output> extend
 
                 String message = runContext.render(this.getCommitMessage()).as(String.class).orElse(null);
                 ObjectId head = git.getRepository().resolve(Constants.HEAD);
-                commit = git.commit()
+                PersonIdent author = author(runContext);
+                CommitCommand commitCommand = git.commit()
                     .setAllowEmpty(false)
                     .setMessage(message)
-                    .setAuthor(author(runContext))
-                    .call()
-                    .getId();
+                    .setAuthor(author);
+                if (author != null) {
+                    commitCommand.setCommitter(author);
+                }
+                commit = commitCommand.call().getId();
                 if (head == null) {
                     git.branchRename().setNewName(renderedBranch).call();
                 }

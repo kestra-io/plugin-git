@@ -650,6 +650,8 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
     private static void assertAuthor(RevCommit revCommit, String authorEmail, String authorName) {
         assertThat(revCommit.getAuthorIdent().getEmailAddress(), is(authorEmail));
         assertThat(revCommit.getAuthorIdent().getName(), is(authorName));
+        assertThat(revCommit.getCommitterIdent().getEmailAddress(), is(authorEmail));
+        assertThat(revCommit.getCommitterIdent().getName(), is(authorName));
     }
 
     private static void assertDiffs(RunContext runContext, URI diffFileUri, List<Map<String, String>> expectedDiffs) throws IOException {
