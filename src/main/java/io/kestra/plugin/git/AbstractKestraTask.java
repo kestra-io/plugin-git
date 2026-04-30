@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import lombok.extern.jackson.Jacksonized;
 import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder
@@ -70,6 +71,9 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
                     if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
                         return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
                     }
+                    if (autoAuth.get().apiToken().isPresent()) {
+                        return builder.tokenAuth(autoAuth.get().apiToken().get()).build();
+                    }
                 }
             }
             throw new IllegalArgumentException("No authentication method provided");
@@ -80,13 +84,18 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
                 if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
                     return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
                 }
+                if (autoAuth.get().apiToken().isPresent()) {
+                    return builder.tokenAuth(autoAuth.get().apiToken().get()).build();
+                }
             }
+            throw new IllegalArgumentException("No authentication method provided");
         }
         return builder.build();
     }
 
     @Builder
     @Getter
+    @Jacksonized
     public static class Auth {
         @Schema(title = "Username for HTTP Basic authentication.")
         @PluginProperty(secret = true, group = "connection")

@@ -2,7 +2,9 @@ package io.kestra.plugin.git;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -11,24 +13,32 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.models.tasks.VoidOutput;
-import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.services.FlowService;
+import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.storages.StorageContext;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.utils.KestraIgnore;
+import io.kestra.sdk.KestraClient;
+import io.kestra.sdk.internal.ApiException;
+import io.kestra.sdk.model.QueryFilter;
+import io.kestra.sdk.model.QueryFilterField;
+import io.kestra.sdk.model.QueryFilterOp;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
@@ -143,8 +153,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
         // synchronize flows directory to namespace flows
         File flowsDirectory = flowsDirectoryBasePath.toFile();
         if (flowsDirectory.exists()) {
-            FlowRepositoryInterface flowRepository = ((DefaultRunContext) runContext).services().additionalService(FlowRepositoryInterface.class);
-            FlowService flowService = ((DefaultRunContext) runContext).services().additionalService(FlowService.class);
+            KestraClient kestraClient = kestraClient(runContext);
 
             Set<String> flowIdsImported = Arrays.stream(flowsDirectory.listFiles())
                 .map(File::toPath)
@@ -171,11 +180,15 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
                         Matcher matcher = FLOW_ID_FINDER_PATTERN.matcher(flowSource);
                         matcher.find();
                         String flowId = matcher.group(1).trim();
-                        isAddition = flowRepository.findById(tenantId, flowSourceByNamespace.getKey(), flowId).isEmpty();
+                        isAddition = fetchSingleFlow(kestraClient, tenantId, flowSourceByNamespace.getKey(), flowId) == null;
                         flowWithSource = FlowWithSource.builder().source(flowSource).id(flowId).build();
                     } else {
-                        flowWithSource = flowService.importFlow(tenantId, flowSource);
-                        isAddition = flowWithSource.getRevision() == 1;
+                        String flowId = YamlParser.parse(flowSource, io.kestra.core.models.flows.Flow.class).getId();
+                        kestraClient.flows().importFlows(false, tenantId, toNamedTempFile(flowId + ".yaml", flowSource.stripTrailing()));
+                        // Determine addition vs update by checking if revision == 1
+                        var imported = fetchSingleFlow(kestraClient, tenantId, flowSourceByNamespace.getKey(), flowId);
+                        isAddition = imported != null && imported.getRevision() != null && imported.getRevision() == 1;
+                        flowWithSource = imported != null ? imported : FlowWithSource.builder().source(flowSource).id(flowId).build();
                     }
 
                     if (isAddition) {
@@ -192,12 +205,16 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
             // prevent self deletion
             flowIdsImported.add(flowProps.get("id"));
 
-            flowRepository.findByNamespaceWithSource(tenantId, namespace).stream()
+            fetchFlowsFromKestra(kestraClient, tenantId, namespace).stream()
                 .filter(flow -> !flowIdsImported.contains(flow.getId()))
                 .forEach(flow ->
                 {
                     if (!dryRun) {
-                        flowRepository.delete(flow);
+                        try {
+                            kestraClient.flows().deleteFlow(flow.getNamespace(), flow.getId(), tenantId);
+                        } catch (ApiException e) {
+                            throw new KestraRuntimeException("Failed to delete flow " + flow.getId(), e);
+                        }
                     }
                     logDeletion(logger, "/_flows/" + flow.getId() + ".yml");
                 });
@@ -288,6 +305,75 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
             }));
 
         return null;
+    }
+
+    private List<FlowWithSource> fetchFlowsFromKestra(KestraClient kestraClient, String tenantId, String namespace) {
+        try {
+            byte[] zippedFlows = kestraClient.flows().exportFlowsByQuery(
+                tenantId,
+                List.of(new QueryFilter().field(QueryFilterField.NAMESPACE).operation(QueryFilterOp.EQUALS).value(namespace))
+            );
+            List<FlowWithSource> flows = new ArrayList<>();
+            try (
+                var bais = new ByteArrayInputStream(zippedFlows);
+                var zis = new ZipInputStream(bais)
+            ) {
+                ZipEntry entry;
+                while ((entry = zis.getNextEntry()) != null) {
+                    if (!entry.getName().endsWith(".yml") && !entry.getName().endsWith(".yaml")) {
+                        continue;
+                    }
+                    var yaml = new String(zis.readAllBytes(), StandardCharsets.UTF_8);
+                    try {
+                        flows.add(FlowWithSource.of(YamlParser.parse(yaml, io.kestra.core.models.flows.Flow.class), yaml));
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+            return flows;
+        } catch (IOException | ApiException e) {
+            throw new KestraRuntimeException("Failed to export flows from Kestra for namespace " + namespace, e);
+        }
+    }
+
+    private FlowWithSource fetchSingleFlow(KestraClient kestraClient, String tenantId, String namespace, String flowId) {
+        try {
+            byte[] zippedFlows = kestraClient.flows().exportFlowsByQuery(
+                tenantId,
+                List.of(
+                    new QueryFilter().field(QueryFilterField.NAMESPACE).operation(QueryFilterOp.EQUALS).value(namespace),
+                    new QueryFilter().field(QueryFilterField.ID).operation(QueryFilterOp.EQUALS).value(flowId)
+                )
+            );
+            try (
+                var bais = new ByteArrayInputStream(zippedFlows);
+                var zis = new ZipInputStream(bais)
+            ) {
+                ZipEntry entry;
+                while ((entry = zis.getNextEntry()) != null) {
+                    if (!entry.getName().endsWith(".yml") && !entry.getName().endsWith(".yaml")) {
+                        continue;
+                    }
+                    var yaml = new String(zis.readAllBytes(), StandardCharsets.UTF_8);
+                    return FlowWithSource.of(YamlParser.parse(yaml, io.kestra.core.models.flows.Flow.class), yaml);
+                }
+            }
+            return null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private File toNamedTempFile(String fileName, String yaml) {
+        try {
+            Path tmpPath = Files.createTempDirectory("kestra-import")
+                .resolve(fileName.endsWith(".yaml") ? fileName : fileName + ".yaml");
+            Files.createDirectories(tmpPath.getParent());
+            Files.writeString(tmpPath, yaml, StandardCharsets.UTF_8);
+            return tmpPath.toFile();
+        } catch (IOException e) {
+            throw new KestraRuntimeException("Failed to create named file for: " + fileName, e);
+        }
     }
 
     private static void logDeletion(Logger logger, String path) {
