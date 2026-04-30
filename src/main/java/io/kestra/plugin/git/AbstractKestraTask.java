@@ -88,6 +88,7 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
                     return builder.tokenAuth(autoAuth.get().apiToken().get()).build();
                 }
             }
+            throw new IllegalArgumentException("No authentication method provided");
         }
         return builder.build();
     }
