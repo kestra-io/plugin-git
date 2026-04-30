@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.eclipse.jgit.api.AddCommand;
+import org.eclipse.jgit.api.CommitCommand;
 import org.eclipse.jgit.api.errors.EmptyCommitException;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
@@ -291,7 +292,11 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                 }
 
                 PersonIdent author = author(runContext);
-                git.commit().setAllowEmpty(false).setMessage(rCommitMessage).setAuthor(author).call();
+                CommitCommand commitCommand = git.commit().setAllowEmpty(false).setMessage(rCommitMessage).setAuthor(author);
+                if (author != null) {
+                    commitCommand.setCommitter(author);
+                }
+                commitCommand.call();
 
                 Iterable<PushResult> results = this.authentified(git.push(), runContext).call();
                 for (PushResult pr : results) {
