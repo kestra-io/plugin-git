@@ -68,19 +68,19 @@ import io.kestra.core.models.annotations.PluginProperty;
 
                 tasks:
                   - id: sync
-                    type: io.kestra.plugin.core.flow.ForEach
+                    type: io.kestra.plugin.core.flow.Loop
                     values: ["company", "company.team", "company.analytics"]
                     tasks:
                       - id: flows
                         type: io.kestra.plugin.git.SyncFlows
-                        targetNamespace: "{{ taskrun.value }}"
-                        gitDirectory: "{{'flows/' ~ taskrun.value}}"
+                        targetNamespace: "{{ item.value }}"
+                        gitDirectory: "{{'flows/' ~ item.value}}"
                         includeChildNamespaces: false
 
                       - id: scripts
                         type: io.kestra.plugin.git.SyncNamespaceFiles
-                        namespace: "{{ taskrun.value }}"
-                        gitDirectory: "{{'scripts/' ~ taskrun.value}}"
+                        namespace: "{{ item.value }}"
+                        gitDirectory: "{{'scripts/' ~ item.value}}"
 
                 pluginDefaults:
                   - type: io.kestra.plugin.git
