@@ -89,6 +89,8 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
         return syncDirectory;
     }
 
+    private static final List<String> PATH_TO_IGNORE = List.of(".git", ".gitignore", ".gitkeep");
+
     protected Map<URI, Supplier<InputStream>> gitResourcesContentByUri(Path baseDirectory, RunContext runContext) throws IOException, IllegalVariableEvaluationException {
         try (
             Stream<Path> paths = Files.walk(
@@ -100,7 +102,7 @@ public abstract class AbstractSyncTask<T, O extends AbstractSyncTask.Output> ext
             Stream<Path> filtered = paths.skip(1);
             KestraIgnore kestraIgnore = new KestraIgnore(baseDirectory);
             filtered = filtered.filter(path -> !kestraIgnore.isIgnoredFile(path.toString(), true));
-            filtered = filtered.filter(path -> !path.toString().contains(".git"));
+            filtered = filtered.filter(path -> PATH_TO_IGNORE.stream().noneMatch(ext -> path.toString().endsWith(ext)));
 
             return filtered.collect(
                 Collectors.toMap(

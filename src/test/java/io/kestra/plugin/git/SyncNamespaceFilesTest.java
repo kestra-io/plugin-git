@@ -3,6 +3,7 @@ package io.kestra.plugin.git;
 import java.io.*;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -241,6 +242,57 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
             is("UNCHANGED")
         );
     }
+
+    /**
+     * unit test to reproduce <a href="https://github.com/kestra-io/kestra-ee/issues/6402">...</a>
+     */
+    @Test
+    void syncWithDotGitInDirectoryName_ShouldSyncFiles() throws Exception {
+        String specialGitDir = "to_clone.github_files";
+        String expectedFile  = "hello.txt";
+
+        Path repoDir = Files.createTempDirectory("unit-test.special-dir-repo");
+        try (org.eclipse.jgit.api.Git git = org.eclipse.jgit.api.Git.init()
+            .setDirectory(repoDir.toFile())
+            .call()) {
+
+            Path specialDir = repoDir.resolve(specialGitDir);
+            Files.createDirectories(specialDir);
+            Files.writeString(specialDir.resolve(expectedFile), "hello");
+
+            git.add().addFilepattern(".").call();
+            git.commit()
+                .setMessage("test commit")
+                .setAuthor("test", "test@test.com")
+                .call();
+        }
+
+        RunContext runContext = runContextFactory.of(Map.of(
+            "flow", Map.of("tenantId", TENANT_ID, "namespace", "system"),
+            "url",          repoDir.toUri().toString(),
+            "pat",          "",
+            "branch",       "master",            // git init default
+            "namespace",    NAMESPACE,
+            "gitDirectory", specialGitDir
+        ));
+
+        SyncNamespaceFiles task = SyncNamespaceFiles.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .build();
+
+        task.run(runContext);
+
+        assertThat(
+            runContext.storage().namespace(NAMESPACE).exists(Path.of(expectedFile)),
+            is(true)
+        );
+
+    }
+
+
 
     private static List<Map<String, String>> defaultCaseDiffs(boolean withDeleted) {
         ArrayList<Map<String, String>> diffs = new ArrayList<>(
