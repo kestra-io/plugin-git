@@ -48,7 +48,7 @@ class TenantSyncTest {
 
             tasks:
               - id: log
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: hello
             """;
         var exportedZip = zippedYaml("my.namespace/exported-flow.yaml", yaml);
