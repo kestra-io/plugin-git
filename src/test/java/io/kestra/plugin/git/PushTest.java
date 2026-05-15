@@ -15,7 +15,9 @@ import org.eclipse.jgit.api.errors.TransportException;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import io.kestra.core.junit.annotations.KestraTest;
@@ -24,6 +26,7 @@ import io.kestra.core.models.flows.GenericFlow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.NamespaceFiles;
 import io.kestra.core.repositories.FlowRepositoryInterface;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.tenant.TenantService;
@@ -47,6 +50,18 @@ class PushTest extends AbstractGitTest {
     @Inject
     private FlowRepositoryInterface flowRepositoryInterface;
 
+    private MockKestraApiServer server;
+
+    @BeforeEach
+    void startMockServer() throws IOException {
+        server = MockKestraApiServer.start(flowRepositoryInterface);
+    }
+
+    @AfterEach
+    void stopMockServer() {
+        server.close();
+    }
+
     @Test
     void cloneThenPush_OnlyNeedsCredentialsForPush() throws Exception {
         String branchName = IdUtils.create();
@@ -60,6 +75,7 @@ class PushTest extends AbstractGitTest {
             .build();
 
         RunContext cloneRunContext = runContextFactory.of();
+        runContextFactory.initializer().forExecutor((DefaultRunContext) cloneRunContext);
         clone.run(cloneRunContext);
 
         File extraFile = cloneRunContext.workingDir().resolve(Path.of("some_file.txt")).toFile();
@@ -88,6 +104,7 @@ class PushTest extends AbstractGitTest {
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
             .branch(Property.ofValue(branchName))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         Push.Output pushOutput = push.run(cloneRunContext);
 
@@ -138,6 +155,7 @@ class PushTest extends AbstractGitTest {
             .build();
 
         RunContext cloneRunContext = runContextFactory.of();
+        runContextFactory.initializer().forExecutor((DefaultRunContext) cloneRunContext);
         clone.run(cloneRunContext);
         String ciBranchExpectedLastCommitId = getLastCommitId(cloneRunContext);
 
@@ -154,6 +172,7 @@ class PushTest extends AbstractGitTest {
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
             .branch(Property.ofValue(otherBranch))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         Push.Output pushOutput = push.run(cloneRunContext);
 
@@ -181,6 +200,7 @@ class PushTest extends AbstractGitTest {
                 "description", "One-task push"
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) runContext);
 
         String expectedInputFileContent = IdUtils.create();
         String expectedNamespaceFileContent = IdUtils.create();
@@ -226,6 +246,7 @@ class PushTest extends AbstractGitTest {
                 )
             )
             .branch(Property.ofValue(branchName))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         var ot = push.run(runContext);
@@ -288,8 +309,11 @@ class PushTest extends AbstractGitTest {
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
             .branch(Property.ofValue(branchName))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
-        push.run(runContextFactory.of());
+        var rc1 = runContextFactory.of();
+        runContextFactory.initializer().forExecutor((DefaultRunContext) rc1);
+        push.run(rc1);
 
         RunContext runContext = runContextFactory.of();
         clone.run(runContext);
@@ -298,7 +322,9 @@ class PushTest extends AbstractGitTest {
         push = push.toBuilder()
             .inputFiles(null)
             .build();
-        push.run(runContextFactory.of());
+        var rc2 = runContextFactory.of();
+        runContextFactory.initializer().forExecutor((DefaultRunContext) rc2);
+        push.run(rc2);
 
         runContext = runContextFactory.of();
         try {
@@ -340,12 +366,16 @@ class PushTest extends AbstractGitTest {
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
             .branch(Property.ofValue(branchName))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         RunContext runContext = runContextFactory.of();
+        runContextFactory.initializer().forExecutor((DefaultRunContext) runContext);
         Push.Output firstPush = push.run(runContext);
 
         try {
-            Push.Output run = push.run(runContextFactory.of());
+            var rc3 = runContextFactory.of();
+            runContextFactory.initializer().forExecutor((DefaultRunContext) rc3);
+            Push.Output run = push.run(rc3);
             assertThat(run.getCommitId(), nullValue());
 
             runContext = runContextFactory.of();
@@ -369,6 +399,7 @@ class PushTest extends AbstractGitTest {
     void oneTaskPush_WithSpecifiedDirectory() throws Exception {
         String branchName = IdUtils.create();
         RunContext runContext = runContextFactory.of();
+        runContextFactory.initializer().forExecutor((DefaultRunContext) runContext);
 
         String expectedInputFileContent = IdUtils.create();
         String expectedNestedInputFileContent = IdUtils.create();
@@ -397,6 +428,7 @@ class PushTest extends AbstractGitTest {
                 )
             )
             .branch(Property.ofValue(branchName))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         push.run(runContext);
@@ -438,6 +470,7 @@ class PushTest extends AbstractGitTest {
                 "description", "One-task push"
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) runContext);
 
         FlowWithSource createdFlow = this.createFlow(tenantId, namespace);
         FlowWithSource createdSubNsFlow = this.createFlow(tenantId, namespace + ".sub-namespace");
@@ -450,6 +483,7 @@ class PushTest extends AbstractGitTest {
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
             .branch(Property.ofValue(branchName))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         try {
@@ -494,6 +528,7 @@ class PushTest extends AbstractGitTest {
                 "description", "One-task push"
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) runContext);
 
         FlowWithSource createdFlow = this.createFlow(tenantId, namespace);
         FlowWithSource createdSubNsFlow = this.createFlow(tenantId, namespace + ".sub-namespace");
@@ -517,6 +552,7 @@ class PushTest extends AbstractGitTest {
                     .build()
             )
             .branch(Property.ofValue(branchName))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         try {
@@ -559,6 +595,7 @@ class PushTest extends AbstractGitTest {
                 "description", "One-task push"
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) runContext);
 
         FlowWithSource createdFlow = this.createFlow(tenantId, namespace);
         FlowWithSource createdSubNsFlow = this.createFlow(tenantId, namespace + ".sub-namespace");
@@ -581,6 +618,7 @@ class PushTest extends AbstractGitTest {
                     .gitDirectory(Property.ofValue("my-flows"))
                     .build()
             )
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         try {
@@ -629,7 +667,7 @@ class PushTest extends AbstractGitTest {
 
             tasks:
               - id: my-task
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: Hello from my-task""";
         return flowRepositoryInterface.create(
             GenericFlow.fromYaml(tenantId, flowSource)

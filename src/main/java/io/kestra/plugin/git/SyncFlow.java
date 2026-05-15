@@ -12,13 +12,13 @@ import org.eclipse.jgit.api.Git;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
-import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.services.FlowService;
 import io.kestra.plugin.git.services.GitService;
+import io.kestra.sdk.KestraClient;
+import io.kestra.sdk.internal.ApiException;
+import io.kestra.sdk.model.FlowWithSource;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
@@ -53,13 +53,18 @@ import io.kestra.core.models.annotations.PluginProperty;
                     password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
                     targetNamespace: dev.marketing # required
                     flowPath: "flows/marketing/flow.yml" # required
+                    kestraUrl: "http://localhost:8080"
+                    auth:
+                      username: "{{ secret('KESTRA_USERNAME') }}"
+                      password: "{{ secret('KESTRA_PASSWORD') }}"
                 """
         )
     }
 )
-public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.Output> {
+public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlow.Output> {
 
     public static final Pattern NAMESPACE_FINDER_PATTERN = Pattern.compile("(?m)^\\s*namespace:\\s*(.*)$");
+    private static final Pattern FLOW_ID_FINDER_PATTERN = Pattern.compile("(?m)^id:\\s*(.*)$");
 
     @Schema(
         title = "Branch to clone",
@@ -107,7 +112,6 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
         configureEnvironmentWithSsl(runContext);
 
         GitService gitService = new GitService(this);
-        FlowService flowService = ((DefaultRunContext) runContext).services().additionalService(FlowService.class);
 
         Git git = gitService.cloneBranch(runContext, runContext.render(this.getBranch()).as(String.class).orElse(null), Property.ofValue(Boolean.FALSE));
         Path cloneDir = git.getRepository().getWorkTree().toPath();
@@ -119,24 +123,82 @@ public class SyncFlow extends AbstractGitTask implements RunnableTask<SyncFlow.O
             throw new java.io.FileNotFoundException("Flow file not found at path: " + renderedFlowPath);
         }
 
+        // Build the client only after confirming the file exists, to keep failures fast and clear
+        KestraClient kestraClient = kestraClient(runContext);
+
         String renderedNamespace = runContext.render(this.targetNamespace).as(String.class).orElseThrow();
         String flowSource;
         try (InputStream is = Files.newInputStream(flowFilePath)) {
             flowSource = IOUtils.toString(is, StandardCharsets.UTF_8);
         }
 
-        Matcher matcher = NAMESPACE_FINDER_PATTERN.matcher(flowSource);
-        flowSource = matcher.replaceFirst("namespace: " + renderedNamespace);
+        // Rewrite the namespace to the target namespace
+        Matcher namespaceMatcher = NAMESPACE_FINDER_PATTERN.matcher(flowSource);
+        flowSource = namespaceMatcher.replaceFirst("namespace: " + renderedNamespace);
 
-        Flow flow = flowService.importFlow(runContext.flowInfo().tenantId(), flowSource.stripTrailing(), runContext.render(this.dryRun).as(Boolean.class).orElse(Boolean.FALSE));
+        // Parse the flow id from the (potentially rewritten) YAML
+        Matcher idMatcher = FLOW_ID_FINDER_PATTERN.matcher(flowSource);
+        if (!idMatcher.find()) {
+            throw new IllegalStateException("Cannot parse flow id from YAML at path: " + renderedFlowPath);
+        }
+        String flowId = idMatcher.group(1).trim();
+
+        String tenantId = runContext.flowInfo().tenantId();
+        boolean rDryRun = runContext.render(this.dryRun).as(Boolean.class).orElse(Boolean.FALSE);
+
+        FlowWithSource result;
+
+        if (rDryRun) {
+            // Validate without importing; compute projected revision
+            var violations = kestraClient.flows().validateFlows(tenantId, flowSource);
+            if (!violations.isEmpty() && violations.getFirst().getConstraints() != null) {
+                throw new IllegalStateException("Flow validation failed: " + violations.getFirst().getConstraints());
+            }
+
+            // Projected revision: existing + 1, or 1 for a new flow
+            int projectedRevision;
+            try {
+                FlowWithSource existing = kestraClient.flows().flow(renderedNamespace, flowId, false, false, tenantId, null);
+                projectedRevision = existing.getRevision() != null ? existing.getRevision() + 1 : 1;
+            } catch (ApiException e) {
+                // Flow does not exist yet
+                projectedRevision = 1;
+            }
+
+            result = new FlowWithSource()
+                .id(flowId)
+                .namespace(renderedNamespace)
+                .revision(projectedRevision);
+        } else {
+            // Import the flow
+            var tempFile = toNamedTempFile(flowId + ".yaml", flowSource.stripTrailing());
+            kestraClient.flows().importFlows(true, tenantId, tempFile);
+
+            // Fetch the saved flow to populate the output
+            result = kestraClient.flows().flow(renderedNamespace, flowId, false, false, tenantId, null);
+        }
 
         git.close();
 
         return Output.builder()
-            .flowId(flow.getId())
-            .namespace(flow.getNamespace())
-            .revision(flow.getRevision())
+            .flowId(result.getId())
+            .namespace(result.getNamespace())
+            .revision(result.getRevision())
             .build();
+    }
+
+    private java.io.File toNamedTempFile(String fileName, String yaml) {
+        try {
+            Path tmpPath = Files.createTempDirectory("kestra-import")
+                .resolve(fileName.endsWith(".yaml") ? fileName : fileName + ".yaml");
+
+            Files.createDirectories(tmpPath.getParent());
+            Files.writeString(tmpPath, yaml, StandardCharsets.UTF_8);
+
+            return tmpPath.toFile();
+        } catch (java.io.IOException e) {
+            throw new io.kestra.core.exceptions.KestraRuntimeException("Failed to create named file for: " + fileName, e);
+        }
     }
 
     @SuperBuilder
