@@ -33,8 +33,6 @@ import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.exceptions.IllegalVariableEvaluationException;
-import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
@@ -545,7 +543,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
         List<FlowWithSource> allFlows;
         try {
-            allFlows = fetchFlowsFromKestra(rc, tenant, rootNamespace);
+            allFlows = fetchFlowsFromKestra(rc, tenant, rootNamespace, rOnInvalidSyntax);
         } catch (Exception e) {
             handleInvalid(rc, rOnInvalidSyntax, "flows for namespace " + rootNamespace, e);
             allFlows = List.of();
@@ -557,7 +555,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         return new KestraState(flowsWithSource);
     }
 
-    private List<FlowWithSource> fetchFlowsFromKestra(RunContext rc, String tenantId, String namespace) {
+    private List<FlowWithSource> fetchFlowsFromKestra(RunContext rc, String tenantId, String namespace, OnInvalidSyntax onInvalidSyntax) {
         try {
             byte[] zippedFlows = kestraClient(rc).flows().exportFlowsByQuery(
                 tenantId,
@@ -577,7 +575,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                     try {
                         flows.add(FlowWithSource.of(YamlParser.parse(yaml, io.kestra.core.models.flows.Flow.class), yaml));
                     } catch (Exception e) {
-                        rc.logger().warn("Skipping invalid flow from entry {}: {}", entry.getName(), e.getMessage());
+                        handleInvalid(rc, onInvalidSyntax, "FLOW from entry " + entry.getName(), e);
                     }
                 }
             }
