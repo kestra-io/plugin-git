@@ -35,7 +35,6 @@ import io.kestra.core.models.flows.FlowSource;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
-import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.YamlParser;
@@ -228,12 +227,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
         runContext.logger().info("Now in NamespaceSync for namespace {}", rNamespace);
 
-        var flowRepository = ((DefaultRunContext) runContext).services().additionalService(FlowRepositoryInterface.class);
         var tenantId = runContext.flowInfo().tenantId();
-        var distinctNamespaces = flowRepository.findDistinctNamespace(tenantId);
-        if (!distinctNamespaces.contains(rNamespace)) {
-            throw new IllegalArgumentException("The namespace does not exist in the '" + tenantId + "' tenant.");
-        }
 
         var rGitDirectory = runContext.render(this.gitDirectory).as(String.class).orElse(null);
         var rSourceOfTruth = runContext.render(this.sourceOfTruth).as(SourceOfTruth.class).orElse(SourceOfTruth.KESTRA);
