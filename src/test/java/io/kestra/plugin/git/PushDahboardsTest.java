@@ -14,15 +14,12 @@ import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.dashboards.Dashboard;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.repositories.DashboardRepositoryInterface;
-import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.tenant.TenantService;
@@ -36,7 +33,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
 
 @KestraTest
-public class PushDashboardsTest extends AbstractGitTest {
+public class PushDahboardsTest extends AbstractGitTest {
     public static final String DESCRIPTION = "One-task push";
 
     @Inject
@@ -44,18 +41,6 @@ public class PushDashboardsTest extends AbstractGitTest {
 
     @Inject
     private DashboardRepositoryInterface dashboardRepositoryInterface;
-
-    private MockKestraApiServer server;
-
-    @BeforeEach
-    void startMockServer() throws IOException {
-        server = MockKestraApiServer.start(dashboardRepositoryInterface);
-    }
-
-    @AfterEach
-    void stopMockServer() {
-        server.close();
-    }
 
     @Test
     void defaultCase_DefaultRegex() throws Exception {
@@ -75,7 +60,7 @@ public class PushDashboardsTest extends AbstractGitTest {
 
         try {
             PushDashboards pushDashboards = PushDashboards.builder()
-                .id(PushDashboardsTest.class.getSimpleName())
+                .id(PushDahboardsTest.class.getSimpleName())
                 .type(PushDashboards.class.getName())
                 .branch(Property.ofExpression("{{branch}}"))
                 .url(Property.ofExpression("{{url}}"))
@@ -85,7 +70,6 @@ public class PushDashboardsTest extends AbstractGitTest {
                 .password(Property.ofExpression("{{pat}}"))
                 .authorEmail(Property.ofExpression("{{email}}"))
                 .authorName(Property.ofExpression("{{name}}"))
-                .kestraUrl(Property.ofValue(server.url()))
                 .build();
 
             PushDashboards.Output pushDashboardsOutput = pushDashboards.run(runContext);
@@ -148,7 +132,7 @@ public class PushDashboardsTest extends AbstractGitTest {
 
         try {
             PushDashboards pushDashboards = PushDashboards.builder()
-                .id(PushDashboardsTest.class.getSimpleName())
+                .id(PushDahboardsTest.class.getSimpleName())
                 .type(PushDashboards.class.getName())
                 .branch(Property.ofExpression("{{branch}}"))
                 .url(Property.ofExpression("{{url}}"))
@@ -159,7 +143,6 @@ public class PushDashboardsTest extends AbstractGitTest {
                 .dashboards("first*")
                 .authorEmail(Property.ofExpression("{{email}}"))
                 .authorName(Property.ofExpression("{{name}}"))
-                .kestraUrl(Property.ofValue(server.url()))
                 .build();
 
             pushDashboards.run(runContext);
@@ -198,8 +181,7 @@ public class PushDashboardsTest extends AbstractGitTest {
             Map.of(
                 "flow", Map.of(
                     "tenantId", tenantId,
-                    "namespace", "system",
-                    "id", "PushDashboardsTest"
+                    "namespace", "system"
                 ),
                 "url", url,
                 "description", DESCRIPTION,
@@ -220,9 +202,7 @@ public class PushDashboardsTest extends AbstractGitTest {
                 }
             }
         }
-        var rc = runContextFactory.of(map);
-        runContextFactory.initializer().forExecutor((DefaultRunContext) rc);
-        return rc;
+        return runContextFactory.of(map);
     }
 
     private static RevCommit assertIsLastCommit(RunContext cloneRunContext, PushDashboards.Output pushOutput) throws IOException, GitAPIException {

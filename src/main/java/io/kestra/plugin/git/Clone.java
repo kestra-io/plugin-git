@@ -8,6 +8,7 @@ import java.util.List;
 import org.eclipse.jgit.api.CloneCommand;
 import org.eclipse.jgit.api.FetchCommand;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.TransportException;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.TagOpt;
 import org.eclipse.jgit.transport.URIish;
@@ -209,6 +210,15 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
         logger.info("Start cloning from '{}'", url);
 
+        try {
+            return cloneRepository(runContext, logger, url, path, hasCommit, hasTag, cloneOptions);
+        } catch (TransportException e) {
+            logger.error("Git clone failed for '{}': {}", url, e.getMessage());
+            throw e;
+        }
+    }
+
+    private Clone.Output cloneRepository(RunContext runContext, Logger logger, String url, Path path, boolean hasCommit, boolean hasTag, CloneOptions cloneOptions) throws Exception {
         // When the target directory already contains files (e.g. from WorkingDirectory inputFiles),
         // JGit's CloneCommand fails with "Destination path already exists and is not an empty directory".
         // In that case, use git init + fetch + checkout instead.

@@ -116,8 +116,16 @@ class CloneTest extends AbstractGitTest {
     void appliesGitConfig_coreFileModeFalse_and_ignoresPermChanges() throws Exception {
         RunContext runContext = runContextFactory.of();
 
+        Path remote = Files.createTempDirectory("git-remote-filemode-");
+        PersonIdent author = new PersonIdent("Test User", "test@example.com");
+        try (Git remoteGit = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(remote.resolve("README.md"), "hello\n");
+            remoteGit.add().addFilepattern("README.md").call();
+            remoteGit.commit().setMessage("init").setAuthor(author).setCommitter(author).call();
+        }
+
         Clone task = Clone.builder()
-            .url(Property.ofValue("https://github.com/kestra-io/plugin-template"))
+            .url(Property.ofValue("file://" + remote))
             .gitConfig(
                 Property.ofValue(
                     Map.of(
@@ -136,16 +144,16 @@ class CloneTest extends AbstractGitTest {
         }
 
         Path testFile = repoPath.resolve("filemode_test.sh");
-        java.nio.file.Files.writeString(testFile, "#!/bin/sh\necho hi\n");
+        Files.writeString(testFile, "#!/bin/sh\necho hi\n");
         Files.setPosixFilePermissions(testFile, PosixFilePermissions.fromString("rw-r--r--"));
 
         try (Git git = Git.open(repoPath.toFile())) {
             git.add().addFilepattern("filemode_test.sh").call();
-            git.commit().setMessage("baseline").call();
+            git.commit().setMessage("baseline").setAuthor(author).setCommitter(author).call();
 
             Files.setPosixFilePermissions(testFile, PosixFilePermissions.fromString("rwxr-xr-x"));
 
-            var status = git.status().call();
+            var status = git.status().addPath("filemode_test.sh").call();
 
             assertThat(
                 status.getModified().isEmpty() && status.getChanged().isEmpty() &&

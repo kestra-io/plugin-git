@@ -58,9 +58,6 @@ dependencies {
     api 'org.eclipse.jgit:org.eclipse.jgit:7.6.0.202603022253-r'
     api 'org.eclipse.jgit:org.eclipse.jgit.ssh.jsch:7.6.0.202603022253-r'
     api "org.eclipse.jgit:org.eclipse.jgit.http.apache:7.6.0.202603022253-r"
-
-    // kestra API client
-    implementation "io.kestra:kestra-api-client:1.0.11"
 }
 
 
@@ -111,9 +108,8 @@ dependencies {
     testImplementation "org.hamcrest:hamcrest"
     testImplementation "org.hamcrest:hamcrest-library"
 
-    // Testcontainers — used for container-based integration tests (e.g. SyncFlowsContainerTest)
-    testImplementation "org.testcontainers:testcontainers:2.0.3"
-    testImplementation "org.testcontainers:junit-jupiter:1.21.4"
+    // kestra API client
+    implementation "io.kestra:kestra-api-client:1.0.5"
 }
 
 /**********************************************************************************************************************\
