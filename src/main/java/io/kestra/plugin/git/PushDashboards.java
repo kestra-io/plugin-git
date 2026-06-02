@@ -56,7 +56,7 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
 
                 inputs:
                   - id: push
-                    type: BOOLEAN
+                    type: BOOL
                     defaults: false
 
                 tasks:
