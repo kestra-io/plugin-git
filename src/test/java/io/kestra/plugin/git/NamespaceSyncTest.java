@@ -200,7 +200,7 @@ public class NamespaceSyncTest extends AbstractGitTest {
 
             tasks:
               - id: say
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: hello
             """.formatted(id, namespace);
         GenericFlow f = GenericFlow.fromYaml(TENANT_ID, src);

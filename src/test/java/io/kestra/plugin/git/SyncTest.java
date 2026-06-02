@@ -79,7 +79,7 @@ class SyncTest extends AbstractGitTest {
 
             tasks:
               - id: old-task
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: Hello from old-task""";
         GenericFlow genericFlow = GenericFlow.fromYaml(TENANT_ID, flowSource);
         flowRepositoryInterface.create(genericFlow);
@@ -235,7 +235,7 @@ class SyncTest extends AbstractGitTest {
 
             tasks:
               - id: old-task
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: Hello from old-task""";
         GenericFlow flowToDelete = GenericFlow.fromYaml(TENANT_ID, flowSource);
         flowRepositoryInterface.create(flowToDelete);
@@ -324,7 +324,7 @@ class SyncTest extends AbstractGitTest {
 
             tasks:
               - id: old-task
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: Hello from old-task""";
 
         GenericFlow genericFlow = GenericFlow.fromYaml(TENANT_ID, flowSource);
