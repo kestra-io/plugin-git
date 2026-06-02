@@ -75,7 +75,7 @@ public class SyncFlowTest extends AbstractGitTest {
     void updateExistingFlow() throws Exception {
         RunContext runContext = runContext();
 
-        String initialSource = "id: second-flow\nnamespace: " + TARGET_NAMESPACE + "\ntasks:\n  - id: log\n    type: io.kestra.core.tasks.log.Log\n    message: 'v1'";
+        String initialSource = "id: second-flow\nnamespace: " + TARGET_NAMESPACE + "\ntasks:\n  - id: log\n    type: io.kestra.plugin.core.log.Log\n    message: 'v1'";
         GenericFlow flow = GenericFlow.fromYaml(TENANT_ID, initialSource);
 
         flowRepositoryInterface.create(

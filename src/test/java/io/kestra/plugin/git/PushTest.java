@@ -629,7 +629,7 @@ class PushTest extends AbstractGitTest {
 
             tasks:
               - id: my-task
-                type: io.kestra.core.tasks.log.Log
+                type: io.kestra.plugin.core.log.Log
                 message: Hello from my-task""";
         return flowRepositoryInterface.create(
             GenericFlow.fromYaml(tenantId, flowSource)
