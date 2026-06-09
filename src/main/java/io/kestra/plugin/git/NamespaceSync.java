@@ -35,7 +35,6 @@ import io.kestra.core.models.flows.FlowSource;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
-import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.YamlParser;
@@ -157,12 +156,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
     @Schema(
         title = "Namespace to sync",
-        description = """
-            Required; syncs only this namespace (no child namespaces).
-
-            The namespace **must already exist** in the target Kestra instance before the sync runs — \
-            there is no automatic creation. If you are deploying to a fresh instance (e.g. preprod → Git → prod), \
-            create the namespace manually in prod first, then run this task with `sourceOfTruth: GIT`."""
+        description = "Required; syncs only this namespace (no child namespaces). The namespace is created automatically when it does not exist yet (e.g. when bootstrapping a fresh environment with `sourceOfTruth: GIT`)."
     )
     @NotNull
     @PluginProperty(group = "main")
@@ -242,12 +236,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
         runContext.logger().info("Now in NamespaceSync for namespace {}", rNamespace);
 
-        var flowRepository = ((DefaultRunContext) runContext).services().additionalService(FlowRepositoryInterface.class);
         var tenantId = runContext.flowInfo().tenantId();
-        var distinctNamespaces = flowRepository.findDistinctNamespace(tenantId);
-        if (!distinctNamespaces.contains(rNamespace)) {
-            throw new IllegalArgumentException("The namespace does not exist in the '" + tenantId + "' tenant.");
-        }
 
         var rGitDirectory = runContext.render(this.gitDirectory).as(String.class).orElse(null);
         var rSourceOfTruth = runContext.render(this.sourceOfTruth).as(SourceOfTruth.class).orElse(SourceOfTruth.KESTRA);
