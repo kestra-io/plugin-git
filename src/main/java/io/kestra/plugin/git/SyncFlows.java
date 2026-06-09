@@ -46,7 +46,7 @@ import io.kestra.core.models.annotations.PluginProperty;
             full = true,
             code = """
                 id: sync_flows_from_git
-                namespace: system
+                namespace: company.ops
 
                 tasks:
                   - id: git
@@ -72,7 +72,7 @@ import io.kestra.core.models.annotations.PluginProperty;
             full = true,
             code = """
                 id: git_sync
-                namespace: system
+                namespace: company.ops
 
                 tasks:
                   - id: sync

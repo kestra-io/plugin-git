@@ -45,7 +45,7 @@ import static io.kestra.core.utils.Rethrow.*;
             full = true,
             code = """
                 id: push_to_git
-                namespace: system
+                namespace: company.ops
 
                 tasks:
                   - id: commit_and_push
@@ -73,7 +73,7 @@ import static io.kestra.core.utils.Rethrow.*;
             full = true,
             code = """
                 id: git_push
-                namespace: system
+                namespace: company.ops
 
                 tasks:
                   - id: push
