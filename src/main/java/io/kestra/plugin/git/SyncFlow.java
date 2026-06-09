@@ -42,7 +42,7 @@ import io.kestra.core.models.annotations.PluginProperty;
             full = true,
             code = """
                 id: sync_single_flow_from_git
-                namespace: system.cicd
+                namespace: company.ops
 
                 tasks:
                   - id: sync_my_flow
