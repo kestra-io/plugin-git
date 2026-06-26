@@ -802,7 +802,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     @Getter
     public static class Output implements io.kestra.core.models.tasks.Output {
 
-        @Schema(title = "A file containing all changes applied (or not in case of dry run) to/from Git.")
+        @Schema(title = "A file containing all changes applied (or not in case of dry run) to/from Git")
         private URI diff;
 
         @Schema(title = "ID of the commit pushed (if any)")
