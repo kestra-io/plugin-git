@@ -24,7 +24,7 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
     private static final String KESTRA_URL_TEMPLATE = "{{ kestra.url }}";
 
     @Schema(
-        title = "Kestra API URL. If null, uses 'kestra.url' from [configuration](https://kestra.io/docs/configuration#kestra-url). If that is also null, defaults to 'http://localhost:8080'."
+        title = "Kestra API URL. If null, uses 'kestra.url' from [configuration](https://kestra.io/docs/configuration#kestra-url). If that is also null, defaults to 'http://localhost:8080'"
     )
     @PluginProperty(group = "connection")
     private Property<String> kestraUrl;
@@ -104,15 +104,15 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
     @Builder
     @Getter
     public static class Auth {
-        @Schema(title = "API token for Bearer authentication.")
+        @Schema(title = "API token for Bearer authentication")
         @PluginProperty(secret = true, group = "connection")
         private Property<String> apiToken;
 
-        @Schema(title = "Username for HTTP Basic authentication.")
+        @Schema(title = "Username for HTTP Basic authentication")
         @PluginProperty(secret = true, group = "connection")
         private Property<String> username;
 
-        @Schema(title = "Password for HTTP Basic authentication.")
+        @Schema(title = "Password for HTTP Basic authentication")
         @PluginProperty(secret = true, group = "connection")
         private Property<String> password;
 
