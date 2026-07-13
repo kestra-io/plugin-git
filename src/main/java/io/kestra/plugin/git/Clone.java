@@ -49,9 +49,9 @@ import io.kestra.core.models.annotations.PluginProperty;
                     type: io.kestra.plugin.core.flow.WorkingDirectory
                     tasks:
                       - id: clone
-                          type: io.kestra.plugin.git.Clone
-                          url: https://github.com/kestra-io/blueprints
-                          branch: main
+                        type: io.kestra.plugin.git.Clone
+                        url: https://github.com/kestra-io/blueprints
+                        branch: main
                 """
         ),
         @Example(
@@ -81,7 +81,7 @@ import io.kestra.core.models.annotations.PluginProperty;
                 namespace: company.team
 
                 tasks:
-                 - id: wdir
+                  - id: wdir
                     type: io.kestra.plugin.core.flow.WorkingDirectory
                     tasks:
                       - id: clone
