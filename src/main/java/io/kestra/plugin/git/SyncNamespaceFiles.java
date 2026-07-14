@@ -157,7 +157,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
                 return existingResource.get();
             }
 
-            return NamespaceFile.of(renderedNamespace, uri, existingResource.get().version() + 1);
+            return NamespaceFile.of(renderedNamespace, uri, existingResource.get().revision() + 1);
         }
 
         return NamespaceFile.of(renderedNamespace, uri);
