@@ -294,15 +294,17 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
             // Create flow directory if it doesn't exist
             flowsDirectory.toFile().mkdirs();
 
-            flows.forEach(
-                throwConsumer(
-                    flowWithSource -> FileUtils.writeStringToFile(
-                        flowsDirectory.resolve(flowWithSource.getNamespace() + "." + flowWithSource.getId() + ".yml").toFile(),
-                        flowWithSource.getSource(),
-                        StandardCharsets.UTF_8
+            flows.stream()
+                .filter(flowWithSource -> !flowWithSource.isDraft())
+                .forEach(
+                    throwConsumer(
+                        flowWithSource -> FileUtils.writeStringToFile(
+                            flowsDirectory.resolve(flowWithSource.getNamespace() + "." + flowWithSource.getId() + ".yml").toFile(),
+                            flowWithSource.getSource(),
+                            StandardCharsets.UTF_8
+                        )
                     )
-                )
-            );
+                );
         }
 
         logger.info(

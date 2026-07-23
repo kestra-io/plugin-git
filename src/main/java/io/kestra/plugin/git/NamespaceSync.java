@@ -541,6 +541,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         }
 
         Map<String, FlowWithSource> flowsWithSource = allFlows.stream()
+            .filter(f -> !f.isDraft())
             .collect(Collectors.toMap(f -> key(f.getNamespace(), f.getId()), Function.identity(), (a, b) -> a));
 
         return new KestraState(flowsWithSource);

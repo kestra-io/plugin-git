@@ -1,11 +1,32 @@
 package io.kestra.plugin.git;
 
 import io.kestra.core.junit.annotations.KestraTest;
+import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.flows.GenericFlow;
+import io.kestra.core.repositories.FlowRepositoryInterface;
 
 import io.micronaut.context.annotation.Value;
 
 @KestraTest
 public abstract class AbstractGitTest {
+
+    /**
+     * Persists a flow whose latest revision is a draft, used to assert that Git tasks skip drafts.
+     */
+    protected static FlowWithSource createDraftFlow(FlowRepositoryInterface flowRepository, String tenantId, String flowId, String namespace) {
+        String flowSource = """
+            id: %s
+            namespace: %s
+
+            draft: true
+            tasks:
+              - id: my-task
+                type: io.kestra.plugin.core.log.Log
+                message: Hello from my-task
+            """.formatted(flowId, namespace);
+
+        return flowRepository.create(GenericFlow.fromYaml(tenantId, flowSource));
+    }
 
     @Value("${kestra.git.pat}")
     protected String pat;

@@ -189,7 +189,8 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
             flowsToPush = flowRepository.findByNamespaceWithSource(tenantId, renderedSourceNamespace);
         }
 
-        Stream<FlowWithSource> filteredFlowsToPush = flowsToPush.stream();
+        Stream<FlowWithSource> filteredFlowsToPush = flowsToPush.stream()
+            .filter(flowWithSource -> !flowWithSource.isDraft());
         if (globs != null) {
             List<PathMatcher> matchers = globs.stream().map(glob -> FileSystems.getDefault().getPathMatcher("glob:" + glob)).toList();
             filteredFlowsToPush = filteredFlowsToPush.filter(flowWithSource ->
