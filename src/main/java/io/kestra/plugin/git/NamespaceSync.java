@@ -60,7 +60,7 @@ import io.kestra.core.models.annotations.PluginProperty;
 @NoArgsConstructor
 @Schema(
     title = "Sync a namespace with Git",
-    description = "Syncs flows and Namespace Files for a single namespace between Git and Kestra. Direction is controlled by `sourceOfTruth`; deletions follow `whenMissingInSource` and respect `protectedNamespaces`. Supports dry-run diff output and optional subdirectory via `gitDirectory`. The flow containing this task does not need to live in the same namespace as the one being synced."
+    description = "Syncs flows and Namespace Files for a single namespace between Git and Kestra. Direction is controlled by `sourceOfTruth`; deletions follow `whenMissingInSource` and respect `protectedNamespaces`. Supports dry-run diff output and optional subdirectory via `gitDirectory`. The flow containing this task does not need to live in the same namespace as the one being synced. Flows saved as drafts are not synced to Git."
 )
 @Plugin(
     priority = Plugin.Priority.SECONDARY,
