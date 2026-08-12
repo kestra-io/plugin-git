@@ -663,6 +663,7 @@ class PushTest extends AbstractGitTest {
                 "description", "One-task push"
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) runContext);
 
         FlowWithSource createdFlow = this.createFlow(tenantId, namespace);
         FlowWithSource draftFlow = createDraftFlow(flowRepositoryInterface, tenantId, "draft-flow", namespace);
