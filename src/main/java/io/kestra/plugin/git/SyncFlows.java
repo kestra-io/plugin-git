@@ -55,7 +55,7 @@ import io.kestra.core.models.annotations.PluginProperty;
             full = true,
             code = """
                 id: sync_flows_from_git
-                namespace: system
+                namespace: company.ops
 
                 tasks:
                   - id: git
@@ -81,23 +81,23 @@ import io.kestra.core.models.annotations.PluginProperty;
             full = true,
             code = """
                 id: git_sync
-                namespace: system
+                namespace: company.ops
 
                 tasks:
                   - id: sync
-                    type: io.kestra.plugin.core.flow.ForEach
+                    type: io.kestra.plugin.core.flow.Loop
                     values: ["company", "company.team", "company.analytics"]
                     tasks:
                       - id: flows
                         type: io.kestra.plugin.git.SyncFlows
-                        targetNamespace: "{{ taskrun.value }}"
-                        gitDirectory: "{{'flows/' ~ taskrun.value}}"
+                        targetNamespace: "{{ item.value }}"
+                        gitDirectory: "{{'flows/' ~ item.value}}"
                         includeChildNamespaces: false
 
                       - id: scripts
                         type: io.kestra.plugin.git.SyncNamespaceFiles
-                        namespace: "{{ taskrun.value }}"
-                        gitDirectory: "{{'scripts/' ~ taskrun.value}}"
+                        namespace: "{{ item.value }}"
+                        gitDirectory: "{{'scripts/' ~ item.value}}"
 
                 pluginDefaults:
                   - type: io.kestra.plugin.git

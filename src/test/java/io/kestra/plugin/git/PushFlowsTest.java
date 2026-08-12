@@ -754,6 +754,67 @@ public class PushFlowsTest extends AbstractGitTest {
         }
     }
 
+    @Test
+    void defaultCase_ExcludesDraftFlows() throws Exception {
+        String tenantId = TenantService.MAIN_TENANT;
+        String sourceNamespace = IdUtils.create().toLowerCase();
+        String targetNamespace = IdUtils.create().toLowerCase();
+        String branch = IdUtils.create();
+        String gitDirectory = "my-flows";
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
+
+        FlowWithSource createdFlow = this.createFlow(tenantId, "first-flow", sourceNamespace);
+        FlowWithSource draftFlow = createDraftFlow(flowRepositoryInterface, tenantId, "second-flow-draft", sourceNamespace);
+
+        PushFlows pushFlows = PushFlows.builder()
+            .id("pushFlows")
+            .type(PushFlows.class.getName())
+            .branch(Property.ofExpression("{{branch}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .commitMessage(Property.ofExpression("Push from CI - {{description}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .authorEmail(Property.ofExpression("{{email}}"))
+            .authorName(Property.ofExpression("{{name}}"))
+            .sourceNamespace(Property.ofExpression("{{sourceNamespace}}"))
+            .targetNamespace(Property.ofExpression("{{targetNamespace}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        try {
+            PushFlows.Output pushOutput = pushFlows.run(runContext);
+
+            Clone clone = Clone.builder()
+                .id("clone")
+                .type(Clone.class.getName())
+                .url(Property.ofValue(repositoryUrl))
+                .username(Property.ofValue(pat))
+                .password(Property.ofValue(pat))
+                .branch(Property.ofValue(branch))
+                .build();
+
+            Clone.Output cloneOutput = clone.run(runContextFactory.of());
+
+            File flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), createdFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(true));
+
+            File draftFlowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), draftFlow.getId() + ".yml");
+            assertThat(draftFlowFile.exists(), is(false));
+
+            assertDiffs(
+                runContext,
+                pushOutput.getFlows(),
+                List.of(
+                    Map.of("additions", "+10", "deletions", "-0", "changes", "0", "file", gitDirectory + "/" + createdFlow.getId() + ".yml")
+                )
+            );
+        } finally {
+            this.deleteRemoteBranch(runContext.workingDir().path(), branch);
+        }
+    }
+
     private RunContext runContext(String tenantId, String repositoryUrl, String gitUserEmail, String gitUserName, String branch, String sourceNamespace, String targetNamespace,
         String gitDirectory) {
         return runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory, null, false);

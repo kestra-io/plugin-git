@@ -163,7 +163,8 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
     private NamespaceFiles namespaceFiles;
 
     @Schema(
-        title = "Whether to push flows from the current namespace to Git"
+        title = "Whether to push flows from the current namespace to Git",
+        description = "Flows saved as drafts are not pushed to Git."
     )
     @PluginProperty(group = "advanced")
     @Builder.Default
@@ -297,15 +298,17 @@ public class Push extends AbstractCloningTask implements RunnableTask<Push.Outpu
             // Create flow directory if it doesn't exist
             flowsDirectory.toFile().mkdirs();
 
-            flows.forEach(
-                throwConsumer(
-                    flowWithSource -> FileUtils.writeStringToFile(
-                        flowsDirectory.resolve(flowWithSource.getNamespace() + "." + flowWithSource.getId() + ".yml").toFile(),
-                        flowWithSource.getSource().replaceAll("(?m)^revision:\\s*\\d+\\n?", ""),
-                        StandardCharsets.UTF_8
+            flows.stream()
+                .filter(flowWithSource -> !flowWithSource.isDraft())
+                .forEach(
+                    throwConsumer(
+                        flowWithSource -> FileUtils.writeStringToFile(
+                            flowsDirectory.resolve(flowWithSource.getNamespace() + "." + flowWithSource.getId() + ".yml").toFile(),
+                            flowWithSource.getSource().replaceAll("(?m)^revision:\\s*\\d+\\n?", ""),
+                            StandardCharsets.UTF_8
+                        )
                     )
-                )
-            );
+                );
         }
 
         logger.info(

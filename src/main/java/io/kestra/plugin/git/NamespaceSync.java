@@ -64,7 +64,7 @@ import io.kestra.core.models.annotations.PluginProperty;
 @NoArgsConstructor
 @Schema(
     title = "Sync a namespace with Git",
-    description = "Syncs flows and Namespace Files for a single namespace between Git and Kestra. Direction is controlled by `sourceOfTruth`; deletions follow `whenMissingInSource` and respect `protectedNamespaces`. Supports dry-run diff output and optional subdirectory via `gitDirectory`."
+    description = "Syncs flows and Namespace Files for a single namespace between Git and Kestra. Direction is controlled by `sourceOfTruth`; deletions follow `whenMissingInSource` and respect `protectedNamespaces`. Supports dry-run diff output and optional subdirectory via `gitDirectory`. The flow containing this task does not need to live in the same namespace as the one being synced. Flows saved as drafts are not synced to Git."
 )
 @Plugin(
     priority = Plugin.Priority.SECONDARY,
@@ -74,11 +74,11 @@ import io.kestra.core.models.annotations.PluginProperty;
             full = true,
             code = """
                 id: git_namespace_sync
-                namespace: system
+                namespace: company.ops
                 tasks:
                   - id: sync
                     type: io.kestra.plugin.git.NamespaceSync
-                    namespace: system
+                    namespace: company.ops
                     sourceOfTruth: GIT
                     whenMissingInSource: DELETE
                     protectedNamespaces:
@@ -95,11 +95,11 @@ import io.kestra.core.models.annotations.PluginProperty;
             full = true,
             code = """
                 id: kestra_namespace_sync
-                namespace: system
+                namespace: company.ops
                 tasks:
                   - id: sync
                     type: io.kestra.plugin.git.NamespaceSync
-                    namespace: system
+                    namespace: company.ops
                     sourceOfTruth: KESTRA
                     whenMissingInSource: KEEP
                     protectedNamespaces:
@@ -144,14 +144,23 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
     @Schema(
         title = "Git base directory",
-        description = "Optional subfolder in the repo; default is repo root. Within it, files are expected under `<namespace>/flows` and `<namespace>/files`."
+        description = """
+            Optional subfolder in the repo; default is repo root. Within it, files are expected under `<namespace>/flows` and `<namespace>/files`.
+
+            | gitDirectory | namespace    | Expected Git path                     |
+            | ------------ | ------------ | ------------------------------------- |
+            | (not set)    | company      | company/flows/my-flow.yaml            |
+            | monorepo     | company.ops  | monorepo/company.ops/flows/flow.yaml  |
+            | projectA     | company.team | projectA/company.team/flows/flow.yaml |
+
+            Note: a dotted namespace such as `company.team` maps to a folder **literally named `company.team`**, not to a nested `company/team` path."""
     )
     @PluginProperty(group = "destination")
     private Property<String> gitDirectory;
 
     @Schema(
         title = "Namespace to sync",
-        description = "Required; syncs only this namespace (no child namespaces)."
+        description = "Required; syncs only this namespace (no child namespaces). The namespace is created automatically when it does not exist yet (e.g. when bootstrapping a fresh environment with `sourceOfTruth: GIT`)."
     )
     @NotNull
     @PluginProperty(group = "main")
@@ -550,6 +559,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         }
 
         Map<String, FlowWithSource> flowsWithSource = allFlows.stream()
+            .filter(f -> !f.isDraft())
             .collect(Collectors.toMap(f -> key(f.getNamespace(), f.getId()), Function.identity(), (a, b) -> a));
 
         return new KestraState(flowsWithSource);
@@ -849,7 +859,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     @Getter
     public static class Output implements io.kestra.core.models.tasks.Output {
 
-        @Schema(title = "A file containing all changes applied (or not in case of dry run) to/from Git.")
+        @Schema(title = "A file containing all changes applied (or not in case of dry run) to/from Git")
         private URI diff;
 
         @Schema(title = "ID of the commit pushed (if any)")

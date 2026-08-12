@@ -45,7 +45,7 @@ import static io.kestra.core.utils.Rethrow.*;
 @NoArgsConstructor
 @Schema(
     title = "Push flows to Git",
-    description = "Exports saved flows from `sourceNamespace` (optionally child namespaces) into `gitDirectory` (default `_flows`) and pushes to Git. Can rewrite namespaces to `targetNamespace`; branch is created if missing and dry-run writes only the diff."
+    description = "Exports saved flows from `sourceNamespace` (optionally child namespaces) into `gitDirectory` (default `_flows`) and pushes to Git. Can rewrite namespaces to `targetNamespace`; branch is created if missing and dry-run writes only the diff. Flows saved as drafts are not exported or pushed to Git."
 )
 @Plugin(
     examples = {
@@ -54,7 +54,7 @@ import static io.kestra.core.utils.Rethrow.*;
             full = true,
             code = """
                 id: push_to_git
-                namespace: system
+                namespace: company.ops
 
                 tasks:
                   - id: commit_and_push
@@ -82,23 +82,23 @@ import static io.kestra.core.utils.Rethrow.*;
             full = true,
             code = """
                 id: git_push
-                namespace: system
+                namespace: company.ops
 
                 tasks:
                   - id: push
-                    type: io.kestra.plugin.core.flow.ForEach
+                    type: io.kestra.plugin.core.flow.Loop
                     values: ["company", "company.team", "company.analytics"]
                     tasks:
                       - id: flows
                         type: io.kestra.plugin.git.PushFlows
-                        sourceNamespace: "{{ taskrun.value }}"
-                        gitDirectory: "{{'flows/' ~ taskrun.value}}"
+                        sourceNamespace: "{{ item.value }}"
+                        gitDirectory: "{{'flows/' ~ item.value}}"
                         includeChildNamespaces: false
 
                       - id: scripts
                         type: io.kestra.plugin.git.PushNamespaceFiles
-                        namespace: "{{ taskrun.value }}"
-                        gitDirectory: "{{'scripts/' ~ taskrun.value}}"
+                        namespace: "{{ item.value }}"
+                        gitDirectory: "{{'scripts/' ~ item.value}}"
 
                 pluginDefaults:
                   - type: io.kestra.plugin.git
@@ -193,7 +193,8 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
 
         List<FlowWithSource> flowsToPush = fetchFlowsFromKestra(kestraClient(runContext), runContext, tenantId, renderedSourceNamespace, includeChildren);
 
-        Stream<FlowWithSource> filteredFlowsToPush = flowsToPush.stream();
+        Stream<FlowWithSource> filteredFlowsToPush = flowsToPush.stream()
+            .filter(flowWithSource -> !flowWithSource.isDraft());
         if (globs != null) {
             List<PathMatcher> matchers = globs.stream().map(glob -> FileSystems.getDefault().getPathMatcher("glob:" + glob)).toList();
             filteredFlowsToPush = filteredFlowsToPush.filter(flowWithSource ->

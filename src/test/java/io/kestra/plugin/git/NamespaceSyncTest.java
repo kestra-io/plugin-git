@@ -194,6 +194,50 @@ public class NamespaceSyncTest extends AbstractGitTest {
         assertThat(ids, containsInAnyOrder(baseId, extraId));
     }
 
+    @Test
+    void kestraToGit_apply_excludesDraftFlows() throws Exception {
+        RunContext rc = runContext();
+
+        String suf = Long.toHexString(System.nanoTime());
+        String flowId = "alpha-" + suf;
+        String draftFlowId = "draft-" + suf;
+
+        createFlowInKestra(flowId, NAMESPACE);
+        createDraftFlow(flowRepository, TENANT_ID, draftFlowId, NAMESPACE);
+
+        NamespaceSync task = NamespaceSync.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .sourceOfTruth(Property.ofValue(NamespaceSync.SourceOfTruth.KESTRA))
+            .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.KEEP))
+            .dryRun(Property.ofValue(false))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        NamespaceSync.Output out = task.run(rc);
+        assertNotNull(out.getCommitId());
+
+        RunContext cloneCtx = runContextFactory.of();
+        Clone.builder()
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(branch))
+            .build()
+            .run(cloneCtx);
+
+        Path base = cloneCtx.workingDir().path()
+            .resolve(GIT_DIRECTORY)
+            .resolve(NAMESPACE);
+
+        assertTrue(Files.exists(base.resolve("flows/" + flowId + ".yaml")));
+        assertFalse(Files.exists(base.resolve("flows/" + draftFlowId + ".yaml")));
+    }
+
     private RunContext runContext() {
         Map<String, Object> ctx = new HashMap<>(
             Map.of(

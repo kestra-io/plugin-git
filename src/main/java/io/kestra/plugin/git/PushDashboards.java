@@ -52,7 +52,7 @@ import lombok.experimental.SuperBuilder;
 
                 inputs:
                   - id: push
-                    type: BOOLEAN
+                    type: BOOL
                     defaults: false
 
                 tasks:
