@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.apache.commons.io.FileUtils;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.event.Level;
@@ -24,6 +25,7 @@ import io.kestra.core.models.flows.GenericFlow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.queues.DispatchQueueInterface;
 import io.kestra.core.repositories.FlowRepositoryInterface;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.storages.StorageContext;
@@ -54,6 +56,18 @@ class SyncTest extends AbstractGitTest {
 
     @Inject
     private StorageInterface storageInterface;
+
+    private MockKestraApiServer server;
+
+    @BeforeEach
+    void startMockServer() throws IOException {
+        server = MockKestraApiServer.start(flowRepositoryInterface);
+    }
+
+    @AfterEach
+    void stopMockServer() {
+        server.close();
+    }
 
     @Inject
     private DispatchQueueInterface<LogEntry> logQueue;
@@ -164,18 +178,19 @@ class SyncTest extends AbstractGitTest {
             .branch(Property.ofValue(BRANCH))
             .gitDirectory(Property.ofValue(clonedGitDirectory))
             .namespaceFilesDirectory(Property.ofValue(destinationDirectory))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
-        task.run(
-            runContextFactory.of(
-                Map.of(
-                    "flow", Map.of(
-                        "namespace", NAMESPACE,
-                        "id", selfFlowId,
-                        "tenantId", TENANT_ID
-                    )
+        var syncRc1 = runContextFactory.of(
+            Map.of(
+                "flow", Map.of(
+                    "namespace", NAMESPACE,
+                    "id", selfFlowId,
+                    "tenantId", TENANT_ID
                 )
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) syncRc1);
+        task.run(syncRc1);
         // endregion
 
         // region THEN
@@ -269,19 +284,20 @@ class SyncTest extends AbstractGitTest {
             .username(Property.ofValue(pat))
             .password(Property.ofValue(pat))
             .branch(Property.ofValue(BRANCH))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
-        task.run(
-            runContextFactory.of(
-                Map.of(
-                    "flow", Map.of(
-                        "namespace", NAMESPACE,
-                        "id", selfFlowId,
-                        "tenantId", TENANT_ID
-                    )
+        var syncRc2 = runContextFactory.of(
+            Map.of(
+                "flow", Map.of(
+                    "namespace", NAMESPACE,
+                    "id", selfFlowId,
+                    "tenantId", TENANT_ID
                 )
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) syncRc2);
+        task.run(syncRc2);
         // endregion
 
         // region THEN
@@ -363,6 +379,7 @@ class SyncTest extends AbstractGitTest {
             .branch(Property.ofValue(BRANCH))
             .gitDirectory(Property.ofValue("to_clone"))
             .dryRun(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         RunContext runContext = TestsUtils.mockRunContext(TenantService.MAIN_TENANT, runContextFactory, task, Collections.emptyMap());
         task.run(runContext);

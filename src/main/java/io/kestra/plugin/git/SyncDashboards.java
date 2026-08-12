@@ -3,26 +3,26 @@ package io.kestra.plugin.git;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.regex.Pattern;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import org.apache.commons.io.IOUtils;
 
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.dashboards.Dashboard;
 import io.kestra.core.models.property.Property;
-import io.kestra.core.repositories.ArrayListTotal;
-import io.kestra.core.repositories.DashboardRepositoryInterface;
-import io.micronaut.data.model.Pageable;
-import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.YamlParser;
+import io.kestra.sdk.KestraClient;
+import io.kestra.sdk.internal.ApiClient;
+import io.kestra.sdk.model.PagedResultsDashboard;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
@@ -97,10 +97,6 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
     @PluginProperty(group = "advanced")
     private Property<Boolean> delete = Property.ofValue(false);
 
-    private DashboardRepositoryInterface repository(RunContext runContext) {
-        return ((DefaultRunContext) runContext).services().additionalService(DashboardRepositoryInterface.class);
-    }
-
     @Override
     public Property<String> fetchedNamespace() {
         // Dashboards are not linked to namespaces
@@ -109,7 +105,11 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
 
     @Override
     protected void deleteResource(RunContext runContext, String renderedNamespace, Dashboard dashboard) {
-        repository(runContext).delete(runContext.flowInfo().tenantId(), dashboard.getId());
+        try {
+            kestraClient(runContext).dashboards().deleteDashboard(dashboard.getId(), runContext.flowInfo().tenantId());
+        } catch (Exception e) {
+            throw new KestraRuntimeException("Failed to delete dashboard " + dashboard.getId(), e);
+        }
     }
 
     @Override
@@ -127,23 +127,72 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
             return null;
         }
         String dashboardSource = IOUtils.toString(inputStream, StandardCharsets.UTF_8);
-        Dashboard dashboardWithTenant = YamlParser.parse(dashboardSource, Dashboard.class).toBuilder()
-            .tenantId(runContext.flowInfo().tenantId())
+        var tenantId = runContext.flowInfo().tenantId();
+        Dashboard parsedDashboard = YamlParser.parse(dashboardSource, Dashboard.class).toBuilder()
+            .tenantId(tenantId)
             .sourceCode(dashboardSource)
             .build();
-        DashboardRepositoryInterface dashboardRepositoryInterface = repository(runContext);
 
-        Optional<Dashboard> prevDashboard = dashboardRepositoryInterface.get(dashboardWithTenant.getTenantId(), dashboardWithTenant.getId());
+        // Look up the existing dashboard (if any) via the SDK search
+        Optional<Dashboard> prevDashboard = findExistingDashboard(runContext, tenantId, parsedDashboard.getId());
+
         if (dryRun) {
             return prevDashboard.map(previous ->
             {
-                if (previous.equals(dashboardWithTenant) && !previous.isDeleted()) {
+                // Compare source to detect changes
+                String prevSource = previous.getSourceCode() != null ? previous.getSourceCode() : "";
+                if (prevSource.replace("\r\n", "\n").strip().equals(dashboardSource.replace("\r\n", "\n").strip())) {
                     return previous;
                 }
-                return dashboardWithTenant.toBuilder().id(previous.getId()).created(previous.getCreated()).updated(Instant.now()).build();
-            }).orElseGet(() -> dashboardWithTenant.toBuilder().created(Instant.now()).updated(Instant.now()).build());
+                return parsedDashboard.toBuilder().id(previous.getId()).created(previous.getCreated()).updated(Instant.now()).build();
+            }).orElseGet(() -> parsedDashboard.toBuilder().created(Instant.now()).updated(Instant.now()).build());
         } else {
-            return dashboardRepositoryInterface.save(prevDashboard.orElse(null), dashboardWithTenant, dashboardSource);
+            // Skip createDashboard if content is unchanged to preserve the updated timestamp
+            // (UNCHANGED detection in wrapper() compares before/after updated timestamps)
+            boolean contentChanged = prevDashboard.map(previous -> {
+                String prevSource = previous.getSourceCode() != null ? previous.getSourceCode() : "";
+                return !prevSource.replace("\r\n", "\n").strip().equals(dashboardSource.replace("\r\n", "\n").strip());
+            }).orElse(true);
+
+            if (!contentChanged) {
+                return prevDashboard.get();
+            }
+
+            try {
+                kestraClient(runContext).dashboards().createDashboard(tenantId, dashboardSource);
+            } catch (Exception e) {
+                throw new KestraRuntimeException("Failed to save dashboard " + parsedDashboard.getId(), e);
+            }
+            // Re-fetch to get the server-assigned updated timestamp
+            return findExistingDashboard(runContext, tenantId, parsedDashboard.getId())
+                .orElseGet(() -> parsedDashboard.toBuilder().updated(Instant.now()).build());
+        }
+    }
+
+    private Optional<Dashboard> findExistingDashboard(RunContext runContext, String tenantId, String dashboardId) {
+        try {
+            KestraClient kestraClient = kestraClient(runContext);
+            int page = 1;
+            int size = 200;
+            PagedResultsDashboard pagedResults;
+            do {
+                pagedResults = kestraClient.dashboards().searchDashboards(page, size, tenantId, null, null);
+                for (var sdkDash : pagedResults.getResults()) {
+                    if (dashboardId.equals(sdkDash.getId())) {
+                        // Fetch YAML source via raw HTTP call
+                        String sourceCode = fetchDashboardSourceCode(kestraClient, runContext, tenantId, dashboardId);
+                        Dashboard parsed = YamlParser.parse(sourceCode, Dashboard.class);  // preserves getUpdated() from updated: injection
+                        return Optional.of(parsed.toBuilder()
+                            .tenantId(tenantId)
+                            .sourceCode(sourceCode.replaceAll("(?m)^updated:.*\\R?", ""))
+                            .build());
+                    }
+                }
+                page++;
+            } while (pagedResults.getResults().size() == size);
+            return Optional.empty();
+        } catch (Exception e) {
+            return Optional.empty();
         }
     }
 
@@ -159,7 +208,7 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
             syncState = SyncState.DELETED;
         } else if (dashboardBeforeUpdate == null) {
             syncState = SyncState.ADDED;
-        } else if (dashboardBeforeUpdate.getUpdated().equals(Objects.requireNonNull(dashboardAfterUpdate).getUpdated())) {
+        } else if (Objects.equals(dashboardBeforeUpdate.getUpdated(), Objects.requireNonNull(dashboardAfterUpdate).getUpdated())) {
             syncState = SyncState.UNCHANGED;
         } else {
             syncState = SyncState.UPDATED;
@@ -180,17 +229,50 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
 
     @Override
     protected List<Dashboard> fetchResources(RunContext runContext, String renderedNamespace) {
-        String tenantId = runContext.flowInfo().tenantId();
-        DashboardRepositoryInterface repo = repository(runContext);
-        List<Dashboard> all = new ArrayList<>();
-        final int pageSize = 100;
-        int page = 1;
-        ArrayListTotal<Dashboard> pageResult;
-        do {
-            pageResult = repo.list(Pageable.from(page++, pageSize), tenantId, null);
-            all.addAll(pageResult);
-        } while (all.size() < pageResult.getTotal());
-        return all;
+        try {
+            KestraClient kestraClient = kestraClient(runContext);
+            var tenantId = runContext.flowInfo().tenantId();
+            List<Dashboard> dashboards = new ArrayList<>();
+            int page = 1;
+            int size = 200;
+            PagedResultsDashboard pagedResults;
+            do {
+                pagedResults = kestraClient.dashboards().searchDashboards(page, size, tenantId, null, null);
+                for (var sdkDash : pagedResults.getResults()) {
+                    try {
+                        String sourceCode = fetchDashboardSourceCode(kestraClient, runContext, tenantId, sdkDash.getId());
+                        Dashboard parsed = YamlParser.parse(sourceCode, Dashboard.class);
+                        dashboards.add(parsed.toBuilder()
+                            .tenantId(tenantId)
+                            .sourceCode(sourceCode.replaceAll("(?m)^updated:.*\\R?", ""))
+                            .build());
+                    } catch (Exception e) {
+                        runContext.logger().warn("Skipping dashboard {} — failed to fetch source: {}", sdkDash.getId(), e.getMessage());
+                    }
+                }
+                page++;
+            } while (pagedResults.getResults().size() == size);
+            return dashboards;
+        } catch (Exception e) {
+            throw new KestraRuntimeException("Failed to fetch dashboards from Kestra", e);
+        }
+    }
+
+    private String fetchDashboardSourceCode(KestraClient kestraClient, RunContext runContext, String tenantId, String dashboardId) throws Exception {
+        ApiClient apiClient = kestraClient.dashboards().getApiClient();
+        String encodedId = URLEncoder.encode(dashboardId, StandardCharsets.UTF_8);
+        String path = tenantId == null
+            ? "/api/v1/dashboards/" + encodedId
+            : "/api/v1/" + tenantId + "/dashboards/" + encodedId;
+
+        Map<String, Object> response = apiClient.invokeAPI(
+            path, "GET",
+            Collections.emptyList(), Collections.emptyList(), null,
+            null, Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(),
+            "application/json", null, new String[0],
+            new TypeReference<Map<String, Object>>() {}
+        );
+        return (String) response.get("sourceCode");
     }
 
     @Override

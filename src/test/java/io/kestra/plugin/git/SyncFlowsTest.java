@@ -12,6 +12,7 @@ import java.util.stream.Stream;
 
 import org.apache.commons.io.IOUtils;
 import org.eclipse.jgit.api.Git;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -26,6 +27,7 @@ import io.kestra.core.models.flows.GenericFlow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.GenericTask;
 import io.kestra.core.repositories.FlowRepositoryInterface;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
@@ -55,6 +57,18 @@ public class SyncFlowsTest extends AbstractGitTest {
 
     @Inject
     private FlowRepositoryInterface flowRepositoryInterface;
+
+    private MockKestraApiServer server;
+
+    @BeforeEach
+    void startMockServer() throws IOException {
+        server = MockKestraApiServer.start(flowRepositoryInterface);
+    }
+
+    @AfterEach
+    void stopMockServer() {
+        server.close();
+    }
 
     @BeforeEach
     void init() {
@@ -156,10 +170,9 @@ public class SyncFlowsTest extends AbstractGitTest {
             .delete(Property.ofValue(true))
             .includeChildNamespaces(Property.ofValue(true))
             .ignoreInvalidFlows(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
-
-        flowRepositoryInterface.delete(invalidFlow);
 
         flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(6));
@@ -178,10 +191,21 @@ public class SyncFlowsTest extends AbstractGitTest {
             runContext, syncOutput.diffFileUri(),
             defaultCaseDiffs(
                 true,
+                false,
                 new HashMap<>(
                     Map.of(
                         "syncState", "DELETED", "flowId", "flow-to-delete", "namespace", "my.namespace.child", "revision",
                         previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, flowToDelete.getNamespace(), flowToDelete.getId()), 1)
+                    )
+                ) {
+                    {
+                        this.put("gitPath", null);
+                    }
+                },
+                new HashMap<>(
+                    Map.of(
+                        "syncState", "DELETED", "flowId", "validation-failed-flow", "namespace", NAMESPACE, "revision",
+                        previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, NAMESPACE, "validation-failed-flow"), 1)
                     )
                 ) {
                     {
@@ -252,6 +276,7 @@ public class SyncFlowsTest extends AbstractGitTest {
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
             .targetNamespace(Property.ofExpression("{{namespace}}"))
             .includeChildNamespaces(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 
@@ -268,7 +293,7 @@ public class SyncFlowsTest extends AbstractGitTest {
             .run(cloneRunContext);
         assertFlows(cloneRunContext.workingDir().path().resolve(Path.of(GIT_DIRECTORY)).toFile(), true, selfFlowSource, nonVersionedFlowSource);
 
-        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true));
+        assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true, false));
     }
 
     @Test
@@ -345,6 +370,7 @@ public class SyncFlowsTest extends AbstractGitTest {
             .targetNamespace(Property.ofExpression("{{namespace}}"))
             .delete(Property.ofValue(true))
             .includeChildNamespaces(Property.ofValue(false))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 
@@ -364,6 +390,7 @@ public class SyncFlowsTest extends AbstractGitTest {
         assertDiffs(
             runContext, syncOutput.diffFileUri(),
             defaultCaseDiffs(
+                false,
                 false,
                 new HashMap<>(
                     Map.of(
@@ -434,7 +461,7 @@ public class SyncFlowsTest extends AbstractGitTest {
         assertThat(flows, hasSize(5));
         flows.forEach(f -> previousRevisionByUid.put(f.uidWithoutRevision(), f.getRevision()));
 
-        String[] beforeUpdateSources = flowRepositoryInterface.findWithSource(null, TENANT_ID, null).stream()
+        String[] beforeUpdateSources = flowRepositoryInterface.findAllWithSource(TENANT_ID).stream()
             .map(FlowWithSource::getSource)
             .toArray(String[]::new);
 
@@ -448,13 +475,14 @@ public class SyncFlowsTest extends AbstractGitTest {
             .delete(Property.ofValue(true))
             .includeChildNamespaces(Property.ofValue(true))
             .dryRun(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
         SyncFlows.Output syncOutput = task.run(runContext);
 
         flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(5));
 
-        String[] afterUpdateSources = flowRepositoryInterface.findWithSource(null, TENANT_ID, null).stream()
+        String[] afterUpdateSources = flowRepositoryInterface.findAllWithSource(TENANT_ID).stream()
             .map(FlowWithSource::getSource)
             .toArray(String[]::new);
 
@@ -463,6 +491,7 @@ public class SyncFlowsTest extends AbstractGitTest {
         assertDiffs(
             runContext, syncOutput.diffFileUri(),
             defaultCaseDiffs(
+                true,
                 true,
                 new HashMap<>(
                     Map.of(
@@ -489,6 +518,7 @@ public class SyncFlowsTest extends AbstractGitTest {
             .branch(Property.ofExpression("{{branch}}"))
             .gitDirectory(Property.ofValue("nonexistent/path"))
             .targetNamespace(Property.ofExpression("{{namespace}}"))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () ->
@@ -535,6 +565,7 @@ public class SyncFlowsTest extends AbstractGitTest {
                 "namespace", NAMESPACE
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) runContext);
 
         SyncFlows task = SyncFlows.builder()
             .url(Property.ofExpression("{{url}}"))
@@ -542,6 +573,7 @@ public class SyncFlowsTest extends AbstractGitTest {
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
             .targetNamespace(Property.ofExpression("{{namespace}}"))
             .ignoreInvalidFlows(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         SyncFlows.Output output = task.run(runContext);
@@ -588,12 +620,14 @@ public class SyncFlowsTest extends AbstractGitTest {
                 "namespace", NAMESPACE
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) runContext);
 
         SyncFlows task = SyncFlows.builder()
             .url(Property.ofExpression("{{url}}"))
             .branch(Property.ofExpression("{{branch}}"))
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
             .targetNamespace(Property.ofExpression("{{namespace}}"))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         FlowProcessingException ex = assertThrows(FlowProcessingException.class, () -> task.run(runContext));
@@ -601,7 +635,7 @@ public class SyncFlowsTest extends AbstractGitTest {
         assertThat(ex.getMessage(), containsString("demo-invalid-flow"));
     }
 
-    private List<Map<String, Object>> defaultCaseDiffs(boolean includeSubNamespaces, Map<String, Object>... additionalDiffs) {
+    private List<Map<String, Object>> defaultCaseDiffs(boolean includeSubNamespaces, boolean dryRun, Map<String, Object>... additionalDiffs) {
         List<Map<String, Object>> diffs = new ArrayList<>(
             List.of(
                 Map.of(
@@ -614,7 +648,7 @@ public class SyncFlowsTest extends AbstractGitTest {
                 ),
                 Map.of(
                     "gitPath", "to_clone/_flows/second-flow.yml", "syncState", "ADDED", "flowId", "second-flow", "namespace", NAMESPACE, "revision",
-                    previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, NAMESPACE, "second-flow"), 0) + 1
+                    dryRun ? 1 : previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, NAMESPACE, "second-flow"), 0) + 1
                 )
             )
         );
@@ -623,7 +657,7 @@ public class SyncFlowsTest extends AbstractGitTest {
             diffs.add(
                 Map.of(
                     "gitPath", "to_clone/_flows/nested/namespace/nested_flow.yaml", "syncState", "ADDED", "flowId", "nested-flow", "namespace", "my.namespace.nested.namespace", "revision",
-                    previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, "my.namespace.nested.namespace", "nested-flow"), 0) + 1
+                    dryRun ? 1 : previousRevisionByUid.getOrDefault(FlowId.uidWithoutRevision(TENANT_ID, "my.namespace.nested.namespace", "nested-flow"), 0) + 1
                 )
             );
         }
@@ -633,7 +667,7 @@ public class SyncFlowsTest extends AbstractGitTest {
     }
 
     private RunContext runContext() {
-        return runContextFactory.of(
+        var rc = runContextFactory.of(
             Map.of(
                 "flow", Map.of(
                     "tenantId", SyncFlowsTest.TENANT_ID,
@@ -647,6 +681,8 @@ public class SyncFlowsTest extends AbstractGitTest {
                 "gitDirectory", SyncFlowsTest.GIT_DIRECTORY
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) rc);
+        return rc;
     }
 
     private static void assertDiffs(RunContext runContext, URI diffFileUri, List<Map<String, Object>> expectedDiffs) throws IOException {

@@ -47,6 +47,7 @@ public class DashboardUtils {
             """;
         Dashboard dashboard = YamlParser.parse(dashboardSource, Dashboard.class).toBuilder()
             .tenantId(tenantId)
+            .updated(java.time.Instant.now())
             .build();
 
         return dashboardRepositoryInterface.save(dashboard, dashboardSource);

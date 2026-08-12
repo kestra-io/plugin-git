@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.*;
 
 import org.apache.commons.io.IOUtils;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -17,6 +18,7 @@ import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.dashboards.Dashboard;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.repositories.DashboardRepositoryInterface;
+import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
@@ -45,6 +47,18 @@ public class SyncDashboardsTest extends AbstractGitTest {
 
     @Inject
     private DashboardRepositoryInterface dashboardRepositoryInterface;
+
+    private MockKestraApiServer server;
+
+    @BeforeEach
+    void startMockServer() throws IOException {
+        server = MockKestraApiServer.start(dashboardRepositoryInterface);
+    }
+
+    @AfterEach
+    void stopMockServer() {
+        server.close();
+    }
 
     @BeforeEach
     void init() {
@@ -83,6 +97,7 @@ public class SyncDashboardsTest extends AbstractGitTest {
             .branch(Property.ofExpression("{{branch}}"))
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
             .delete(Property.ofValue(delete))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         SyncDashboards.Output syncOutput = task.run(runContext);
@@ -143,6 +158,7 @@ public class SyncDashboardsTest extends AbstractGitTest {
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
             .delete(Property.ofValue(delete))
             .dryRun(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         SyncDashboards.Output syncOutput = task.run(runContext);
@@ -187,7 +203,7 @@ public class SyncDashboardsTest extends AbstractGitTest {
     }
 
     private RunContext runContext() {
-        return runContextFactory.of(
+        var rc = runContextFactory.of(
             Map.of(
                 "flow", Map.of(
                     "tenantId", SyncDashboardsTest.TENANT_ID,
@@ -201,6 +217,8 @@ public class SyncDashboardsTest extends AbstractGitTest {
                 "gitDirectory", SyncDashboardsTest.GIT_DIRECTORY
             )
         );
+        runContextFactory.initializer().forExecutor((DefaultRunContext) rc);
+        return rc;
     }
 
     static DashboardDiffOutput diffMapToDashboardDiffOutput(Map<String, Object> diffMap) {
