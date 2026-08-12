@@ -611,6 +611,58 @@ class PushTest extends AbstractGitTest {
         }
     }
 
+    @Test
+    void oneTaskPush_ExcludesDraftFlows() throws Exception {
+        String namespace = IdUtils.create().toLowerCase();
+        String tenantId = TenantService.MAIN_TENANT;
+        String branchName = IdUtils.create();
+        RunContext runContext = runContextFactory.of(
+            Map.of(
+                "flow", Map.of(
+                    "tenantId", tenantId,
+                    "namespace", namespace
+                ),
+                "description", "One-task push"
+            )
+        );
+
+        FlowWithSource createdFlow = this.createFlow(tenantId, namespace);
+        FlowWithSource draftFlow = createDraftFlow(flowRepositoryInterface, tenantId, "draft-flow", namespace);
+
+        Push push = Push.builder()
+            .id("push")
+            .type(Push.class.getName())
+            .url(Property.ofValue(repositoryUrl))
+            .commitMessage(Property.ofValue("Push from CI - {{description}}"))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(branchName))
+            .build();
+
+        try {
+            push.run(runContext);
+
+            Clone clone = Clone.builder()
+                .id("clone")
+                .type(Clone.class.getName())
+                .url(Property.ofValue(repositoryUrl))
+                .username(Property.ofValue(pat))
+                .password(Property.ofValue(pat))
+                .branch(Property.ofValue(branchName))
+                .build();
+
+            Clone.Output cloneOutput = clone.run(runContextFactory.of());
+
+            File flowFile = new File(Path.of(cloneOutput.getDirectory(), Sync.FLOWS_DIRECTORY).toString(), createdFlow.getNamespace() + "." + createdFlow.getId() + ".yml");
+            assertThat(flowFile.exists(), is(true));
+
+            File draftFlowFile = new File(Path.of(cloneOutput.getDirectory(), Sync.FLOWS_DIRECTORY).toString(), draftFlow.getNamespace() + "." + draftFlow.getId() + ".yml");
+            assertThat(draftFlowFile.exists(), is(false));
+        } finally {
+            this.deleteRemoteBranch(runContext.workingDir().path().toString(), branchName);
+        }
+    }
+
     private void deleteRemoteBranch(String gitDirectory, String branchName) throws GitAPIException, IOException {
         try (Git git = Git.open(new File(gitDirectory))) {
             git.checkout().setName("tmp").setCreateBranch(true).call();
@@ -635,4 +687,5 @@ class PushTest extends AbstractGitTest {
             GenericFlow.fromYaml(tenantId, flowSource)
         );
     }
+
 }
