@@ -21,12 +21,14 @@ import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.transport.PushResult;
 import org.eclipse.jgit.transport.RemoteRefUpdate;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+
 import io.kestra.core.exceptions.FlowProcessingException;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
@@ -46,7 +48,6 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -254,7 +255,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         PagedResultsNamespace result;
         do {
             result = kestraClient.namespaces()
-                .searchNamespaces(page, size, false, tenantId, null, null, Map.of());
+                .searchNamespaces(tenantId, null, page, size, null, false);
             result.getResults().forEach(ns -> kestraNamespaces.add(ns.getId()));
             page++;
         } while (result.getResults().size() == size);
@@ -486,8 +487,8 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                                 }
 
                                 kestraClient.flows().importFlows(
-                                    OnInvalidSyntax.FAIL.equals(rOnInvalidSyntax),
                                     runContext.flowInfo().tenantId(),
+                                    OnInvalidSyntax.FAIL.equals(rOnInvalidSyntax),
                                     toNamedTempFile(flowId + ".yaml", gitYaml)
                                 );
                             } catch (Exception e) {
@@ -567,10 +568,9 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                                 }
 
                                 kestraClient.flows().importFlows(
-                                    OnInvalidSyntax.FAIL.equals(rOnInvalidSyntax),
                                     runContext.flowInfo().tenantId(),
-                                    toNamedTempFile(flowId + ".yaml", gitYaml),
-                                    Map.of()
+                                    OnInvalidSyntax.FAIL.equals(rOnInvalidSyntax),
+                                    toNamedTempFile(flowId + ".yaml", gitYaml)
                                 );
                             } catch (Exception e) {
                                 handleInvalid(runContext, rOnInvalidSyntax, "FLOW " + flowId, e);
@@ -852,10 +852,10 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
             int page = 1;
             int size = 200;
-            PagedResultsDashboard pagedResults;
+            PagedResultsDashboardControllerDashboardResponse pagedResults;
 
             do {
-                pagedResults = kestraClient.dashboards().searchDashboards(page, size, runContext.flowInfo().tenantId(), null, null);
+                pagedResults = kestraClient.dashboards().searchDashboards(runContext.flowInfo().tenantId(), page, size, null, null);
 
                 String tenantForFetch = runContext.flowInfo().tenantId();
                 pagedResults.getResults().forEach(dash ->
@@ -1038,7 +1038,8 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             Collections.emptyList(), Collections.emptyList(), null,
             null, Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(),
             "application/json", null, new String[0],
-            new TypeReference<Map<String, Object>>() {}
+            new TypeReference<Map<String, Object>>() {
+            }
         );
         return (String) response.get("sourceCode");
     }

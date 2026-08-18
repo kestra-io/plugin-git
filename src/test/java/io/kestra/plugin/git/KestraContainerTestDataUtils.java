@@ -1,6 +1,5 @@
 package io.kestra.plugin.git;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -34,7 +33,7 @@ public class KestraContainerTestDataUtils {
         var tmp = Files.createTempFile("kestra-flow-", ".yaml");
         try {
             Files.writeString(tmp, flowYaml, StandardCharsets.UTF_8);
-            kestraClient.flows().importFlows(false, tenantId, tmp.toFile());
+            kestraClient.flows().importFlows(tenantId, false, tmp.toFile());
         } finally {
             Files.deleteIfExists(tmp);
         }
