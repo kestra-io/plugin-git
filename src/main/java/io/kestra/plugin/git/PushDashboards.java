@@ -25,12 +25,11 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.sdk.KestraClient;
 import io.kestra.sdk.internal.ApiClient;
-import io.kestra.sdk.model.PagedResultsDashboard;
+import io.kestra.sdk.model.PagedResultsDashboardControllerDashboardResponse;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -123,13 +122,13 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
         String tenantId = flowProps.get("tenantId");
         KestraClient kestraClient = kestraClient(runContext);
 
-        List<io.kestra.sdk.model.Dashboard> allDashboards = new ArrayList<>();
+        List<io.kestra.sdk.model.DashboardControllerDashboardResponse> allDashboards = new ArrayList<>();
         int page = 1;
         int size = 200;
-        PagedResultsDashboard pagedResults;
+        PagedResultsDashboardControllerDashboardResponse pagedResults;
         do {
             try {
-                pagedResults = kestraClient.dashboards().searchDashboards(page, size, tenantId, null, null);
+                pagedResults = kestraClient.dashboards().searchDashboards(tenantId, page, size, null, null);
             } catch (Exception e) {
                 throw new KestraRuntimeException("Failed to fetch dashboards from Kestra", e);
             }
@@ -137,7 +136,7 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
             page++;
         } while (pagedResults.getResults().size() == size);
 
-        Stream<io.kestra.sdk.model.Dashboard> dashboardStream = allDashboards.stream();
+        Stream<io.kestra.sdk.model.DashboardControllerDashboardResponse> dashboardStream = allDashboards.stream();
         if (globs != null) {
             List<PathMatcher> matchers = globs.stream().map(glob -> FileSystems.getDefault().getPathMatcher("glob:" + glob)).toList();
             dashboardStream = dashboardStream.filter(dashboard ->
@@ -147,19 +146,21 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
             });
         }
 
-        return dashboardStream.collect(Collectors.toMap(
-            dashboard -> flowDirectory.resolve(dashboard.getId() + ".yml"),
-            dashboard -> () ->
-            {
-                try {
-                    String sourceCode = fetchDashboardSourceCode(kestraClient, runContext, tenantId, dashboard.getId());
-                    String cleanSourceCode = sourceCode.replaceAll("(?m)^updated:.*\\R?", "");
-                    return new ByteArrayInputStream(cleanSourceCode.getBytes(StandardCharsets.UTF_8));
-                } catch (Exception e) {
-                    throw new KestraRuntimeException("Failed to fetch dashboard source for " + dashboard.getId(), e);
+        return dashboardStream.collect(
+            Collectors.toMap(
+                dashboard -> flowDirectory.resolve(dashboard.getId() + ".yml"),
+                dashboard -> () ->
+                {
+                    try {
+                        String sourceCode = fetchDashboardSourceCode(kestraClient, runContext, tenantId, dashboard.getId());
+                        String cleanSourceCode = sourceCode.replaceAll("(?m)^updated:.*\\R?", "");
+                        return new ByteArrayInputStream(cleanSourceCode.getBytes(StandardCharsets.UTF_8));
+                    } catch (Exception e) {
+                        throw new KestraRuntimeException("Failed to fetch dashboard source for " + dashboard.getId(), e);
+                    }
                 }
-            }
-        ));
+            )
+        );
     }
 
     private String fetchDashboardSourceCode(KestraClient kestraClient, RunContext runContext, String tenantId, String dashboardId) throws Exception {
@@ -174,7 +175,8 @@ public class PushDashboards extends AbstractPushTask<PushDashboards.Output> {
             Collections.emptyList(), Collections.emptyList(), null,
             null, Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(),
             "application/json", null, new String[0],
-            new TypeReference<Map<String, Object>>() {}
+            new TypeReference<Map<String, Object>>() {
+            }
         );
         return (String) response.get("sourceCode");
     }

@@ -9,25 +9,25 @@ import java.time.Instant;
 import java.util.*;
 import java.util.regex.Pattern;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import org.apache.commons.io.IOUtils;
 
-import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import com.fasterxml.jackson.core.type.TypeReference;
+
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.dashboards.Dashboard;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.YamlParser;
 import io.kestra.sdk.KestraClient;
 import io.kestra.sdk.internal.ApiClient;
-import io.kestra.sdk.model.PagedResultsDashboard;
+import io.kestra.sdk.model.PagedResultsDashboardControllerDashboardResponse;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -149,7 +149,8 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
         } else {
             // Skip createDashboard if content is unchanged to preserve the updated timestamp
             // (UNCHANGED detection in wrapper() compares before/after updated timestamps)
-            boolean contentChanged = prevDashboard.map(previous -> {
+            boolean contentChanged = prevDashboard.map(previous ->
+            {
                 String prevSource = previous.getSourceCode() != null ? previous.getSourceCode() : "";
                 return !prevSource.replace("\r\n", "\n").strip().equals(dashboardSource.replace("\r\n", "\n").strip());
             }).orElse(true);
@@ -174,18 +175,20 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
             KestraClient kestraClient = kestraClient(runContext);
             int page = 1;
             int size = 200;
-            PagedResultsDashboard pagedResults;
+            PagedResultsDashboardControllerDashboardResponse pagedResults;
             do {
-                pagedResults = kestraClient.dashboards().searchDashboards(page, size, tenantId, null, null);
+                pagedResults = kestraClient.dashboards().searchDashboards(tenantId, page, size, null, null);
                 for (var sdkDash : pagedResults.getResults()) {
                     if (dashboardId.equals(sdkDash.getId())) {
                         // Fetch YAML source via raw HTTP call
                         String sourceCode = fetchDashboardSourceCode(kestraClient, runContext, tenantId, dashboardId);
-                        Dashboard parsed = YamlParser.parse(sourceCode, Dashboard.class);  // preserves getUpdated() from updated: injection
-                        return Optional.of(parsed.toBuilder()
-                            .tenantId(tenantId)
-                            .sourceCode(sourceCode.replaceAll("(?m)^updated:.*\\R?", ""))
-                            .build());
+                        Dashboard parsed = YamlParser.parse(sourceCode, Dashboard.class); // preserves getUpdated() from updated: injection
+                        return Optional.of(
+                            parsed.toBuilder()
+                                .tenantId(tenantId)
+                                .sourceCode(sourceCode.replaceAll("(?m)^updated:.*\\R?", ""))
+                                .build()
+                        );
                     }
                 }
                 page++;
@@ -235,17 +238,19 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
             List<Dashboard> dashboards = new ArrayList<>();
             int page = 1;
             int size = 200;
-            PagedResultsDashboard pagedResults;
+            PagedResultsDashboardControllerDashboardResponse pagedResults;
             do {
-                pagedResults = kestraClient.dashboards().searchDashboards(page, size, tenantId, null, null);
+                pagedResults = kestraClient.dashboards().searchDashboards(tenantId, page, size, null, null);
                 for (var sdkDash : pagedResults.getResults()) {
                     try {
                         String sourceCode = fetchDashboardSourceCode(kestraClient, runContext, tenantId, sdkDash.getId());
                         Dashboard parsed = YamlParser.parse(sourceCode, Dashboard.class);
-                        dashboards.add(parsed.toBuilder()
-                            .tenantId(tenantId)
-                            .sourceCode(sourceCode.replaceAll("(?m)^updated:.*\\R?", ""))
-                            .build());
+                        dashboards.add(
+                            parsed.toBuilder()
+                                .tenantId(tenantId)
+                                .sourceCode(sourceCode.replaceAll("(?m)^updated:.*\\R?", ""))
+                                .build()
+                        );
                     } catch (Exception e) {
                         runContext.logger().warn("Skipping dashboard {} — failed to fetch source: {}", sdkDash.getId(), e.getMessage());
                     }
@@ -270,7 +275,8 @@ public class SyncDashboards extends AbstractSyncTask<Dashboard, SyncDashboards.O
             Collections.emptyList(), Collections.emptyList(), null,
             null, Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(),
             "application/json", null, new String[0],
-            new TypeReference<Map<String, Object>>() {}
+            new TypeReference<Map<String, Object>>() {
+            }
         );
         return (String) response.get("sourceCode");
     }

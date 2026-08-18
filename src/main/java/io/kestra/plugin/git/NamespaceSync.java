@@ -33,18 +33,18 @@ import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.storages.NamespaceFile;
-import io.kestra.sdk.KestraClient;
+import io.kestra.plugin.git.services.GitService;
 import io.kestra.sdk.internal.ApiException;
 import io.kestra.sdk.model.QueryFilter;
 import io.kestra.sdk.model.QueryFilterField;
 import io.kestra.sdk.model.QueryFilterOp;
-import io.kestra.plugin.git.services.GitService;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.annotation.Nullable;
@@ -55,7 +55,6 @@ import lombok.experimental.SuperBuilder;
 import static io.kestra.core.utils.Rethrow.throwConsumer;
 import static java.lang.Integer.MAX_VALUE;
 import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -368,7 +367,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                                     throw new FlowProcessingException(flowValidated.getConstraints());
                                 }
                                 var flowId = YamlParser.parse(gitNode.rawYaml, io.kestra.core.models.flows.Flow.class).getId();
-                                kestraClient.flows().importFlows(false, tenant, toNamedTempFile(flowId + ".yaml", gitNode.rawYaml));
+                                kestraClient.flows().importFlows(tenant, false, toNamedTempFile(flowId + ".yaml", gitNode.rawYaml));
                             } catch (Exception e) {
                                 handleInvalid(rc, rInvalid, "FLOW " + key, e);
                             }
@@ -414,7 +413,8 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                                 {
                                     try {
                                         kestraClient(rc).flows().deleteFlow(
-                                            kestraFlowWithSource.getNamespace(), kestraFlowWithSource.getId(), tenant);
+                                            kestraFlowWithSource.getNamespace(), kestraFlowWithSource.getId(), tenant
+                                        );
                                     } catch (ApiException | IllegalVariableEvaluationException e) {
                                         handleInvalid(rc, rInvalid, "FLOW " + key, e);
                                     }
@@ -443,7 +443,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                                     throw new FlowProcessingException(flowValidated.getConstraints());
                                 }
                                 var flowId = YamlParser.parse(gitNode.rawYaml, io.kestra.core.models.flows.Flow.class).getId();
-                                kestraClient.flows().importFlows(false, tenant, toNamedTempFile(flowId + ".yaml", gitNode.rawYaml));
+                                kestraClient.flows().importFlows(tenant, false, toNamedTempFile(flowId + ".yaml", gitNode.rawYaml));
                             } catch (Exception e) {
                                 handleInvalid(rc, rInvalid, "FLOW " + key, e);
                             }

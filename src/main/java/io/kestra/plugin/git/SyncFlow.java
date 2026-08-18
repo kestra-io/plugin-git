@@ -12,6 +12,7 @@ import org.eclipse.jgit.api.Git;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
@@ -24,7 +25,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -158,7 +158,7 @@ public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlo
             // Projected revision: existing + 1, or 1 for a new flow
             int projectedRevision;
             try {
-                FlowWithSource existing = kestraClient.flows().flow(renderedNamespace, flowId, false, false, tenantId, null);
+                FlowWithSource existing = kestraClient.flows().flow(renderedNamespace, flowId, tenantId, false, null, false);
                 projectedRevision = existing.getRevision() != null ? existing.getRevision() + 1 : 1;
             } catch (ApiException e) {
                 // Flow does not exist yet
@@ -172,10 +172,10 @@ public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlo
         } else {
             // Import the flow
             var tempFile = toNamedTempFile(flowId + ".yaml", flowSource.stripTrailing());
-            kestraClient.flows().importFlows(true, tenantId, tempFile);
+            kestraClient.flows().importFlows(tenantId, true, tempFile);
 
             // Fetch the saved flow to populate the output
-            result = kestraClient.flows().flow(renderedNamespace, flowId, false, false, tenantId, null);
+            result = kestraClient.flows().flow(renderedNamespace, flowId, tenantId, false, null, false);
         }
 
         git.close();

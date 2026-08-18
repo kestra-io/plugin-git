@@ -20,10 +20,10 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 
-import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
@@ -49,7 +49,6 @@ import lombok.ToString;
 import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.*;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -184,7 +183,7 @@ public class Sync extends AbstractCloningTask implements RunnableTask<VoidOutput
                         flowWithSource = FlowWithSource.builder().source(flowSource).id(flowId).build();
                     } else {
                         String flowId = YamlParser.parse(flowSource, io.kestra.core.models.flows.Flow.class).getId();
-                        kestraClient.flows().importFlows(false, tenantId, toNamedTempFile(flowId + ".yaml", flowSource.stripTrailing()));
+                        kestraClient.flows().importFlows(tenantId, false, toNamedTempFile(flowId + ".yaml", flowSource.stripTrailing()));
                         // Determine addition vs update by checking if revision == 1
                         var imported = fetchSingleFlow(kestraClient, tenantId, flowSourceByNamespace.getKey(), flowId);
                         isAddition = imported != null && imported.getRevision() != null && imported.getRevision() == 1;

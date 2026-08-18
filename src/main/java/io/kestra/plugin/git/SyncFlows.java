@@ -21,6 +21,7 @@ import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.FlowWithException;
 import io.kestra.core.models.flows.FlowWithSource;
@@ -37,7 +38,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -270,7 +270,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         }
 
         var parsedId = YamlParser.parse(flowSource, Flow.class).getId();
-        kestraClient.flows().importFlows(true, tenantId, toNamedTempFile(parsedId + ".yaml", flowSource.stripTrailing()));
+        kestraClient.flows().importFlows(tenantId, true, toNamedTempFile(parsedId + ".yaml", flowSource.stripTrailing()));
 
         // Re-fetch from Kestra to get the updated revision
         var parsedNamespace = YamlParser.parse(flowSource, Flow.class).getNamespace();
