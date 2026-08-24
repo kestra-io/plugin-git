@@ -15,16 +15,18 @@ import org.eclipse.jgit.transport.TagOpt;
 import org.slf4j.Logger;
 
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.SDK;
 import io.kestra.sdk.KestraClient;
+import io.kestra.sdk.internal.ApiException;
+import io.kestra.sdk.model.PagedResultsNamespace;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import lombok.extern.jackson.Jacksonized;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @NoArgsConstructor
@@ -56,7 +58,8 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
 
     protected KestraClient kestraClient(RunContext runContext) throws IllegalVariableEvaluationException {
         String rKestraUrl = runContext.render(kestraUrl).as(String.class)
-            .orElseGet(() -> {
+            .orElseGet(() ->
+            {
                 try {
                     String rendered = runContext.render(KESTRA_URL_TEMPLATE);
                     return (rendered == null || rendered.isBlank()) ? DEFAULT_KESTRA_URL : rendered;
@@ -75,8 +78,15 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
         var builder = KestraClient.builder().url(normalizedUrl);
 
         if (auth != null) {
+            Optional<String> maybeApiToken = runContext.render(auth.apiToken).as(String.class);
             Optional<String> maybeUsername = runContext.render(auth.username).as(String.class);
             Optional<String> maybePassword = runContext.render(auth.password).as(String.class);
+            if (maybeApiToken.isPresent() && (maybeUsername.isPresent() || maybePassword.isPresent())) {
+                throw new IllegalArgumentException("Use either apiToken or username/password for authentication, not both");
+            }
+            if (maybeApiToken.isPresent()) {
+                return builder.tokenAuth(maybeApiToken.get()).build();
+            }
             if (maybeUsername.isPresent() && maybePassword.isPresent()) {
                 return builder.basicAuth(maybeUsername.get(), maybePassword.get()).build();
             }
@@ -109,6 +119,34 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
         return builder.build();
     }
 
+    protected List<String> descendantNamespaces(RunContext runContext, String tenantId, String namespace) throws IllegalVariableEvaluationException, ApiException {
+        var client = kestraClient(runContext);
+        List<String> out = new ArrayList<>();
+        int page = 1;
+        int size = 200;
+        List<io.kestra.sdk.model.Namespace> results;
+        do {
+            // q is a server-side contains filter, so prefix matches are never missed
+            PagedResultsNamespace result = client.namespaces().searchNamespaces(tenantId, namespace + ".", page, size, null, false);
+            results = result.getResults();
+            if (results == null) {
+                break;
+            }
+            results.forEach(ns ->
+            {
+                if (isDescendant(namespace, ns.getId())) {
+                    out.add(ns.getId());
+                }
+            });
+            page++;
+        } while (results.size() == size);
+        return out;
+    }
+
+    protected static boolean isDescendant(String rootNamespace, String namespace) {
+        return namespace != null && namespace.startsWith(rootNamespace + ".");
+    }
+
     @Builder
     @Getter
     @Jacksonized
@@ -120,6 +158,10 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
         @Schema(title = "Password for HTTP Basic authentication.")
         @PluginProperty(secret = true, group = "connection")
         private Property<String> password;
+
+        @Schema(title = "API token for authentication.")
+        @PluginProperty(secret = true, group = "connection")
+        private Property<String> apiToken;
 
         @Schema(
             title = "Automatically retrieve credentials from Kestra's configuration if available",
