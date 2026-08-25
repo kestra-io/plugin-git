@@ -3,12 +3,13 @@ package io.kestra.plugin.git;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
@@ -17,13 +18,13 @@ import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.storages.Namespace;
+import io.kestra.core.storages.NamespaceFile;
 import io.kestra.core.utils.PathMatcherPredicate;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-import static io.kestra.core.utils.Rethrow.throwFunction;
 import static io.kestra.core.utils.Rethrow.throwSupplier;
 
 @SuperBuilder(toBuilder = true)
@@ -33,7 +34,7 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
 @NoArgsConstructor
 @Schema(
     title = "Push Namespace Files to Git",
-    description = "Exports Namespace Files from a single Kestra namespace into `gitDirectory` (default `_files`) and pushes to Git. Branch is created if missing; use `files` globs to narrow the selection and `dryRun` to emit a diff only. Push sequentially to avoid merge conflicts."
+    description = "Exports Namespace Files from a Kestra namespace (optionally child namespaces) into `gitDirectory` (default `_files`) and pushes to Git. Branch is created if missing; use `files` globs to narrow the selection and `dryRun` to emit a diff only. Push sequentially to avoid merge conflicts."
 )
 @Plugin(
     examples = {
@@ -137,6 +138,14 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     private Object files;
 
     @Schema(
+        title = "Include child namespaces",
+        description = "Default false. When true, also pushes files from descendant namespaces, each under a directory named by its full dotted namespace inside `gitDirectory`."
+    )
+    @Builder.Default
+    @PluginProperty(group = "source")
+    private Property<Boolean> includeChildNamespaces = Property.ofValue(false);
+
+    @Schema(
         title = "Git commit message",
         defaultValue = "Add files from `namespace` namespace"
     )
@@ -166,18 +175,23 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     @Override
     protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path baseDirectory, List<String> globs) throws Exception {
 
-        Namespace storage = runContext.storage().namespace(runContext.render(this.namespace).as(String.class).orElse(null));
+        String renderedNamespace = runContext.render(this.namespace).as(String.class).orElse(null);
         Predicate<Path> matcher = (globs != null) ? PathMatcherPredicate.matches(globs) : (path -> true);
 
-        Map<Path, Supplier<InputStream>> filesMap = storage
-            .findAllFilesMatching(matcher)
-            .stream()
-            .collect(
-                Collectors.toMap(
-                    nsFile -> baseDirectory.resolve(nsFile.path()),
-                    throwFunction(nsFile -> throwSupplier(() -> storage.getFileContent(Path.of(nsFile.path()))))
-                )
-            );
+        List<String> namespaces = new ArrayList<>();
+        namespaces.add(renderedNamespace);
+        if (runContext.render(this.includeChildNamespaces).as(Boolean.class).orElse(false)) {
+            namespaces.addAll(descendantNamespaces(runContext, runContext.flowInfo().tenantId(), renderedNamespace));
+        }
+
+        Map<Path, Supplier<InputStream>> filesMap = new HashMap<>();
+        for (String namespaceToPush : namespaces) {
+            Namespace storage = runContext.storage().namespace(namespaceToPush);
+            Path directory = namespaceToPush.equals(renderedNamespace) ? baseDirectory : baseDirectory.resolve(namespaceToPush);
+            for (NamespaceFile nsFile : storage.findAllFilesMatching(matcher)) {
+                filesMap.put(directory.resolve(nsFile.path()), throwSupplier(() -> storage.getFileContent(Path.of(nsFile.path()))));
+            }
+        }
 
         if (runContext.render(errorOnMissing).as(Boolean.class).orElse(false) && filesMap.isEmpty()) {
             throw new KestraRuntimeException("No Namespace Files matched the provided 'files' parameter to commit.");

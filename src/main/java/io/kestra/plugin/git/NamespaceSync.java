@@ -63,7 +63,7 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
 @NoArgsConstructor
 @Schema(
     title = "Sync a namespace with Git",
-    description = "Syncs flows and Namespace Files for a single namespace between Git and Kestra. Direction is controlled by `sourceOfTruth`; deletions follow `whenMissingInSource` and respect `protectedNamespaces`. Supports dry-run diff output and optional subdirectory via `gitDirectory`. The flow containing this task does not need to live in the same namespace as the one being synced. Flows saved as drafts are not synced to Git."
+    description = "Syncs flows and Namespace Files for a namespace (optionally including child namespaces via `includeChildNamespaces`) between Git and Kestra. Direction is controlled by `sourceOfTruth`; deletions follow `whenMissingInSource` and respect `protectedNamespaces`. Supports dry-run diff output and optional subdirectory via `gitDirectory`. The flow containing this task does not need to live in the same namespace as the one being synced. Flows saved as drafts are not synced to Git."
 )
 @Plugin(
     priority = Plugin.Priority.SECONDARY,
@@ -159,11 +159,19 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
     @Schema(
         title = "Namespace to sync",
-        description = "Required; syncs only this namespace (no child namespaces). The namespace is created automatically when it does not exist yet (e.g. when bootstrapping a fresh environment with `sourceOfTruth: GIT`)."
+        description = "Required; syncs only this namespace unless `includeChildNamespaces` is true. The namespace is created automatically when it does not exist yet (e.g. when bootstrapping a fresh environment with `sourceOfTruth: GIT`)."
     )
     @NotNull
     @PluginProperty(group = "main")
     private Property<String> namespace;
+
+    @Schema(
+        title = "Include child namespaces",
+        description = "Default false. When true, also syncs every descendant namespace of `namespace`."
+    )
+    @Builder.Default
+    @PluginProperty(group = "main")
+    private Property<Boolean> includeChildNamespaces = Property.ofValue(false);
 
     @Schema(
         title = "Source of truth",
@@ -253,32 +261,55 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         var rOnInvalidSyntax = runContext.render(this.onInvalidSyntax).as(OnInvalidSyntax.class).orElse(OnInvalidSyntax.FAIL);
         var rProtectedNamespaces = runContext.render(this.protectedNamespaces).asList(String.class);
         var rCommitMessage = runContext.render(this.getCommitMessage()).as(String.class).orElse("Namespace sync from Kestra");
+        var rIncludeChildNamespaces = runContext.render(this.includeChildNamespaces).as(Boolean.class).orElse(false);
 
         var git = gitService.cloneBranch(runContext, rBranch, this.cloneSubmodules);
 
         var repoWorktree = git.getRepository().getWorkTree().toPath();
         var baseDir = (rGitDirectory == null || rGitDirectory.isBlank()) ? repoWorktree : repoWorktree.resolve(rGitDirectory);
 
-        // Read Git content (namespace-first) then filter to target namespace (no recursion)
+        // Read Git content (namespace-first) then filter to target namespace (and descendants when recursive)
         GitTree gitFlowsAll = readGitTreeNamespaceFirst(baseDir);
-        GitTree gitFlows = filterTreeByNamespace(gitFlowsAll, rNamespace);
 
-        // Read Git namespace files (<namespace>/files/**)
-        Map<String, byte[]> gitFiles = readGitNamespaceFiles(baseDir, rNamespace);
+        Set<String> syncNamespaces = new LinkedHashSet<>();
+        syncNamespaces.add(rNamespace);
+        if (rIncludeChildNamespaces) {
+            syncNamespaces.addAll(descendantNamespaces(runContext, tenantId, rNamespace));
+            if (rSourceOfTruth == SourceOfTruth.GIT) {
+                for (String gitNamespace : gitDescendantNamespaces(baseDir, rNamespace)) {
+                    if (syncNamespaces.contains(gitNamespace)) {
+                        continue;
+                    }
+                    if (!rDryRun) {
+                        try {
+                            kestraClient.namespaces().createNamespace(tenantId, new io.kestra.sdk.model.Namespace().id(gitNamespace));
+                        } catch (Exception e) {
+                            runContext.logger().warn("Skipping git namespace {}: could not create it in Kestra: {}", gitNamespace, e.getMessage());
+                            continue;
+                        }
+                    }
+                    syncNamespaces.add(gitNamespace);
+                }
+            }
+        }
+
+        GitTree gitFlows = filterTreeByNamespace(gitFlowsAll, syncNamespaces);
 
         if (rSourceOfTruth == SourceOfTruth.KESTRA) {
             ensureNamespaceFolders(baseDir, rNamespace);
         }
 
-        // Fetch Kestra state limited to target namespace only
-        KestraState kestraState = loadKestraState(runContext, rNamespace, rOnInvalidSyntax);
-        Map<String, byte[]> namespaceFiles = listNamespaceFiles(runContext, rNamespace);
+        KestraState kestraState = loadKestraState(runContext, rNamespace, rOnInvalidSyntax, rIncludeChildNamespaces, syncNamespaces);
 
         List<DiffLine> diffs = new ArrayList<>();
         List<Runnable> apply = new ArrayList<>();
 
         planFlows(runContext, baseDir, gitFlows, kestraState, rSourceOfTruth, rWhenMissingInSource, rOnInvalidSyntax, rProtectedNamespaces, rDryRun, diffs, apply);
-        planNamespaceFiles(runContext, baseDir, rNamespace, gitFiles, namespaceFiles, rSourceOfTruth, rWhenMissingInSource, rProtectedNamespaces, rDryRun, diffs, apply);
+        for (String fileNamespace : syncNamespaces) {
+            Map<String, byte[]> gitFiles = readGitNamespaceFiles(baseDir, fileNamespace);
+            Map<String, byte[]> namespaceFiles = listNamespaceFiles(runContext, fileNamespace);
+            planNamespaceFiles(runContext, baseDir, fileNamespace, gitFiles, namespaceFiles, rSourceOfTruth, rWhenMissingInSource, rProtectedNamespaces, rDryRun, diffs, apply);
+        }
 
         if (!rDryRun) {
             for (Runnable r : apply)
@@ -547,12 +578,12 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     private record KestraState(Map<String, FlowWithSource> flows) {
     }
 
-    private KestraState loadKestraState(RunContext rc, String rootNamespace, OnInvalidSyntax rOnInvalidSyntax) {
+    private KestraState loadKestraState(RunContext rc, String rootNamespace, OnInvalidSyntax rOnInvalidSyntax, boolean includeChildNamespaces, Set<String> syncNamespaces) {
         String tenant = rc.flowInfo().tenantId();
 
         List<FlowWithSource> allFlows;
         try {
-            allFlows = fetchFlowsFromKestra(rc, tenant, rootNamespace, rOnInvalidSyntax);
+            allFlows = fetchFlowsFromKestra(rc, tenant, rootNamespace, rOnInvalidSyntax, includeChildNamespaces);
         } catch (Exception e) {
             handleInvalid(rc, rOnInvalidSyntax, "flows for namespace " + rootNamespace, e);
             allFlows = List.of();
@@ -560,16 +591,18 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
         Map<String, FlowWithSource> flowsWithSource = allFlows.stream()
             .filter(f -> !f.isDraft())
+            .filter(f -> syncNamespaces.contains(f.getNamespace()))
             .collect(Collectors.toMap(f -> key(f.getNamespace(), f.getId()), Function.identity(), (a, b) -> a));
 
         return new KestraState(flowsWithSource);
     }
 
-    private List<FlowWithSource> fetchFlowsFromKestra(RunContext rc, String tenantId, String namespace, OnInvalidSyntax onInvalidSyntax) {
+    private List<FlowWithSource> fetchFlowsFromKestra(RunContext rc, String tenantId, String namespace, OnInvalidSyntax onInvalidSyntax, boolean includeChildNamespaces) {
         try {
+            var op = includeChildNamespaces ? QueryFilterOp.STARTS_WITH : QueryFilterOp.EQUALS;
             byte[] zippedFlows = kestraClient(rc).flows().exportFlowsByQuery(
                 tenantId,
-                List.of(new QueryFilter().field(QueryFilterField.NAMESPACE).operation(QueryFilterOp.EQUALS).value(namespace))
+                List.of(new QueryFilter().field(QueryFilterField.NAMESPACE).operation(op).value(namespace))
             );
             List<FlowWithSource> flows = new ArrayList<>();
             try (
@@ -735,14 +768,28 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         }
     }
 
-    private GitTree filterTreeByNamespace(GitTree src, String rootNamespace) {
+    private GitTree filterTreeByNamespace(GitTree src, Set<String> syncNamespaces) {
         GitTree out = new GitTree();
         src.nodes.forEach((k, v) ->
         {
-            if (v.namespace.equals(rootNamespace)) {
+            if (syncNamespaces.contains(v.namespace)) {
                 out.nodes.put(k, v);
             }
         });
+        return out;
+    }
+
+    private Set<String> gitDescendantNamespaces(Path baseDir, String rootNamespace) throws IOException {
+        Set<String> out = new HashSet<>();
+        if (baseDir == null || !Files.exists(baseDir))
+            return out;
+        try (Stream<Path> paths = Files.list(baseDir)) {
+            paths.filter(Files::isDirectory)
+                .filter(p -> Files.isDirectory(p.resolve(FLOWS_DIR)) || Files.isDirectory(p.resolve(FILES_DIR)))
+                .map(p -> p.getFileName().toString())
+                .filter(name -> isDescendant(rootNamespace, name))
+                .forEach(out::add);
+        }
         return out;
     }
 
