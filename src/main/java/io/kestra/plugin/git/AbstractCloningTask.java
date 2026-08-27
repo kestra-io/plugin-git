@@ -94,7 +94,7 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
                 throw new IllegalArgumentException("Both username and password are required for HTTP Basic authentication");
             }
             if (runContext.render(auth.auto).as(Boolean.class).orElse(Boolean.TRUE)) {
-                Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
+                Optional<SDK.Auth> autoAuth = defaultAuthentication(runContext);
                 if (autoAuth.isPresent()) {
                     if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
                         return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
@@ -105,7 +105,7 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
                 }
             }
         } else {
-            Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
+            Optional<SDK.Auth> autoAuth = defaultAuthentication(runContext);
             if (autoAuth.isPresent()) {
                 if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
                     return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
@@ -121,6 +121,11 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
                 "(apiToken or username/password), or configure default credentials via " +
                 "`kestra.tasks.sdk.authentication` (api-token, or username and password) in the Kestra configuration."
         );
+    }
+
+    // runContext.sdk() can be null in contexts where the SDK is not wired (e.g. tests)
+    private static Optional<SDK.Auth> defaultAuthentication(RunContext runContext) {
+        return runContext.sdk() == null ? Optional.empty() : runContext.sdk().defaultAuthentication();
     }
 
     protected List<String> descendantNamespaces(RunContext runContext, String tenantId, String namespace) throws IllegalVariableEvaluationException, ApiException {
