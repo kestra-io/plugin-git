@@ -57,10 +57,8 @@ public abstract class AbstractGitTask extends Task {
     private static final Pattern PEBBLE_TEMPLATE_PATTERN = Pattern.compile("^\\s*\\{\\{");
 
     /**
-     * Authenticates the Kestra SDK client with the instance-level default credentials, or fails fast.
-     * <p>
-     * TODO: delegate to {@code runContext.sdk().defaultAuthenticationOrThrow()} once this plugin builds
-     * against a Kestra version providing it (kestra-io/kestra#18746).
+     * Authenticates the Kestra SDK client with the instance-level default credentials, or fails fast
+     * via {@code SDK.defaultAuthenticationOrThrow()}.
      *
      * @param useDefaults whether default credentials may be used (the task's {@code auth.auto} property)
      */
@@ -68,24 +66,21 @@ public abstract class AbstractGitTask extends Task {
         RunContext runContext,
         io.kestra.sdk.KestraClient.KestraClientBuilder builder,
         boolean useDefaults) {
-        if (useDefaults) {
-            // runContext.sdk() can be null in contexts where the SDK is not wired (e.g. tests)
-            io.kestra.core.runners.SDK sdk = runContext.sdk();
-            Optional<io.kestra.core.runners.SDK.Auth> autoAuth = sdk == null ? Optional.empty() : sdk.defaultAuthentication();
-            if (autoAuth.isPresent()) {
-                if (autoAuth.get().apiToken().isPresent()) {
-                    return builder.tokenAuth(autoAuth.get().apiToken().get()).build();
-                }
-                if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-                    return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
-                }
-            }
+        // runContext.sdk() can be null in contexts where the SDK is not wired (e.g. tests)
+        io.kestra.core.runners.SDK sdk = useDefaults ? runContext.sdk() : null;
+        if (sdk == null) {
+            throw new IllegalArgumentException(
+                "No authentication method provided for the Kestra API. Set the `auth` property on the task " +
+                    "(apiToken or username/password), or configure default credentials via " +
+                    "`kestra.tasks.sdk.authentication` (api-token, or username and password) in the Kestra configuration."
+            );
         }
-        throw new IllegalArgumentException(
-            "No authentication method provided for the Kestra API. Set the `auth` property on the task " +
-                "(apiToken or username/password), or configure default credentials via " +
-                "`kestra.tasks.sdk.authentication` (api-token, or username and password) in the Kestra configuration."
-        );
+        io.kestra.core.runners.SDK.Auth autoAuth = sdk.defaultAuthenticationOrThrow();
+        if (autoAuth.apiToken().isPresent()) {
+            return builder.tokenAuth(autoAuth.apiToken().get()).build();
+        }
+        // defaultAuthenticationOrThrow guarantees an apiToken or a username/password pair
+        return builder.basicAuth(autoAuth.username().get(), autoAuth.password().get()).build();
     }
 
     // Replaces the boolean flag with a configuration key to allow reconfiguration when the PEM changes.
