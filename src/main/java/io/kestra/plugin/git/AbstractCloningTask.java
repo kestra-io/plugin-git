@@ -116,7 +116,11 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
             }
         }
 
-        return builder.build();
+        throw new IllegalArgumentException(
+            "No authentication method provided for the Kestra API. Set the `auth` property on the task " +
+                "(apiToken or username/password), or configure default credentials via " +
+                "`kestra.tasks.sdk.authentication` (api-token, or username and password) in the Kestra configuration."
+        );
     }
 
     protected List<String> descendantNamespaces(RunContext runContext, String tenantId, String namespace) throws IllegalVariableEvaluationException, ApiException {
