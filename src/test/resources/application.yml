@@ -1,4 +1,9 @@
 kestra:
+  tasks:
+    sdk:
+      authentication:
+        username: unit-test
+        password: unit-test
   git:
     repository-url: https://github.com/kestra-io/unit-tests
     user:
