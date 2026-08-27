@@ -39,6 +39,7 @@ import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.Task;
 import io.kestra.core.runners.RunContext;
@@ -48,13 +49,44 @@ import io.kestra.plugin.git.services.SshTransportConfigCallback;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @NoArgsConstructor
 @Getter
 public abstract class AbstractGitTask extends Task {
     private static final Pattern PEBBLE_TEMPLATE_PATTERN = Pattern.compile("^\\s*\\{\\{");
+
+    /**
+     * Authenticates the Kestra SDK client with the instance-level default credentials, or fails fast.
+     * <p>
+     * TODO: delegate to {@code runContext.sdk().defaultAuthenticationOrThrow()} once this plugin builds
+     * against a Kestra version providing it (kestra-io/kestra#18746).
+     *
+     * @param useDefaults whether default credentials may be used (the task's {@code auth.auto} property)
+     */
+    protected static io.kestra.sdk.KestraClient authenticateWithDefaultsOrThrow(
+        RunContext runContext,
+        io.kestra.sdk.KestraClient.KestraClientBuilder builder,
+        boolean useDefaults) {
+        if (useDefaults) {
+            // runContext.sdk() can be null in contexts where the SDK is not wired (e.g. tests)
+            io.kestra.core.runners.SDK sdk = runContext.sdk();
+            Optional<io.kestra.core.runners.SDK.Auth> autoAuth = sdk == null ? Optional.empty() : sdk.defaultAuthentication();
+            if (autoAuth.isPresent()) {
+                if (autoAuth.get().apiToken().isPresent()) {
+                    return builder.tokenAuth(autoAuth.get().apiToken().get()).build();
+                }
+                if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
+                    return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
+                }
+            }
+        }
+        throw new IllegalArgumentException(
+            "No authentication method provided for the Kestra API. Set the `auth` property on the task " +
+                "(apiToken or username/password), or configure default credentials via " +
+                "`kestra.tasks.sdk.authentication` (api-token, or username and password) in the Kestra configuration."
+        );
+    }
 
     // Replaces the boolean flag with a configuration key to allow reconfiguration when the PEM changes.
     // Possible values: "JVM" or "PEM:<sha256-of-file-bytes>"

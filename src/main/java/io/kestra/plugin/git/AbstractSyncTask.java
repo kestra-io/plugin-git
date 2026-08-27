@@ -18,6 +18,7 @@ import org.eclipse.jgit.api.Git;
 
 import io.kestra.core.exceptions.FlowProcessingException;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
@@ -33,7 +34,6 @@ import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.*;
 import static java.lang.Integer.MAX_VALUE;
-import io.kestra.core.models.annotations.PluginProperty;
 
 /**
  *

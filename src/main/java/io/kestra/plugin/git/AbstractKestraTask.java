@@ -6,7 +6,6 @@ import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.runners.SDK;
 import io.kestra.sdk.KestraClient;
 
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -74,38 +73,14 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
                 throw new IllegalArgumentException("Both username and password are required for HTTP Basic authentication");
             }
 
-            if (runContext.render(auth.auto).as(Boolean.class).orElse(Boolean.TRUE)) {
-                Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
-                if (autoAuth.isPresent()) {
-                    if (autoAuth.get().apiToken().isPresent()) {
-                        return builder.tokenAuth(autoAuth.get().apiToken().get()).build();
-                    }
-                    if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-                        return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
-                    }
-                    if (autoAuth.get().apiToken().isPresent()) {
-                        return builder.tokenAuth(autoAuth.get().apiToken().get()).build();
-                    }
-                }
-            }
-
-            throw new IllegalArgumentException("No authentication method provided");
-        } else {
-            // try automatic authentication
-            Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
-            if (autoAuth.isPresent()) {
-                if (autoAuth.get().apiToken().isPresent()) {
-                    return builder.tokenAuth(autoAuth.get().apiToken().get()).build();
-                }
-                if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-                    return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
-                }
-                if (autoAuth.get().apiToken().isPresent()) {
-                    return builder.tokenAuth(autoAuth.get().apiToken().get()).build();
-                }
-            }
+            return authenticateWithDefaultsOrThrow(
+                runContext, builder,
+                runContext.render(auth.auto).as(Boolean.class).orElse(Boolean.TRUE)
+            );
         }
-        return builder.build();
+
+        // try automatic authentication
+        return authenticateWithDefaultsOrThrow(runContext, builder, true);
     }
 
     @Builder

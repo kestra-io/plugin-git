@@ -18,7 +18,6 @@ import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
-import io.kestra.core.runners.SDK;
 import io.kestra.sdk.KestraClient;
 import io.kestra.sdk.internal.ApiException;
 import io.kestra.sdk.model.PagedResultsNamespace;
@@ -93,39 +92,13 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
             if (maybeUsername.isPresent() || maybePassword.isPresent()) {
                 throw new IllegalArgumentException("Both username and password are required for HTTP Basic authentication");
             }
-            if (runContext.render(auth.auto).as(Boolean.class).orElse(Boolean.TRUE)) {
-                Optional<SDK.Auth> autoAuth = defaultAuthentication(runContext);
-                if (autoAuth.isPresent()) {
-                    if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-                        return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
-                    }
-                    if (autoAuth.get().apiToken().isPresent()) {
-                        return builder.tokenAuth(autoAuth.get().apiToken().get()).build();
-                    }
-                }
-            }
-        } else {
-            Optional<SDK.Auth> autoAuth = defaultAuthentication(runContext);
-            if (autoAuth.isPresent()) {
-                if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-                    return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
-                }
-                if (autoAuth.get().apiToken().isPresent()) {
-                    return builder.tokenAuth(autoAuth.get().apiToken().get()).build();
-                }
-            }
+            return authenticateWithDefaultsOrThrow(
+                runContext, builder,
+                runContext.render(auth.auto).as(Boolean.class).orElse(Boolean.TRUE)
+            );
         }
 
-        throw new IllegalArgumentException(
-            "No authentication method provided for the Kestra API. Set the `auth` property on the task " +
-                "(apiToken or username/password), or configure default credentials via " +
-                "`kestra.tasks.sdk.authentication` (api-token, or username and password) in the Kestra configuration."
-        );
-    }
-
-    // runContext.sdk() can be null in contexts where the SDK is not wired (e.g. tests)
-    private static Optional<SDK.Auth> defaultAuthentication(RunContext runContext) {
-        return runContext.sdk() == null ? Optional.empty() : runContext.sdk().defaultAuthentication();
+        return authenticateWithDefaultsOrThrow(runContext, builder, true);
     }
 
     protected List<String> descendantNamespaces(RunContext runContext, String tenantId, String namespace) throws IllegalVariableEvaluationException, ApiException {
