@@ -21,14 +21,16 @@ import lombok.extern.jackson.Jacksonized;
 @EqualsAndHashCode
 @Getter
 public abstract class AbstractKestraTask extends AbstractGitTask {
-    private static final String DEFAULT_KESTRA_URL = "http://localhost:8080";
-    private static final String KESTRA_URL_TEMPLATE = "{{ kestra.url }}";
-
     @Schema(
-        title = "Kestra API URL. If null, uses 'kestra.url' from [configuration](https://kestra.io/docs/configuration#kestra-url). If that is also null, defaults to 'http://localhost:8080'"
+        title = "Kestra API URL",
+        description = """
+            URL of the Kestra server API.
+            If not set, the URL of the default SDK authentication is used, set with the `kestra.tasks.sdk.authentication.url` \
+            configuration property, or at the namespace or the tenant level on the Enterprise Edition.
+            It then falls back to the `kestra.url` configuration property, and finally to `http://localhost:8080`."""
     )
     @PluginProperty(group = "connection")
-    private Property<String> kestraUrl;
+    protected Property<String> kestraUrl;
 
     @Schema(title = "Authentication information")
     @NotNull
@@ -36,23 +38,12 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
     private Auth auth;
 
     protected KestraClient kestraClient(RunContext runContext) throws IllegalVariableEvaluationException {
-        // use the kestraUrl property if set, otherwise the config value, or else the default
-        String rKestraUrl = runContext.render(kestraUrl).as(String.class)
-            .orElseGet(() ->
-            {
-                try {
-                    return runContext.render(KESTRA_URL_TEMPLATE);
-                } catch (IllegalVariableEvaluationException e) {
-                    return DEFAULT_KESTRA_URL;
-                }
-            });
+        KestraApiConnection connection = KestraApiConnection.resolve(runContext, kestraUrl, auth);
 
-        runContext.logger().debug("Kestra URL: {}", rKestraUrl);
-
-        String normalizedUrl = rKestraUrl.trim().replaceAll("/+$", "");
+        runContext.logger().debug("Kestra URL: {}", connection.url());
 
         var builder = KestraClient.builder();
-        builder.url(normalizedUrl);
+        builder.url(connection.url());
         if (auth != null) {
             if (auth.apiToken != null && (auth.username != null || auth.password != null)) {
                 throw new IllegalArgumentException("Cannot use both API Token authentication and HTTP Basic authentication");
@@ -74,44 +65,41 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
                 throw new IllegalArgumentException("Both username and password are required for HTTP Basic authentication");
             }
 
-            if (runContext.render(auth.auto).as(Boolean.class).orElse(Boolean.TRUE)) {
-                Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
-                if (autoAuth.isPresent()) {
-                    if (autoAuth.get().apiToken().isPresent()) {
-                        return builder.tokenAuth(autoAuth.get().apiToken().get()).build();
-                    }
-                    if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-                        return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
-                    }
-                    if (autoAuth.get().apiToken().isPresent()) {
-                        return builder.tokenAuth(autoAuth.get().apiToken().get()).build();
-                    }
-                }
+            Optional<KestraClient> autoAuthenticated = applyDefaultCredentials(builder, connection.defaultAuth());
+            if (autoAuthenticated.isPresent()) {
+                return autoAuthenticated.get();
             }
 
-            throw new IllegalArgumentException("No authentication method provided");
+            throw new IllegalArgumentException(
+                "No authentication method provided. Set 'auth.apiToken', or 'auth.username' and 'auth.password', or configure a default one with the 'kestra.tasks.sdk.authentication' properties."
+            );
         } else {
             // try automatic authentication
-            Optional<SDK.Auth> autoAuth = runContext.sdk().defaultAuthentication();
-            if (autoAuth.isPresent()) {
-                if (autoAuth.get().apiToken().isPresent()) {
-                    return builder.tokenAuth(autoAuth.get().apiToken().get()).build();
-                }
-                if (autoAuth.get().username().isPresent() && autoAuth.get().password().isPresent()) {
-                    return builder.basicAuth(autoAuth.get().username().get(), autoAuth.get().password().get()).build();
-                }
-                if (autoAuth.get().apiToken().isPresent()) {
-                    return builder.tokenAuth(autoAuth.get().apiToken().get()).build();
-                }
+            Optional<KestraClient> autoAuthenticated = applyDefaultCredentials(builder, connection.defaultAuth());
+            if (autoAuthenticated.isPresent()) {
+                return autoAuthenticated.get();
             }
         }
         return builder.build();
     }
 
+    private static Optional<KestraClient> applyDefaultCredentials(KestraClient.KestraClientBuilder builder, Optional<SDK.Auth> defaultAuth) {
+        return defaultAuth.map(defaults ->
+        {
+            if (defaults.apiToken().isPresent()) {
+                return builder.tokenAuth(defaults.apiToken().get()).build();
+            }
+            if (defaults.username().isPresent() && defaults.password().isPresent()) {
+                return builder.basicAuth(defaults.username().get(), defaults.password().get()).build();
+            }
+            return null;
+        });
+    }
+
     @Builder
     @Getter
     @Jacksonized
-    public static class Auth {
+    public static class Auth implements KestraApiAuth {
         @Schema(title = "API token for Bearer authentication")
         @PluginProperty(secret = true, group = "connection")
         private Property<String> apiToken;
@@ -125,9 +113,10 @@ public abstract class AbstractKestraTask extends AbstractGitTask {
         private Property<String> password;
 
         @Schema(
-            title = "Automatically retrieve credentials from Kestra's configuration if available",
+            title = "Automatically retrieve the URL and the credentials from Kestra's configuration if available",
             description = """
                 The default configuration can be configured globally inside the Kestra configuration file:
+                - Set `kestra.tasks.sdk.authentication.url` to use a given API URL
                 - Set `kestra.tasks.sdk.authentication.api-token` to use an API token
                 - Set `kestra.tasks.sdk.authentication.username` and `kestra.tasks.sdk.authentication.password` for HTTP basic authentication
                 The Enterprise edition also provides setting a default configuration at the Namespace of Tenant level by an administrator."""
