@@ -93,20 +93,21 @@ import lombok.experimental.SuperBuilder;
                         targetNamespace: "{{ item.value }}"
                         gitDirectory: "{{'flows/' ~ item.value}}"
                         includeChildNamespaces: false
+                        username: anna-geller
+                        url: https://github.com/anna-geller/product
+                        password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                        branch: main
+                        dryRun: false
 
                       - id: scripts
                         type: io.kestra.plugin.git.SyncNamespaceFiles
                         namespace: "{{ item.value }}"
                         gitDirectory: "{{'scripts/' ~ item.value}}"
-
-                pluginDefaults:
-                  - type: io.kestra.plugin.git
-                    values:
-                      username: anna-geller
-                      url: https://github.com/anna-geller/product
-                      password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
-                      branch: main
-                      dryRun: false
+                        username: anna-geller
+                        url: https://github.com/anna-geller/product
+                        password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                        branch: main
+                        dryRun: false
 
                 triggers:
                   - id: every_full_hour

@@ -80,20 +80,21 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
                         sourceNamespace: "{{ item.value }}"
                         gitDirectory: "{{'flows/' ~ item.value}}"
                         includeChildNamespaces: false
+                        username: anna-geller
+                        url: https://github.com/anna-geller/product
+                        password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                        branch: main
+                        dryRun: false
 
                       - id: scripts
                         type: io.kestra.plugin.git.PushNamespaceFiles
                         namespace: "{{ item.value }}"
                         gitDirectory: "{{'scripts/' ~ item.value}}"
-
-                pluginDefaults:
-                  - type: io.kestra.plugin.git
-                    values:
-                      username: anna-geller
-                      url: https://github.com/anna-geller/product
-                      password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
-                      branch: main
-                      dryRun: false
+                        username: anna-geller
+                        url: https://github.com/anna-geller/product
+                        password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                        branch: main
+                        dryRun: false
 
                 triggers:
                   - id: schedule_push_to_git

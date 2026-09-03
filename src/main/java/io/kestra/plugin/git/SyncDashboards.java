@@ -52,15 +52,10 @@ import lombok.experimental.SuperBuilder;
                     type: io.kestra.plugin.git.SyncDashboards
                     gitDirectory: _dashboards
                     branch: dashboards
-
-                pluginDefaults:
-                  - type: io.kestra.plugin.git
-                    values:
-                      username: kestra-git-user
-                      url: https://github.com/my-company/my-repo
-                      password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
-                      branch: main
-                      dryRun: false
+                    username: kestra-git-user
+                    url: https://github.com/my-company/my-repo
+                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                    dryRun: false
 
                 triggers:
                   - id: every_full_hour
