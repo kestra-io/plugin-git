@@ -786,6 +786,39 @@ public class SyncFlowsTest extends AbstractGitTest {
     }
 
     /**
+     * When the single-flow re-fetch fails for a reason other than 404, the lookup is unresolved: the dry-run diff
+     * must not fabricate revision 1 (which would misreport an existing flow as freshly created). It must report
+     * no revision at all, per the SyncResult.revision contract which documents an absent revision as valid.
+     */
+    @Test
+    void dryRun_whenFlowApiFailsWithNon404Status_shouldReportNoRevisionInsteadOfFabricatingOne() throws Exception {
+        SyncFlows task = SyncFlows.builder()
+            .id("sync-flows")
+            .type(SyncFlows.class.getName())
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
+            .gitDirectory(Property.ofValue(GIT_DIRECTORY))
+            .targetNamespace(Property.ofValue(NAMESPACE))
+            .includeChildNamespaces(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        // Establish a baseline: "unchanged-flow" now exists identically in Git and Kestra, at a known revision
+        task.run(TestsUtils.mockRunContext(TENANT_ID, runContextFactory, task, Collections.emptyMap()));
+
+        server.forceGetFlowStatus(NAMESPACE, "unchanged-flow", 500);
+
+        SyncFlows dryRunTask = task.toBuilder().dryRun(Property.ofValue(true)).build();
+        RunContext dryRunContext = TestsUtils.mockRunContext(TENANT_ID, runContextFactory, dryRunTask, Collections.emptyMap());
+        SyncFlows.Output dryOutput = dryRunTask.run(dryRunContext);
+
+        Map<String, Object> diff = findDiffByFlowId(dryRunContext, dryOutput.diffFileUri(), "unchanged-flow");
+        assertThat(diff.get("revision"), is(nullValue()));
+    }
+
+    /**
      * Directly exercises SyncFlows.wrapper() with a null revision on either side to lock the fix: the sync state
      * must be derived from source equality, never from a nullable revision comparison.
      */

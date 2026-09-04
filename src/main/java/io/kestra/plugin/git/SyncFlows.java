@@ -209,9 +209,14 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         // Simulate: parse the source and determine if it differs from the current Kestra state
         var parsedFromSource = YamlParser.parse(flowSource, Flow.class);
         var tenantId = runContext.flowInfo().tenantId();
-        var currentFlow = fetchFlowFromApi(runContext, kestraClient(runContext), tenantId, parsedFromSource.getNamespace(), parsedFromSource.getId());
+        var lookup = fetchFlowFromApi(runContext, kestraClient(runContext), tenantId, parsedFromSource.getNamespace(), parsedFromSource.getId());
+        var currentFlow = lookup.flow();
 
         if (currentFlow == null) {
+            if (!lookup.resolved()) {
+                // Lookup failed for a reason other than "flow does not exist" — don't fabricate a revision
+                return FlowWithSource.of(parsedFromSource, flowSource);
+            }
             // New flow — revision will be 1 after import
             return simulatedFlow(parsedFromSource, flowSource, 1);
         }
@@ -225,6 +230,9 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         // Changed — simulate next revision
         int projectedRevision = currentFlow.getRevision() != null ? currentFlow.getRevision() + 1 : 1;
         return simulatedFlow(parsedFromSource, flowSource, projectedRevision);
+    }
+
+    private record FlowLookup(FlowWithSource flow, boolean resolved) {
     }
 
     private static FlowWithSource simulatedFlow(Flow parsedFromSource, String flowSource, int revision) {
@@ -283,7 +291,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         kestraClient.flows().importFlows(tenantId, true, toNamedTempFile(parsed.getId() + ".yaml", flowSource.stripTrailing()));
 
         // Re-fetch from Kestra to get the authoritative revision after import
-        var updated = fetchFlowFromApi(runContext, kestraClient, tenantId, parsed.getNamespace(), parsed.getId());
+        var updated = fetchFlowFromApi(runContext, kestraClient, tenantId, parsed.getNamespace(), parsed.getId()).flow();
         return updated != null ? updated : FlowWithSource.of(parsed, flowSource);
     }
 
@@ -385,27 +393,30 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         }
     }
 
-    private FlowWithSource fetchFlowFromApi(RunContext runContext, KestraClient kestraClient, String tenantId, String namespace, String flowId) {
+    private FlowLookup fetchFlowFromApi(RunContext runContext, KestraClient kestraClient, String tenantId, String namespace, String flowId) {
         try {
             var apiFlow = kestraClient.flows().flow(namespace, flowId, tenantId, true, null, false);
-            return FlowWithSource.builder()
-                .id(apiFlow.getId())
-                .namespace(apiFlow.getNamespace())
-                .revision(apiFlow.getRevision())
-                .tenantId(tenantId)
-                .source(apiFlow.getSource())
-                .build();
+            return new FlowLookup(
+                FlowWithSource.builder()
+                    .id(apiFlow.getId())
+                    .namespace(apiFlow.getNamespace())
+                    .revision(apiFlow.getRevision())
+                    .tenantId(tenantId)
+                    .source(apiFlow.getSource())
+                    .build(),
+                true
+            );
         } catch (ApiException e) {
             if (e.getCode() == 404) {
-                return null;
+                return new FlowLookup(null, true);
             }
-            // Only 404 means "flow does not exist" and is swallowed silently above; any other status is a
-            // real API/permissions failure, so log it and still return null (sync continues, flow treated as absent).
+            // Only 404 means "flow does not exist"; any other status is a real API/permissions failure that
+            // leaves the lookup unresolved, so callers must not assume the flow is absent.
             runContext.logger().warn(
                 "Failed to fetch flow {}.{} from the Kestra API (status {}): {}",
                 namespace, flowId, e.getCode(), e.getMessage()
             );
-            return null;
+            return new FlowLookup(null, false);
         }
     }
 
