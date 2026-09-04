@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -15,17 +16,20 @@ import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.event.Level;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 
 import io.kestra.core.exceptions.FlowProcessingException;
 import io.kestra.core.junit.annotations.KestraTest;
+import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.FlowId;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.flows.GenericFlow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.GenericTask;
+import io.kestra.core.queues.DispatchQueueInterface;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
@@ -33,6 +37,7 @@ import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.Rethrow;
+import io.kestra.core.utils.TestsUtils;
 
 import jakarta.inject.Inject;
 
@@ -57,6 +62,9 @@ public class SyncFlowsTest extends AbstractGitTest {
 
     @Inject
     private FlowRepositoryInterface flowRepositoryInterface;
+
+    @Inject
+    private DispatchQueueInterface<LogEntry> logQueue;
 
     private MockKestraApiServer server;
 
@@ -725,6 +733,51 @@ public class SyncFlowsTest extends AbstractGitTest {
         Map<String, Object> diff = findDiffByFlowId(secondRunContext, secondOutput.diffFileUri(), "unchanged-flow");
         assertThat(diff.get("syncState"), is("UPDATED"));
         assertThat(diff.get("revision"), is(revisionAfterManualEdit + 1));
+    }
+
+    /**
+     * A non-404 failure (e.g. 403/500) when re-fetching a flow's authoritative state must not be silently treated
+     * as "the flow does not exist" without a trace: it must be logged so a real API/permissions failure is visible
+     * rather than misreported as the flow being newly ADDED.
+     */
+    @Test
+    void dryRun_whenFlowApiFailsWithNon404Status_shouldLogWarningAndNotThrow() throws Exception {
+        List<LogEntry> logs = new CopyOnWriteArrayList<>();
+        logQueue.addListener(logs::add);
+
+        SyncFlows task = SyncFlows.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .targetNamespace(Property.ofExpression("{{namespace}}"))
+            .includeChildNamespaces(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        // Establish a baseline: "unchanged-flow" now exists identically in Git and Kestra
+        task.run(runContext());
+
+        server.forceGetFlowStatus(NAMESPACE, "unchanged-flow", 500);
+
+        SyncFlows dryRunTask = task.toBuilder().dryRun(Property.ofValue(true)).build();
+        RunContext dryRunContext = runContext();
+        SyncFlows.Output dryOutput = dryRunTask.run(dryRunContext);
+
+        // Behavior is preserved (no exception), but the failure must not be silently misreported without a trace
+        Map<String, Object> diff = findDiffByFlowId(dryRunContext, dryOutput.diffFileUri(), "unchanged-flow");
+        assertThat(diff.get("syncState"), is("ADDED"));
+
+        List<LogEntry> warnLogs = TestsUtils.awaitLogs(
+            logs,
+            logEntry -> logEntry.getLevel().equals(Level.WARN) &&
+                logEntry.getMessage().contains(NAMESPACE) &&
+                logEntry.getMessage().contains("unchanged-flow") &&
+                logEntry.getMessage().contains("500"),
+            1
+        );
+        assertThat(warnLogs, hasSize(1));
     }
 
     /**

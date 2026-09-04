@@ -2,13 +2,13 @@ package io.kestra.plugin.git;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -46,6 +46,8 @@ public class MockKestraApiServer implements AutoCloseable {
     private final HttpServer server;
     private final FlowRepositoryInterface flowRepo;
     private final DashboardRepositoryInterface dashboardRepo;
+    // Keyed by "namespace/id" -> forces GET /flows/{namespace}/{id} to fail with the given status, to exercise non-404 API failures
+    private final Map<String, Integer> forcedGetFlowStatuses = new ConcurrentHashMap<>();
 
     private MockKestraApiServer(FlowRepositoryInterface flowRepo, DashboardRepositoryInterface dashboardRepo) throws IOException {
         this.flowRepo = flowRepo;
@@ -82,6 +84,14 @@ public class MockKestraApiServer implements AutoCloseable {
         return "http://localhost:" + server.getAddress().getPort();
     }
 
+    /**
+     * Forces the next {@code GET /flows/{namespace}/{id}} calls for the given flow to fail with the given
+     * non-404 HTTP status, to exercise how callers handle a real API/permissions failure.
+     */
+    public void forceGetFlowStatus(String namespace, String flowId, int status) {
+        forcedGetFlowStatuses.put(namespace + "/" + flowId, status);
+    }
+
     @Override
     public void close() {
         server.stop(0);
@@ -91,7 +101,8 @@ public class MockKestraApiServer implements AutoCloseable {
 
     private void registerHandlers() {
         // flows: export, import, validate, delete
-        server.createContext("/api/v1/", exchange -> {
+        server.createContext("/api/v1/", exchange ->
+        {
             var path = exchange.getRequestURI().getPath();
             var method = exchange.getRequestMethod();
 
@@ -338,6 +349,13 @@ public class MockKestraApiServer implements AutoCloseable {
         var namespace = decode(parts[5]);
         var flowId = decode(parts[6]);
 
+        Integer forcedStatus = forcedGetFlowStatuses.get(namespace + "/" + flowId);
+        if (forcedStatus != null) {
+            exchange.sendResponseHeaders(forcedStatus, -1);
+            exchange.close();
+            return;
+        }
+
         var match = flowRepo.findByNamespaceWithSource(tenantId, namespace).stream()
             .filter(f -> flowId.equals(f.getId()))
             .findFirst();
@@ -350,12 +368,14 @@ public class MockKestraApiServer implements AutoCloseable {
 
         var flow = match.get();
         try {
-            var json = JacksonMapper.ofJson().writeValueAsString(Map.of(
-                "id", flow.getId(),
-                "namespace", flow.getNamespace(),
-                "revision", flow.getRevision() != null ? flow.getRevision() : 1,
-                "source", flow.getSource() != null ? flow.getSource() : ""
-            ));
+            var json = JacksonMapper.ofJson().writeValueAsString(
+                Map.of(
+                    "id", flow.getId(),
+                    "namespace", flow.getNamespace(),
+                    "revision", flow.getRevision() != null ? flow.getRevision() : 1,
+                    "source", flow.getSource() != null ? flow.getSource() : ""
+                )
+            );
             sendJson(exchange, 200, json);
         } catch (Exception e) {
             sendJson(exchange, 500, "{\"error\":\"serialization failed\"}");
@@ -412,12 +432,13 @@ public class MockKestraApiServer implements AutoCloseable {
         var sb = new StringBuilder("{\"results\":[");
         for (int i = 0; i < dashboards.size(); i++) {
             var d = dashboards.get(i);
-            if (i > 0) sb.append(",");
+            if (i > 0)
+                sb.append(",");
             // Include a non-null updated timestamp so production code can compare revisions
             var updatedTs = d.getUpdated() != null ? d.getUpdated().toString() : "1970-01-01T00:00:00Z";
             sb.append("{\"id\":\"").append(d.getId())
-              .append("\",\"title\":\"").append(d.getId())
-              .append("\",\"updated\":\"").append(updatedTs).append("\"}");
+                .append("\",\"title\":\"").append(d.getId())
+                .append("\",\"updated\":\"").append(updatedTs).append("\"}");
         }
         sb.append("],\"total\":").append(dashboards.size()).append("}");
         sendJson(exchange, 200, sb.toString());
@@ -483,9 +504,11 @@ public class MockKestraApiServer implements AutoCloseable {
                     .findFirst()
                     .orElse(null);
                 java.time.Instant updated;
-                if (existing != null
-                    && existing.getSourceCode() != null
-                    && existing.getSourceCode().strip().equals(yamlBody.strip())) {
+                if (
+                    existing != null
+                        && existing.getSourceCode() != null
+                        && existing.getSourceCode().strip().equals(yamlBody.strip())
+                ) {
                     // Same content — preserve existing timestamp (use EPOCH if null so handleGetDashboardYaml fallback matches)
                     updated = existing.getUpdated() != null ? existing.getUpdated() : java.time.Instant.EPOCH;
                 } else {
@@ -605,7 +628,8 @@ public class MockKestraApiServer implements AutoCloseable {
                 yamlBuilder.setLength(0);
                 continue;
             }
-            if (!inPart) continue;
+            if (!inPart)
+                continue;
             if (!pastHeaders) {
                 if (line.isBlank()) {
                     pastHeaders = true;

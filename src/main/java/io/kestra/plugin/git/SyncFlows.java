@@ -119,6 +119,7 @@ import lombok.experimental.SuperBuilder;
 )
 public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     public static final Pattern NAMESPACE_FINDER_PATTERN = Pattern.compile("(?m)^namespace: (.*)$");
+    private static final Pattern REVISION_LINE_PATTERN = Pattern.compile("(?m)^revision:\\s*\\d+\\n?");
 
     @Schema(
         title = "Branch to sync",
@@ -208,7 +209,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         // Simulate: parse the source and determine if it differs from the current Kestra state
         var parsedFromSource = YamlParser.parse(flowSource, Flow.class);
         var tenantId = runContext.flowInfo().tenantId();
-        var currentFlow = fetchFlowFromApi(kestraClient(runContext), tenantId, parsedFromSource.getNamespace(), parsedFromSource.getId());
+        var currentFlow = fetchFlowFromApi(runContext, kestraClient(runContext), tenantId, parsedFromSource.getNamespace(), parsedFromSource.getId());
 
         if (currentFlow == null) {
             // New flow — revision will be 1 after import
@@ -234,7 +235,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         if (source == null) {
             return "";
         }
-        return source.replaceAll("(?m)^revision:\\s*\\d+\\n?", "").replace("\r\n", "\n").strip();
+        return REVISION_LINE_PATTERN.matcher(source).replaceAll("").replace("\r\n", "\n").strip();
     }
 
     @Override
@@ -282,7 +283,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         kestraClient.flows().importFlows(tenantId, true, toNamedTempFile(parsed.getId() + ".yaml", flowSource.stripTrailing()));
 
         // Re-fetch from Kestra to get the authoritative revision after import
-        var updated = fetchFlowFromApi(kestraClient, tenantId, parsed.getNamespace(), parsed.getId());
+        var updated = fetchFlowFromApi(runContext, kestraClient, tenantId, parsed.getNamespace(), parsed.getId());
         return updated != null ? updated : FlowWithSource.of(parsed, flowSource);
     }
 
@@ -384,7 +385,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         }
     }
 
-    private FlowWithSource fetchFlowFromApi(KestraClient kestraClient, String tenantId, String namespace, String flowId) {
+    private FlowWithSource fetchFlowFromApi(RunContext runContext, KestraClient kestraClient, String tenantId, String namespace, String flowId) {
         try {
             var apiFlow = kestraClient.flows().flow(namespace, flowId, tenantId, true, null, false);
             return FlowWithSource.builder()
@@ -395,7 +396,15 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
                 .source(apiFlow.getSource())
                 .build();
         } catch (ApiException e) {
-            // Flow does not exist yet, or could not be fetched
+            if (e.getCode() == 404) {
+                return null;
+            }
+            // Not a "does not exist" case: a permissions/API failure here would otherwise be silently
+            // misreported as the flow being ADDED, so surface it instead of swallowing it.
+            runContext.logger().warn(
+                "Failed to fetch flow {}.{} from the Kestra API (status {}): {}",
+                namespace, flowId, e.getCode(), e.getMessage()
+            );
             return null;
         }
     }
