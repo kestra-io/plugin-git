@@ -208,25 +208,33 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         // Simulate: parse the source and determine if it differs from the current Kestra state
         var parsedFromSource = YamlParser.parse(flowSource, Flow.class);
         var tenantId = runContext.flowInfo().tenantId();
-        var currentFlow = fetchSingleFlow(kestraClient(runContext), tenantId, parsedFromSource.getNamespace(), parsedFromSource.getId());
+        var currentFlow = fetchFlowFromApi(kestraClient(runContext), tenantId, parsedFromSource.getNamespace(), parsedFromSource.getId());
 
         if (currentFlow == null) {
             // New flow — revision will be 1 after import
-            return parsedFromSource.toBuilder().revision(1).build();
+            return simulatedFlow(parsedFromSource, flowSource, 1);
         }
 
-        // Compare normalised source to detect changes
-        // Strip revision: from the exported source — the Kestra ZIP export injects it but git sources never have it
-        var normalised = flowSource.replace("\r\n", "\n").strip();
-        var currentSourceWithoutRevision = currentFlow.getSource().replaceAll("(?m)^revision:\\s*\\d+\\n?", "");
-        var currentNormalised = currentSourceWithoutRevision.replace("\r\n", "\n").strip();
-        if (normalised.equals(currentNormalised)) {
+        // Compare normalised source (some Kestra versions inject a leading revision: line into the fetched source; git sources never have it) to detect changes
+        if (normalizeSource(flowSource).equals(normalizeSource(currentFlow.getSource()))) {
             // Unchanged — return the current flow so wrapper detects UNCHANGED
             return currentFlow;
         }
 
         // Changed — simulate next revision
-        return parsedFromSource.toBuilder().revision(currentFlow.getRevision() + 1).build();
+        int projectedRevision = currentFlow.getRevision() != null ? currentFlow.getRevision() + 1 : 1;
+        return simulatedFlow(parsedFromSource, flowSource, projectedRevision);
+    }
+
+    private static FlowWithSource simulatedFlow(Flow parsedFromSource, String flowSource, int revision) {
+        return FlowWithSource.of(parsedFromSource, flowSource).toBuilder().revision(revision).build();
+    }
+
+    private static String normalizeSource(String source) {
+        if (source == null) {
+            return "";
+        }
+        return source.replaceAll("(?m)^revision:\\s*\\d+\\n?", "").replace("\r\n", "\n").strip();
     }
 
     @Override
@@ -270,13 +278,12 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             throw new FlowProcessingException("Invalid flow imported from Git (" + ref + "): " + flowValidated.getConstraints());
         }
 
-        var parsedId = YamlParser.parse(flowSource, Flow.class).getId();
-        kestraClient.flows().importFlows(tenantId, true, toNamedTempFile(parsedId + ".yaml", flowSource.stripTrailing()));
+        var parsed = YamlParser.parse(flowSource, Flow.class);
+        kestraClient.flows().importFlows(tenantId, true, toNamedTempFile(parsed.getId() + ".yaml", flowSource.stripTrailing()));
 
-        // Re-fetch from Kestra to get the updated revision
-        var parsedNamespace = YamlParser.parse(flowSource, Flow.class).getNamespace();
-        var updated = fetchSingleFlow(kestraClient, tenantId, parsedNamespace, parsedId);
-        return updated != null ? updated : YamlParser.parse(flowSource, Flow.class);
+        // Re-fetch from Kestra to get the authoritative revision after import
+        var updated = fetchFlowFromApi(kestraClient, tenantId, parsed.getNamespace(), parsed.getId());
+        return updated != null ? updated : FlowWithSource.of(parsed, flowSource);
     }
 
     private static String replaceNamespace(String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
@@ -303,7 +310,8 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             syncState = SyncState.DELETED;
         } else if (flowBeforeUpdate == null) {
             syncState = SyncState.ADDED;
-        } else if (flowBeforeUpdate.getRevision().equals(Objects.requireNonNull(flowAfterUpdate).getRevision())) {
+        } else if (flowAfterUpdate != null && normalizeSource(flowBeforeUpdate.getSource()).equals(normalizeSource(flowAfterUpdate.getSource()))) {
+            // Source-based comparison: revision may be null when a flow is parsed from an export and cannot be used for diffing
             syncState = SyncState.UNCHANGED;
         } else {
             syncState = SyncState.UPDATED;
@@ -376,30 +384,18 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         }
     }
 
-    private FlowWithSource fetchSingleFlow(KestraClient kestraClient, String tenantId, String namespace, String flowId) {
+    private FlowWithSource fetchFlowFromApi(KestraClient kestraClient, String tenantId, String namespace, String flowId) {
         try {
-            byte[] zippedFlows = kestraClient.flows().exportFlowsByQuery(
-                tenantId,
-                List.of(
-                    new QueryFilter().field(QueryFilterField.NAMESPACE).operation(QueryFilterOp.EQUALS).value(namespace),
-                    new QueryFilter().field(QueryFilterField.ID).operation(QueryFilterOp.EQUALS).value(flowId)
-                )
-            );
-            try (
-                var bais = new ByteArrayInputStream(zippedFlows);
-                var zis = new ZipInputStream(bais)
-            ) {
-                ZipEntry entry;
-                while ((entry = zis.getNextEntry()) != null) {
-                    if (!entry.getName().endsWith(".yml") && !entry.getName().endsWith(".yaml")) {
-                        continue;
-                    }
-                    var yaml = new String(zis.readAllBytes(), StandardCharsets.UTF_8);
-                    return FlowWithSource.of(YamlParser.parse(yaml, Flow.class), yaml);
-                }
-            }
-            return null;
-        } catch (Exception e) {
+            var apiFlow = kestraClient.flows().flow(namespace, flowId, tenantId, true, null, false);
+            return FlowWithSource.builder()
+                .id(apiFlow.getId())
+                .namespace(apiFlow.getNamespace())
+                .revision(apiFlow.getRevision())
+                .tenantId(tenantId)
+                .source(apiFlow.getSource())
+                .build();
+        } catch (ApiException e) {
+            // Flow does not exist yet, or could not be fetched
             return null;
         }
     }
@@ -454,6 +450,11 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     public static class SyncResult extends AbstractSyncTask.SyncResult {
         private String flowId;
         private String namespace;
+
+        @Schema(
+            title = "Flow revision",
+            description = "Revision of the flow after sync. May be absent if it could not be resolved from the Kestra API."
+        )
         private Integer revision;
     }
 }

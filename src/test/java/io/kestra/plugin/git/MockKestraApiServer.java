@@ -104,6 +104,8 @@ public class MockKestraApiServer implements AutoCloseable {
                     handleValidateFlows(exchange);
                 } else if (path.contains("/flows/") && "DELETE".equals(method) && !path.contains("/flows/delete")) {
                     handleDeleteFlow(exchange);
+                } else if (path.contains("/flows/") && "GET".equals(method) && !path.contains("/flows/export")) {
+                    handleGetFlow(exchange);
                 } else if (path.contains("/namespaces/") && "GET".equals(method) && !path.contains("/secrets") && !path.contains("/plugindefaults") && !path.contains("/inherited")) {
                     handleGetNamespace(exchange);
                 } else if (path.contains("/dashboards") && "GET".equals(method) && !path.contains("/charts") && !path.contains("/export")) {
@@ -307,6 +309,57 @@ public class MockKestraApiServer implements AutoCloseable {
 
         exchange.sendResponseHeaders(200, -1);
         exchange.close();
+    }
+
+    /**
+     * GET /api/v1/{tenantId}/flows/{namespace}/{id}?source=&revision=&allowDeleted=
+     * Returns the current flow (with source) from the in-memory repo, or 404 if it doesn't exist.
+     * Used by SyncFlows/SyncFlow to fetch the authoritative revision, avoiding the ZIP-export revision gap.
+     */
+    private void handleGetFlow(HttpExchange exchange) throws IOException {
+        exchange.getRequestBody().readAllBytes();
+
+        if (flowRepo == null) {
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+            return;
+        }
+
+        var path = exchange.getRequestURI().getPath();
+        var parts = path.split("/");
+        // parts[0]="" [1]="api" [2]="v1" [3]=tenant [4]="flows" [5]=namespace [6]=id
+        if (parts.length < 7) {
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+            return;
+        }
+
+        var tenantId = decode(parts[3]);
+        var namespace = decode(parts[5]);
+        var flowId = decode(parts[6]);
+
+        var match = flowRepo.findByNamespaceWithSource(tenantId, namespace).stream()
+            .filter(f -> flowId.equals(f.getId()))
+            .findFirst();
+
+        if (match.isEmpty()) {
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+            return;
+        }
+
+        var flow = match.get();
+        try {
+            var json = JacksonMapper.ofJson().writeValueAsString(Map.of(
+                "id", flow.getId(),
+                "namespace", flow.getNamespace(),
+                "revision", flow.getRevision() != null ? flow.getRevision() : 1,
+                "source", flow.getSource() != null ? flow.getSource() : ""
+            ));
+            sendJson(exchange, 200, json);
+        } catch (Exception e) {
+            sendJson(exchange, 500, "{\"error\":\"serialization failed\"}");
+        }
     }
 
     /**
