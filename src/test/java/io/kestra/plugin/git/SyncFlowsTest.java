@@ -746,24 +746,28 @@ public class SyncFlowsTest extends AbstractGitTest {
         List<LogEntry> logs = new CopyOnWriteArrayList<>();
         logQueue.addListener(logs::add);
 
+        // mockRunContext (rather than the Map-based runContext() helper) is required here: it wires a real
+        // task/execution context whose logger actually publishes to logQueue, unlike a bare RunContextLogger.
         SyncFlows task = SyncFlows.builder()
-            .url(Property.ofExpression("{{url}}"))
-            .username(Property.ofExpression("{{pat}}"))
-            .password(Property.ofExpression("{{pat}}"))
-            .branch(Property.ofExpression("{{branch}}"))
-            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
-            .targetNamespace(Property.ofExpression("{{namespace}}"))
+            .id("sync-flows")
+            .type(SyncFlows.class.getName())
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
+            .gitDirectory(Property.ofValue(GIT_DIRECTORY))
+            .targetNamespace(Property.ofValue(NAMESPACE))
             .includeChildNamespaces(Property.ofValue(true))
             .kestraUrl(Property.ofValue(server.url()))
             .build();
 
         // Establish a baseline: "unchanged-flow" now exists identically in Git and Kestra
-        task.run(runContext());
+        task.run(TestsUtils.mockRunContext(TENANT_ID, runContextFactory, task, Collections.emptyMap()));
 
         server.forceGetFlowStatus(NAMESPACE, "unchanged-flow", 500);
 
         SyncFlows dryRunTask = task.toBuilder().dryRun(Property.ofValue(true)).build();
-        RunContext dryRunContext = runContext();
+        RunContext dryRunContext = TestsUtils.mockRunContext(TENANT_ID, runContextFactory, dryRunTask, Collections.emptyMap());
         SyncFlows.Output dryOutput = dryRunTask.run(dryRunContext);
 
         // Behavior is preserved (no exception, still reported as UNCHANGED since the source content didn't change)
