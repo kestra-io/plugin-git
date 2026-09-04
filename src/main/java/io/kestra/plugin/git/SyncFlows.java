@@ -232,9 +232,6 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         return simulatedFlow(parsedFromSource, flowSource, projectedRevision);
     }
 
-    private record FlowLookup(FlowWithSource flow, boolean resolved) {
-    }
-
     private static FlowWithSource simulatedFlow(Flow parsedFromSource, String flowSource, int revision) {
         return FlowWithSource.of(parsedFromSource, flowSource).toBuilder().revision(revision).build();
     }
@@ -465,6 +462,9 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         }
     }
 
+    private record FlowLookup(FlowWithSource flow, boolean resolved) {
+    }
+
     @SuperBuilder
     @Getter
     public static class SyncResult extends AbstractSyncTask.SyncResult {
@@ -473,7 +473,8 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
         @Schema(
             title = "Flow revision",
-            description = "Revision of the flow after sync. May be absent if it could not be resolved from the Kestra API."
+            description = """
+                Revision of the flow after sync. May be absent if it could not be resolved from the Kestra API."""
         )
         private Integer revision;
     }
