@@ -399,8 +399,8 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             if (e.getCode() == 404) {
                 return null;
             }
-            // Not a "does not exist" case: a permissions/API failure here would otherwise be silently
-            // misreported as the flow being ADDED, so surface it instead of swallowing it.
+            // Only 404 means "flow does not exist" and is swallowed silently above; any other status is a
+            // real API/permissions failure, so log it and still return null (sync continues, flow treated as absent).
             runContext.logger().warn(
                 "Failed to fetch flow {}.{} from the Kestra API (status {}): {}",
                 namespace, flowId, e.getCode(), e.getMessage()

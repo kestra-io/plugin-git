@@ -737,8 +737,9 @@ public class SyncFlowsTest extends AbstractGitTest {
 
     /**
      * A non-404 failure (e.g. 403/500) when re-fetching a flow's authoritative state must not be silently treated
-     * as "the flow does not exist" without a trace: it must be logged so a real API/permissions failure is visible
-     * rather than misreported as the flow being newly ADDED.
+     * as "the flow does not exist" without a trace: it must be logged so a real API/permissions failure is visible.
+     * The sync state itself is still derived from source comparison (unaffected by the single-flow API failure,
+     * since the "before" state comes from the namespace export, not from this call), so it stays UNCHANGED here.
      */
     @Test
     void dryRun_whenFlowApiFailsWithNon404Status_shouldLogWarningAndNotThrow() throws Exception {
@@ -765,9 +766,9 @@ public class SyncFlowsTest extends AbstractGitTest {
         RunContext dryRunContext = runContext();
         SyncFlows.Output dryOutput = dryRunTask.run(dryRunContext);
 
-        // Behavior is preserved (no exception), but the failure must not be silently misreported without a trace
+        // Behavior is preserved (no exception, still reported as UNCHANGED since the source content didn't change)
         Map<String, Object> diff = findDiffByFlowId(dryRunContext, dryOutput.diffFileUri(), "unchanged-flow");
-        assertThat(diff.get("syncState"), is("ADDED"));
+        assertThat(diff.get("syncState"), is("UNCHANGED"));
 
         List<LogEntry> warnLogs = TestsUtils.awaitLogs(
             logs,
