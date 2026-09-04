@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -15,17 +16,20 @@ import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.event.Level;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 
 import io.kestra.core.exceptions.FlowProcessingException;
 import io.kestra.core.junit.annotations.KestraTest;
+import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.FlowId;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.flows.GenericFlow;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.GenericTask;
+import io.kestra.core.queues.DispatchQueueInterface;
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
@@ -33,6 +37,7 @@ import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.Rethrow;
+import io.kestra.core.utils.TestsUtils;
 
 import jakarta.inject.Inject;
 
@@ -57,6 +62,9 @@ public class SyncFlowsTest extends AbstractGitTest {
 
     @Inject
     private FlowRepositoryInterface flowRepositoryInterface;
+
+    @Inject
+    private DispatchQueueInterface<LogEntry> logQueue;
 
     private MockKestraApiServer server;
 
@@ -633,6 +641,264 @@ public class SyncFlowsTest extends AbstractGitTest {
         FlowProcessingException ex = assertThrows(FlowProcessingException.class, () -> task.run(runContext));
 
         assertThat(ex.getMessage(), containsString("demo-invalid-flow"));
+    }
+
+    /**
+     * Regression test for https://github.com/kestra-io/plugin-git/issues/327: on the second run, the "before" flow
+     * state is parsed from Kestra's export ZIP, which never carries a revision. Running twice in a row must not NPE
+     * and must report every flow UNCHANGED since nothing changed on either side between the two runs.
+     */
+    @Test
+    void runTwice_shouldReportUnchangedOnSecondRun() throws Exception {
+        SyncFlows task = SyncFlows.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .targetNamespace(Property.ofExpression("{{namespace}}"))
+            .includeChildNamespaces(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        task.run(runContext());
+
+        RunContext secondRunContext = runContext();
+        SyncFlows.Output secondOutput = task.run(secondRunContext);
+
+        assertAllDiffsHaveSyncState(secondRunContext, secondOutput.diffFileUri(), "UNCHANGED");
+    }
+
+    /**
+     * Same regression as above but for the dry-run path (SyncFlows.java line ~229, `currentFlow.getRevision() + 1`):
+     * a flow edited directly in Kestra (out of band, not through Git) must be projected as UPDATED with an
+     * incremented revision on a dry run, without throwing.
+     */
+    @Test
+    void dryRun_afterManualEditInKestra_shouldProjectIncrementedRevisionWithoutThrowing() throws Exception {
+        SyncFlows task = SyncFlows.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .targetNamespace(Property.ofExpression("{{namespace}}"))
+            .includeChildNamespaces(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        // Establish a baseline by actually syncing once
+        task.run(runContext());
+        int revisionAfterManualEdit = manuallyEditFlowInKestra("unchanged-flow");
+
+        SyncFlows dryRunTask = task.toBuilder().dryRun(Property.ofValue(true)).build();
+        RunContext dryRunContext = runContext();
+        SyncFlows.Output dryOutput = dryRunTask.run(dryRunContext);
+
+        Map<String, Object> diff = findDiffByFlowId(dryRunContext, dryOutput.diffFileUri(), "unchanged-flow");
+        assertThat(diff.get("syncState"), is("UPDATED"));
+        assertThat(diff.get("revision"), is(revisionAfterManualEdit + 1));
+
+        // Dry run must not have touched Kestra's state
+        FlowWithSource stillManuallyEdited = flowRepositoryInterface.findByNamespaceWithSource(TENANT_ID, NAMESPACE).stream()
+            .filter(f -> f.getId().equals("unchanged-flow"))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Flow 'unchanged-flow' should still exist after a dry run"));
+        assertThat(stillManuallyEdited.getRevision(), is(revisionAfterManualEdit));
+    }
+
+    /**
+     * A flow edited directly in Kestra (out of band, not through Git) must be detected as UPDATED and re-synced
+     * from Git on the next (non-dry) run, with the revision incremented once more by the re-import.
+     */
+    @Test
+    void runTwice_withFlowManuallyEditedInKestra_shouldReportUpdatedWithIncrementedRevision() throws Exception {
+        SyncFlows task = SyncFlows.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .targetNamespace(Property.ofExpression("{{namespace}}"))
+            .includeChildNamespaces(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        task.run(runContext());
+        int revisionAfterManualEdit = manuallyEditFlowInKestra("unchanged-flow");
+
+        RunContext secondRunContext = runContext();
+        SyncFlows.Output secondOutput = task.run(secondRunContext);
+
+        Map<String, Object> diff = findDiffByFlowId(secondRunContext, secondOutput.diffFileUri(), "unchanged-flow");
+        assertThat(diff.get("syncState"), is("UPDATED"));
+        assertThat(diff.get("revision"), is(revisionAfterManualEdit + 1));
+    }
+
+    /**
+     * A non-404 failure (e.g. 403/500) when re-fetching a flow's authoritative state must not be silently treated
+     * as "the flow does not exist" without a trace: it must be logged so a real API/permissions failure is visible.
+     * The sync state itself is still derived from source comparison (unaffected by the single-flow API failure,
+     * since the "before" state comes from the namespace export, not from this call), so it stays UNCHANGED here.
+     */
+    @Test
+    void dryRun_whenFlowApiFailsWithNon404Status_shouldLogWarningAndNotThrow() throws Exception {
+        List<LogEntry> logs = new CopyOnWriteArrayList<>();
+        logQueue.addListener(logs::add);
+
+        // mockRunContext (rather than the Map-based runContext() helper) is required here: it wires a real
+        // task/execution context whose logger actually publishes to logQueue, unlike a bare RunContextLogger.
+        SyncFlows task = SyncFlows.builder()
+            .id("sync-flows")
+            .type(SyncFlows.class.getName())
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
+            .gitDirectory(Property.ofValue(GIT_DIRECTORY))
+            .targetNamespace(Property.ofValue(NAMESPACE))
+            .includeChildNamespaces(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        // Establish a baseline: "unchanged-flow" now exists identically in Git and Kestra
+        task.run(TestsUtils.mockRunContext(TENANT_ID, runContextFactory, task, Collections.emptyMap()));
+
+        server.forceGetFlowStatus(NAMESPACE, "unchanged-flow", 500);
+
+        SyncFlows dryRunTask = task.toBuilder().dryRun(Property.ofValue(true)).build();
+        RunContext dryRunContext = TestsUtils.mockRunContext(TENANT_ID, runContextFactory, dryRunTask, Collections.emptyMap());
+        SyncFlows.Output dryOutput = dryRunTask.run(dryRunContext);
+
+        // Behavior is preserved (no exception, still reported as UNCHANGED since the source content didn't change)
+        Map<String, Object> diff = findDiffByFlowId(dryRunContext, dryOutput.diffFileUri(), "unchanged-flow");
+        assertThat(diff.get("syncState"), is("UNCHANGED"));
+
+        List<LogEntry> warnLogs = TestsUtils.awaitLogs(
+            logs,
+            logEntry -> logEntry.getLevel().equals(Level.WARN) &&
+                logEntry.getMessage().contains(NAMESPACE) &&
+                logEntry.getMessage().contains("unchanged-flow") &&
+                logEntry.getMessage().contains("500"),
+            1
+        );
+        assertThat(warnLogs, hasSize(1));
+    }
+
+    /**
+     * When the single-flow re-fetch fails for a reason other than 404, the lookup is unresolved: the dry-run diff
+     * must not fabricate revision 1 (which would misreport an existing flow as freshly created). It must report
+     * no revision at all, per the SyncResult.revision contract which documents an absent revision as valid.
+     */
+    @Test
+    void dryRun_whenFlowApiFailsWithNon404Status_shouldReportNoRevisionInsteadOfFabricatingOne() throws Exception {
+        SyncFlows task = SyncFlows.builder()
+            .id("sync-flows")
+            .type(SyncFlows.class.getName())
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
+            .gitDirectory(Property.ofValue(GIT_DIRECTORY))
+            .targetNamespace(Property.ofValue(NAMESPACE))
+            .includeChildNamespaces(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        // Establish a baseline: "unchanged-flow" now exists identically in Git and Kestra, at a known revision
+        task.run(TestsUtils.mockRunContext(TENANT_ID, runContextFactory, task, Collections.emptyMap()));
+
+        server.forceGetFlowStatus(NAMESPACE, "unchanged-flow", 500);
+
+        SyncFlows dryRunTask = task.toBuilder().dryRun(Property.ofValue(true)).build();
+        RunContext dryRunContext = TestsUtils.mockRunContext(TENANT_ID, runContextFactory, dryRunTask, Collections.emptyMap());
+        SyncFlows.Output dryOutput = dryRunTask.run(dryRunContext);
+
+        Map<String, Object> diff = findDiffByFlowId(dryRunContext, dryOutput.diffFileUri(), "unchanged-flow");
+        assertThat(diff.get("revision"), is(nullValue()));
+    }
+
+    /**
+     * Directly exercises SyncFlows.wrapper() with a null revision on either side to lock the fix: the sync state
+     * must be derived from source equality, never from a nullable revision comparison.
+     */
+    @Test
+    void wrapper_withNullRevisionOnEitherSide_shouldNotThrowAndCompareBySource() {
+        SyncFlows task = SyncFlows.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .targetNamespace(Property.ofExpression("{{namespace}}"))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        String source = "id: some-flow\nnamespace: " + NAMESPACE + "\n";
+        FlowWithSource beforeWithNullRevision = FlowWithSource.builder()
+            .id("some-flow")
+            .namespace(NAMESPACE)
+            .revision(null)
+            .source(source)
+            .build();
+
+        FlowWithSource sameSourceDifferentRevision = FlowWithSource.builder()
+            .id("some-flow")
+            .namespace(NAMESPACE)
+            .revision(3)
+            .source(source)
+            .build();
+
+        AbstractSyncTask.SyncResult unchanged = task.wrapper(
+            runContext(), "to_clone/_flows", NAMESPACE, URI.create("/some-flow.yml"), beforeWithNullRevision, sameSourceDifferentRevision
+        );
+        assertThat(unchanged.getSyncState(), is(AbstractSyncTask.SyncState.UNCHANGED));
+
+        FlowWithSource changedSource = FlowWithSource.builder()
+            .id("some-flow")
+            .namespace(NAMESPACE)
+            .revision(null)
+            .source(source + "description: changed\n")
+            .build();
+
+        AbstractSyncTask.SyncResult updated = task.wrapper(
+            runContext(), "to_clone/_flows", NAMESPACE, URI.create("/some-flow.yml"), beforeWithNullRevision, changedSource
+        );
+        assertThat(updated.getSyncState(), is(AbstractSyncTask.SyncState.UPDATED));
+    }
+
+    /**
+     * Simulates a change made directly in Kestra (not through Git): updates the flow's source in place and
+     * returns the resulting revision.
+     */
+    private int manuallyEditFlowInKestra(String flowId) {
+        FlowWithSource existing = flowRepositoryInterface.findByNamespaceWithSource(TENANT_ID, NAMESPACE).stream()
+            .filter(f -> f.getId().equals(flowId))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Flow '" + flowId + "' was expected to exist after the first sync"));
+
+        String editedSource = existing.getSource().replace("Hello from old-task", "Hello from manually-edited-task");
+        GenericFlow edited = GenericFlow.fromYaml(TENANT_ID, editedSource);
+        FlowWithSource updated = flowRepositoryInterface.update(edited.toBuilder().source(editedSource).build(), existing);
+        return updated.getRevision();
+    }
+
+    private static Map<String, Object> findDiffByFlowId(RunContext runContext, URI diffFileUri, String flowId) throws IOException {
+        String diffSummary = IOUtils.toString(runContext.storage().getFile(diffFileUri), StandardCharsets.UTF_8);
+        return diffSummary.lines()
+            .map(Rethrow.throwFunction(diff -> JacksonMapper.ofIon().readValue(diff, new TypeReference<Map<String, Object>>() {
+            })))
+            .filter(diff -> flowId.equals(diff.get("flowId")))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("No diff entry found for flow '" + flowId + "'"));
+    }
+
+    private static void assertAllDiffsHaveSyncState(RunContext runContext, URI diffFileUri, String expectedSyncState) throws IOException {
+        String diffSummary = IOUtils.toString(runContext.storage().getFile(diffFileUri), StandardCharsets.UTF_8);
+        List<Map<String, Object>> diffMaps = diffSummary.lines()
+            .map(Rethrow.throwFunction(diff -> JacksonMapper.ofIon().readValue(diff, new TypeReference<Map<String, Object>>() {
+            })))
+            .toList();
+        assertThat(diffMaps, not(empty()));
+        diffMaps.forEach(diff -> assertThat("flow " + diff.get("flowId") + " should be " + expectedSyncState, diff.get("syncState"), is(expectedSyncState)));
     }
 
     private List<Map<String, Object>> defaultCaseDiffs(boolean includeSubNamespaces, boolean dryRun, Map<String, Object>... additionalDiffs) {
