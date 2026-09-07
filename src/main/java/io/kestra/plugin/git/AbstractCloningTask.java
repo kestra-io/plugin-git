@@ -22,6 +22,9 @@ import io.kestra.core.runners.SDK;
 import io.kestra.sdk.KestraClient;
 import io.kestra.sdk.internal.ApiException;
 import io.kestra.sdk.model.PagedResultsNamespace;
+import io.kestra.sdk.model.QueryFilter;
+import io.kestra.sdk.model.QueryFilterField;
+import io.kestra.sdk.model.QueryFilterOp;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
@@ -99,8 +102,15 @@ public abstract class AbstractCloningTask extends AbstractGitTask {
         int size = 200;
         List<io.kestra.sdk.model.Namespace> results;
         do {
-            // q is a server-side contains filter, so prefix matches are never missed
-            PagedResultsNamespace result = client.namespaces().searchNamespaces(tenantId, namespace + ".", page, size, null, false);
+            // QUERY/EQUALS is a server-side contains filter, so prefix matches are never missed
+            PagedResultsNamespace result = client.namespaces().searchNamespaces(
+                tenantId,
+                page,
+                size,
+                null,
+                false,
+                List.of(new QueryFilter().field(QueryFilterField.QUERY).operation(QueryFilterOp.EQUALS).value(namespace + "."))
+            );
             results = result.getResults();
             if (results == null) {
                 break;
