@@ -21,7 +21,7 @@ import io.kestra.core.models.dashboards.Dashboard;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.flows.GenericFlow;
-import io.kestra.core.repositories.DashboardRepositoryInterface;
+// MockDashboardStore replaces DashboardRepositoryInterface, EE-only since Kestra 2.0.0
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.serializers.YamlParser;
@@ -45,11 +45,11 @@ public class MockKestraApiServer implements AutoCloseable {
 
     private final HttpServer server;
     private final FlowRepositoryInterface flowRepo;
-    private final DashboardRepositoryInterface dashboardRepo;
+    private final MockDashboardStore dashboardRepo;
     // Keyed by "namespace/id" -> forces GET /flows/{namespace}/{id} to fail with the given status, to exercise non-404 API failures
     private final Map<String, Integer> forcedGetFlowStatuses = new ConcurrentHashMap<>();
 
-    private MockKestraApiServer(FlowRepositoryInterface flowRepo, DashboardRepositoryInterface dashboardRepo) throws IOException {
+    private MockKestraApiServer(FlowRepositoryInterface flowRepo, MockDashboardStore dashboardRepo) throws IOException {
         this.flowRepo = flowRepo;
         this.dashboardRepo = dashboardRepo;
         this.server = HttpServer.create(new InetSocketAddress(0), 0);
@@ -61,7 +61,7 @@ public class MockKestraApiServer implements AutoCloseable {
      * Creates and starts a mock server backed by the given repositories.
      * Call {@link #close()} when the test finishes.
      */
-    public static MockKestraApiServer start(FlowRepositoryInterface flowRepo, DashboardRepositoryInterface dashboardRepo) throws IOException {
+    public static MockKestraApiServer start(FlowRepositoryInterface flowRepo, MockDashboardStore dashboardRepo) throws IOException {
         return new MockKestraApiServer(flowRepo, dashboardRepo);
     }
 
@@ -73,9 +73,9 @@ public class MockKestraApiServer implements AutoCloseable {
     }
 
     /**
-     * Creates and starts a mock server backed only by the dashboard repository (flows not needed).
+     * Creates and starts a mock server backed only by the dashboard store (flows not needed).
      */
-    public static MockKestraApiServer start(DashboardRepositoryInterface dashboardRepo) throws IOException {
+    public static MockKestraApiServer start(MockDashboardStore dashboardRepo) throws IOException {
         return new MockKestraApiServer(null, dashboardRepo);
     }
 

@@ -255,7 +255,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         PagedResultsNamespace result;
         do {
             result = kestraClient.namespaces()
-                .searchNamespaces(tenantId, null, page, size, null, false);
+                .searchNamespaces(tenantId, page, size, null, false, null);
             result.getResults().forEach(ns -> kestraNamespaces.add(ns.getId()));
             page++;
         } while (result.getResults().size() == size);

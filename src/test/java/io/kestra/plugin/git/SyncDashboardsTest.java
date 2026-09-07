@@ -17,7 +17,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.dashboards.Dashboard;
 import io.kestra.core.models.property.Property;
-import io.kestra.core.repositories.DashboardRepositoryInterface;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
@@ -45,14 +44,13 @@ public class SyncDashboardsTest extends AbstractGitTest {
     @Inject
     private RunContextFactory runContextFactory;
 
-    @Inject
-    private DashboardRepositoryInterface dashboardRepositoryInterface;
+    private final MockDashboardStore dashboardStore = new MockDashboardStore();
 
     private MockKestraApiServer server;
 
     @BeforeEach
     void startMockServer() throws IOException {
-        server = MockKestraApiServer.start(dashboardRepositoryInterface);
+        server = MockKestraApiServer.start(dashboardStore);
     }
 
     @AfterEach
@@ -62,9 +60,9 @@ public class SyncDashboardsTest extends AbstractGitTest {
 
     @BeforeEach
     void init() {
-        dashboardRepositoryInterface.findAll(TENANT_ID).forEach(dashboard ->
+        dashboardStore.findAll(TENANT_ID).forEach(dashboard ->
         {
-            Dashboard deleted = dashboardRepositoryInterface.delete(TENANT_ID, dashboard.getId());
+            Dashboard deleted = dashboardStore.delete(TENANT_ID, dashboard.getId());
             previousRevisionByUid.put(deleted.uid(), deleted.getUpdated());
         });
     }
@@ -79,13 +77,13 @@ public class SyncDashboardsTest extends AbstractGitTest {
          * 3. Third dashboard - exists only on the Git server, should be added
          * 4. Fourth dashboard - same on local and sever, should be unchanged
          */
-        DashboardUtils.createDashboard(dashboardRepositoryInterface, TENANT_ID, "First Dashboard - local ", "first-dashboard"); //1
-        DashboardUtils.createDashboard(dashboardRepositoryInterface, TENANT_ID, "Local Dashboard - local", "local-dashboard"); //2
-        DashboardUtils.createDashboard(dashboardRepositoryInterface, TENANT_ID, "Same Dashboard - local and server", "same-dashboard"); //4
+        DashboardUtils.createDashboard(dashboardStore, TENANT_ID, "First Dashboard - local ", "first-dashboard"); //1
+        DashboardUtils.createDashboard(dashboardStore, TENANT_ID, "Local Dashboard - local", "local-dashboard"); //2
+        DashboardUtils.createDashboard(dashboardStore, TENANT_ID, "Same Dashboard - local and server", "same-dashboard"); //4
 
         RunContext runContext = runContext();
 
-        List<Dashboard> dashboards = dashboardRepositoryInterface.findAll(TENANT_ID);
+        List<Dashboard> dashboards = dashboardStore.findAll(TENANT_ID);
 
         assertThat(dashboards, hasSize(3));
         dashboards.forEach(d -> previousRevisionByUid.put(d.uid(), d.getUpdated()));
@@ -102,7 +100,7 @@ public class SyncDashboardsTest extends AbstractGitTest {
 
         SyncDashboards.Output syncOutput = task.run(runContext);
 
-        dashboards = dashboardRepositoryInterface.findAll(TENANT_ID);
+        dashboards = dashboardStore.findAll(TENANT_ID);
 
         if (delete) {
             assertThat(dashboards, hasSize(3));
@@ -139,13 +137,13 @@ public class SyncDashboardsTest extends AbstractGitTest {
          * 3. Third dashboard - exists only on the Git server, should be added
          * 4. Fourth dashboard - same on local and sever, should be unchanged
          */
-        DashboardUtils.createDashboard(dashboardRepositoryInterface, TENANT_ID, "First Dashboard - local ", "first-dashboard"); //1
-        DashboardUtils.createDashboard(dashboardRepositoryInterface, TENANT_ID, "Local Dashboard - local", "local-dashboard"); //2
-        DashboardUtils.createDashboard(dashboardRepositoryInterface, TENANT_ID, "Same Dashboard - local and server", "same-dashboard"); //4
+        DashboardUtils.createDashboard(dashboardStore, TENANT_ID, "First Dashboard - local ", "first-dashboard"); //1
+        DashboardUtils.createDashboard(dashboardStore, TENANT_ID, "Local Dashboard - local", "local-dashboard"); //2
+        DashboardUtils.createDashboard(dashboardStore, TENANT_ID, "Same Dashboard - local and server", "same-dashboard"); //4
 
         RunContext runContext = runContext();
 
-        List<Dashboard> dashboards = dashboardRepositoryInterface.findAll(TENANT_ID);
+        List<Dashboard> dashboards = dashboardStore.findAll(TENANT_ID);
 
         assertThat(dashboards, hasSize(3));
         dashboards.forEach(d -> previousRevisionByUid.put(d.uid(), d.getUpdated()));
@@ -163,7 +161,7 @@ public class SyncDashboardsTest extends AbstractGitTest {
 
         SyncDashboards.Output syncOutput = task.run(runContext);
 
-        dashboards = dashboardRepositoryInterface.findAll(TENANT_ID);
+        dashboards = dashboardStore.findAll(TENANT_ID);
 
         //No changes to local files
         assertThat(dashboards, hasSize(3));
