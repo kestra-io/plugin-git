@@ -7,6 +7,7 @@ import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import io.kestra.core.junit.annotations.KestraTest;
@@ -36,6 +37,7 @@ import static org.hamcrest.Matchers.*;
 @KestraTest
 @io.micronaut.context.annotation.Property(name = "kestra.tasks.sdk.authentication.username", value = "admin@admin.com")
 @io.micronaut.context.annotation.Property(name = "kestra.tasks.sdk.authentication.password", value = "Root!1234")
+@Disabled("Dashboard writes moved to EE in kestra#18971, so the fixture POST /dashboards returns 405 on OSS. Tracked in #334, container coverage belongs in plugin-ee-git#166.")
 public class PushDashboardsContainerTest extends AbstractKestraContainerTest {
 
     private static final String REPO_URL = "https://github.com/kestra-io/unit-tests";
