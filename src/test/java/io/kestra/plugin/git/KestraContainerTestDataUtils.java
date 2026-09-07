@@ -39,7 +39,4 @@ public class KestraContainerTestDataUtils {
         }
     }
 
-    public void createDashboard(String tenantId, String dashboardYaml) throws ApiException {
-        kestraClient.dashboards().createDashboard(tenantId, dashboardYaml);
-    }
 }

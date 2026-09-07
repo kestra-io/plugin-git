@@ -2,7 +2,6 @@ package io.kestra.plugin.git;
 
 import java.io.*;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
@@ -21,8 +20,6 @@ import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.transport.PushResult;
 import org.eclipse.jgit.transport.RemoteRefUpdate;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-
 import io.kestra.core.exceptions.FlowProcessingException;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
@@ -37,7 +34,6 @@ import io.kestra.core.serializers.YamlParser;
 import io.kestra.plugin.git.services.GitService;
 import io.kestra.sdk.KestraClient;
 import io.kestra.sdk.api.FilesApi;
-import io.kestra.sdk.internal.ApiClient;
 import io.kestra.sdk.internal.ApiException;
 import io.kestra.sdk.model.*;
 
@@ -56,13 +52,13 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
 @NoArgsConstructor
 @Schema(
     title = "Sync an entire tenant with Git",
-    description = "Synchronizes all namespaces, flows, Namespace Files, and dashboards for one tenant. Direction is set by `sourceOfTruth`; deletions follow `whenMissingInSource` with `protectedNamespaces` safeguards. Supports dry-run diff output and optional subdirectory via `gitDirectory`."
+    description = "Synchronizes all namespaces, flows, and Namespace Files for one tenant. Direction is set by `sourceOfTruth`; deletions follow `whenMissingInSource` with `protectedNamespaces` safeguards. Supports dry-run diff output and optional subdirectory via `gitDirectory`."
 )
 @Plugin(
     priority = Plugin.Priority.SECONDARY,
     examples = {
         @Example(
-            title = "Sync all objects (flows, files, dashboards, namespaces) under the same tenant than this flow using Git as source of truth",
+            title = "Sync all objects (flows, files, namespaces) under the same tenant than this flow using Git as source of truth",
             full = true,
             code = """
                 id: tenant_sync_git
@@ -86,7 +82,7 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
                 """
         ),
         @Example(
-            title = "Sync all objects (flows, files, dashboards, namespaces) under the same tenant as this flow using Kestra as the source of truth",
+            title = "Sync all objects (flows, files, namespaces) under the same tenant as this flow using Kestra as the source of truth",
             full = true,
             code = """
                 id: tenant_sync_kestra
@@ -138,7 +134,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
     @Schema(
         title = "Git base directory",
         description = """
-            Optional subfolder in the repo; default is repo root. Within it, namespaces are under `<namespace>/flows` and `<namespace>/files`, dashboards under `_global/dashboards`.
+            Optional subfolder in the repo; default is repo root. Within it, namespaces are under `<namespace>/flows` and `<namespace>/files`.
 
             | gitDirectory | namespace    | Expected Git path                     |
             | ------------ | ------------ | ------------------------------------- |
@@ -218,7 +214,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
     // Directory names
     private static final String FLOWS_DIR = "flows";
     private static final String FILES_DIR = "files";
-    private static final String DASHBOARDS_DIR = "_global/dashboards";
 
     @Override
     public Output run(RunContext runContext) throws Exception {
@@ -295,12 +290,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                 kestraFlows, kestraFiles
             );
         }
-
-        planDashboards(
-            runContext, kestraClient, baseDir,
-            rSourceOfTruth, rWhenMissingInSource,
-            rOnInvalidSyntax, rDryRun, diffs, apply
-        );
 
         String addPattern = (rGitDirectory == null || rGitDirectory.isBlank()) ? "." : rGitDirectory;
 
@@ -672,126 +661,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         }
     }
 
-    private void planDashboards(
-        RunContext runContext,
-        KestraClient kestraClient,
-        Path baseDir,
-        SourceOfTruth rSourceOfTruth,
-        WhenMissingInSource rWhenMissingInSource,
-        OnInvalidSyntax rOnInvalidSyntax,
-        boolean rDryRun,
-        List<DiffLine> diffs,
-        List<Runnable> apply) throws Exception {
-        Path dashboardsDir = baseDir.resolve(DASHBOARDS_DIR);
-
-        Map<String, String> kestraDashboards = fetchDashboardsFromKestra(kestraClient, runContext);
-
-        Map<String, String> gitDashboards = readGitDashboards(dashboardsDir);
-
-        Set<String> allDashboards = new HashSet<>();
-        allDashboards.addAll(kestraDashboards.keySet());
-        allDashboards.addAll(gitDashboards.keySet());
-
-        for (String dashboardId : allDashboards) {
-            Path dashboardPath = dashboardsDir.resolve(dashboardId + ".yaml");
-            String gitYaml = gitDashboards.get(dashboardId);
-            String kestraYaml = kestraDashboards.get(dashboardId);
-
-            // Dashboard exists only in Git
-            if (gitYaml != null && kestraYaml == null) {
-                if (rSourceOfTruth == SourceOfTruth.GIT) {
-                    diffs.add(DiffLine.added(dashboardPath.toString(), dashboardId, Kind.DASHBOARD));
-                    if (!rDryRun) {
-                        apply.add(() ->
-                        {
-                            try {
-                                kestraClient.dashboards().createDashboard(
-                                    runContext.flowInfo().tenantId(),
-                                    gitYaml
-                                );
-                            } catch (Exception e) {
-                                handleInvalid(runContext, rOnInvalidSyntax, "DASHBOARD " + dashboardId, e);
-                            }
-                        });
-                    }
-                } else {
-                    switch (rWhenMissingInSource) {
-                        case KEEP ->
-                            diffs.add(DiffLine.unchanged(dashboardPath.toString(), dashboardId, Kind.DASHBOARD));
-                        case DELETE -> {
-                            diffs.add(DiffLine.deletedGit(dashboardPath.toString(), dashboardId, Kind.DASHBOARD));
-                            if (!rDryRun)
-                                apply.add(() -> deleteGitFile(dashboardPath));
-                        }
-                        case FAIL -> throw new KestraRuntimeException(
-                            "Sync failed: DASHBOARD missing in Kestra but present in Git: " + dashboardId
-                        );
-                    }
-                }
-
-                // Dashboard exists only in Kestra
-            } else if (gitYaml == null && kestraYaml != null) {
-                if (rSourceOfTruth == SourceOfTruth.KESTRA) {
-                    diffs.add(DiffLine.added(dashboardPath.toString(), dashboardId, Kind.DASHBOARD));
-                    if (!rDryRun)
-                        apply.add(() -> writeGitFile(dashboardPath, kestraYaml));
-                } else {
-                    switch (rWhenMissingInSource) {
-                        case KEEP ->
-                            diffs.add(DiffLine.unchanged(dashboardPath.toString(), dashboardId, Kind.DASHBOARD));
-                        case DELETE -> {
-                            diffs.add(DiffLine.deletedKestra(dashboardPath.toString(), dashboardId, Kind.DASHBOARD));
-                            if (!rDryRun) {
-                                apply.add(() ->
-                                {
-                                    try {
-                                        kestraClient.dashboards().deleteDashboard(
-                                            dashboardId, runContext.flowInfo().tenantId()
-                                        );
-                                    } catch (Exception e) {
-                                        handleInvalid(runContext, rOnInvalidSyntax, "DASHBOARD " + dashboardId, e);
-                                    }
-                                });
-                            }
-                        }
-                        case FAIL -> throw new KestraRuntimeException(
-                            "Sync failed: DASHBOARD missing in Git but present in Kestra: " + dashboardId
-                        );
-                    }
-                }
-
-                // Dashboard exists in both Git and Kestra
-            } else if (gitYaml != null) {
-                boolean changed = !normalizeYaml(gitYaml).equals(normalizeYaml(kestraYaml));
-                if (!changed) {
-                    diffs.add(DiffLine.unchanged(dashboardPath.toString(), dashboardId, Kind.DASHBOARD));
-                    continue;
-                }
-
-                if (rSourceOfTruth == SourceOfTruth.GIT) {
-                    diffs.add(DiffLine.updatedKestra(dashboardPath.toString(), dashboardId, Kind.DASHBOARD));
-                    if (!rDryRun) {
-                        apply.add(() ->
-                        {
-                            try {
-                                kestraClient.dashboards().createDashboard(
-                                    runContext.flowInfo().tenantId(),
-                                    gitYaml
-                                );
-                            } catch (Exception e) {
-                                handleInvalid(runContext, rOnInvalidSyntax, "DASHBOARD " + dashboardId, e);
-                            }
-                        });
-                    }
-                } else {
-                    diffs.add(DiffLine.updatedGit(dashboardPath.toString(), dashboardId, Kind.DASHBOARD));
-                    if (!rDryRun)
-                        apply.add(() -> writeGitFile(dashboardPath, kestraYaml));
-                }
-            }
-        }
-    }
-
     private List<FlowWithSource> fetchFlowsFromKestra(KestraClient kestraClient, RunContext runContext, String namespace, OnInvalidSyntax rOnInvalidSyntax) {
         try {
             // Export all flows from Kestra for the given namespace (including sub-namespaces)
@@ -844,60 +713,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         } catch (Exception e) {
             throw new KestraRuntimeException("Failed to export flows from Kestra for namespace " + namespace, e);
         }
-    }
-
-    private Map<String, String> fetchDashboardsFromKestra(KestraClient kestraClient, RunContext runContext) {
-        try {
-            Map<String, String> dashboards = new HashMap<>();
-
-            int page = 1;
-            int size = 200;
-            PagedResultsDashboardControllerDashboardResponse pagedResults;
-
-            do {
-                pagedResults = kestraClient.dashboards().searchDashboards(runContext.flowInfo().tenantId(), page, size, null, null);
-
-                String tenantForFetch = runContext.flowInfo().tenantId();
-                pagedResults.getResults().forEach(dash ->
-                {
-                    try {
-                        String sourceCode = fetchDashboardSourceCode(kestraClient, runContext, tenantForFetch, dash.getId());
-                        dashboards.put(dash.getTitle(), sourceCode);
-                    } catch (Exception e) {
-                        throw new KestraRuntimeException("Failed to fetch source code for dashboard " + dash.getId(), e);
-                    }
-                });
-
-                page++;
-            } while (pagedResults.getResults().size() == size);
-
-            return dashboards;
-
-        } catch (Exception e) {
-            throw new KestraRuntimeException("Failed to fetch dashboards from Kestra", e);
-        }
-    }
-
-    private Map<String, String> readGitDashboards(Path dashboardsDir) throws IOException {
-        Map<String, String> dashboards = new HashMap<>();
-        if (!Files.exists(dashboardsDir)) {
-            return dashboards;
-        }
-
-        try (var paths = Files.walk(dashboardsDir)) {
-            paths.filter(Files::isRegularFile)
-                .filter(p -> p.toString().endsWith(".yml") || p.toString().endsWith(".yaml"))
-                .forEach(p ->
-                {
-                    try {
-                        String id = p.getFileName().toString().replaceFirst("\\.ya?ml$", "");
-                        dashboards.put(id, Files.readString(p, StandardCharsets.UTF_8));
-                    } catch (IOException e) {
-                        throw new UncheckedIOException("Failed to read dashboard from Git: " + p, e);
-                    }
-                });
-        }
-        return dashboards;
     }
 
     private Map<String, String> readGitFlows(Path flowsDir) throws IOException {
@@ -1024,24 +839,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                 runContext.logger().warn("{} couldn't be synced due to invalid syntax: {}", what, e.getMessage());
             case FAIL -> throw new KestraRuntimeException("Invalid syntax for " + what + ": " + e.getMessage(), e);
         }
-    }
-
-    private String fetchDashboardSourceCode(KestraClient kestraClient, RunContext runContext, String tenantId, String dashboardId) throws Exception {
-        ApiClient apiClient = kestraClient.dashboards().getApiClient();
-        String encodedId = URLEncoder.encode(dashboardId, StandardCharsets.UTF_8);
-        String path = tenantId == null
-            ? "/api/v1/dashboards/" + encodedId
-            : "/api/v1/" + tenantId + "/dashboards/" + encodedId;
-
-        Map<String, Object> response = apiClient.invokeAPI(
-            path, "GET",
-            Collections.emptyList(), Collections.emptyList(), null,
-            null, Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap(),
-            "application/json", null, new String[0],
-            new TypeReference<Map<String, Object>>() {
-            }
-        );
-        return (String) response.get("sourceCode");
     }
 
     private File toNamedTempFile(String fileName, String yaml) {

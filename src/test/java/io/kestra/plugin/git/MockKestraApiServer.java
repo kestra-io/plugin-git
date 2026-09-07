@@ -17,11 +17,9 @@ import java.util.zip.ZipOutputStream;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 
-import io.kestra.core.models.dashboards.Dashboard;
 import io.kestra.core.models.flows.Flow;
 import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.flows.GenericFlow;
-// MockDashboardStore replaces DashboardRepositoryInterface, EE-only since Kestra 2.0.0
 import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.serializers.YamlParser;
@@ -45,38 +43,21 @@ public class MockKestraApiServer implements AutoCloseable {
 
     private final HttpServer server;
     private final FlowRepositoryInterface flowRepo;
-    private final MockDashboardStore dashboardRepo;
     // Keyed by "namespace/id" -> forces GET /flows/{namespace}/{id} to fail with the given status, to exercise non-404 API failures
     private final Map<String, Integer> forcedGetFlowStatuses = new ConcurrentHashMap<>();
 
-    private MockKestraApiServer(FlowRepositoryInterface flowRepo, MockDashboardStore dashboardRepo) throws IOException {
+    private MockKestraApiServer(FlowRepositoryInterface flowRepo) throws IOException {
         this.flowRepo = flowRepo;
-        this.dashboardRepo = dashboardRepo;
         this.server = HttpServer.create(new InetSocketAddress(0), 0);
         registerHandlers();
         this.server.start();
     }
 
     /**
-     * Creates and starts a mock server backed by the given repositories.
-     * Call {@link #close()} when the test finishes.
-     */
-    public static MockKestraApiServer start(FlowRepositoryInterface flowRepo, MockDashboardStore dashboardRepo) throws IOException {
-        return new MockKestraApiServer(flowRepo, dashboardRepo);
-    }
-
-    /**
-     * Creates and starts a mock server backed only by the flow repository (dashboards not needed).
+     * Creates and starts a mock server backed by the flow repository.
      */
     public static MockKestraApiServer start(FlowRepositoryInterface flowRepo) throws IOException {
-        return new MockKestraApiServer(flowRepo, null);
-    }
-
-    /**
-     * Creates and starts a mock server backed only by the dashboard store (flows not needed).
-     */
-    public static MockKestraApiServer start(MockDashboardStore dashboardRepo) throws IOException {
-        return new MockKestraApiServer(null, dashboardRepo);
+        return new MockKestraApiServer(flowRepo);
     }
 
     /** Returns the base URL of this mock server, e.g. {@code http://localhost:54321}. */
@@ -119,12 +100,6 @@ public class MockKestraApiServer implements AutoCloseable {
                     handleGetFlow(exchange);
                 } else if (path.contains("/namespaces/") && "GET".equals(method) && !path.contains("/secrets") && !path.contains("/plugindefaults") && !path.contains("/inherited")) {
                     handleGetNamespace(exchange);
-                } else if (path.contains("/dashboards") && "GET".equals(method) && !path.contains("/charts") && !path.contains("/export")) {
-                    handleSearchOrGetDashboard(exchange, path);
-                } else if (path.contains("/dashboards") && "POST".equals(method)) {
-                    handleCreateDashboard(exchange, path);
-                } else if (path.contains("/dashboards/") && "DELETE".equals(method)) {
-                    handleDeleteDashboard(exchange, path);
                 } else {
                     // Unknown — return 200 with empty JSON to avoid connection-refused failures
                     sendJson(exchange, 200, "{}");
@@ -394,150 +369,6 @@ public class MockKestraApiServer implements AutoCloseable {
         var namespaceId = parts.length >= 6 ? decode(parts[5]) : "unknown";
         var json = "{\"id\":\"" + namespaceId + "\"}";
         sendJson(exchange, 200, json);
-    }
-
-    // ---- dashboard handlers -------------------------------------------------
-
-    /**
-     * GET /api/v1/{tenantId}/dashboards?page=&size= → search (paged)
-     * GET /api/v1/{tenantId}/dashboards/{id} with Accept: application/x-yaml → YAML fetch
-     */
-    private void handleSearchOrGetDashboard(HttpExchange exchange, String path) throws IOException {
-        exchange.getRequestBody().readAllBytes();
-        var tenantId = extractTenantId(path, "dashboards");
-
-        // Check if the path ends with a dashboard id (not just the base /dashboards path)
-        var parts = path.split("/");
-        // /api/v1/{tenant}/dashboards -> parts[4]="dashboards", length=5
-        // /api/v1/{tenant}/dashboards/{id} -> parts[5]=id, length=6
-        var isDashboardById = parts.length >= 6 && !"dashboards".equals(parts[5]);
-
-        if (isDashboardById) {
-            // Single dashboard YAML fetch (Accept: application/x-yaml)
-            var dashboardId = decode(parts[5]);
-            handleGetDashboardYaml(exchange, tenantId, dashboardId);
-        } else {
-            // Paged search
-            handleSearchDashboards(exchange, tenantId);
-        }
-    }
-
-    private void handleSearchDashboards(HttpExchange exchange, String tenantId) throws IOException {
-        if (dashboardRepo == null) {
-            sendJson(exchange, 200, "{\"results\":[],\"total\":0}");
-            return;
-        }
-
-        var dashboards = dashboardRepo.findAll(tenantId);
-        var sb = new StringBuilder("{\"results\":[");
-        for (int i = 0; i < dashboards.size(); i++) {
-            var d = dashboards.get(i);
-            if (i > 0)
-                sb.append(",");
-            // Include a non-null updated timestamp so production code can compare revisions
-            var updatedTs = d.getUpdated() != null ? d.getUpdated().toString() : "1970-01-01T00:00:00Z";
-            sb.append("{\"id\":\"").append(d.getId())
-                .append("\",\"title\":\"").append(d.getId())
-                .append("\",\"updated\":\"").append(updatedTs).append("\"}");
-        }
-        sb.append("],\"total\":").append(dashboards.size()).append("}");
-        sendJson(exchange, 200, sb.toString());
-    }
-
-    private void handleGetDashboardYaml(HttpExchange exchange, String tenantId, String dashboardId) throws IOException {
-        if (dashboardRepo == null) {
-            exchange.sendResponseHeaders(404, -1);
-            exchange.close();
-            return;
-        }
-
-        var dashboards = dashboardRepo.findAll(tenantId);
-        var match = dashboards.stream().filter(d -> dashboardId.equals(d.getId())).findFirst();
-        if (match.isPresent()) {
-            var d = match.get();
-            var sourceYaml = d.getSourceCode() != null ? d.getSourceCode()
-                : "id: " + dashboardId + "\ntitle: " + dashboardId + "\n";
-            // Inject updated timestamp so SyncDashboards.wrapper() can compare timestamps without NPE
-            if (!sourceYaml.contains("\nupdated:") && !sourceYaml.startsWith("updated:")) {
-                var ts = d.getUpdated() != null ? d.getUpdated().toString() : "1970-01-01T00:00:00Z";
-                sourceYaml = "updated: " + ts + "\n" + sourceYaml;
-            }
-
-            var accept = exchange.getRequestHeaders().getFirst("Accept");
-            if (accept != null && accept.contains("application/json")) {
-                // Production code calls invokeAPI with Accept: application/json and reads response.get("sourceCode")
-                try {
-                    String json = JacksonMapper.ofJson().writeValueAsString(Map.of("id", d.getId(), "sourceCode", sourceYaml));
-                    sendJson(exchange, 200, json);
-                } catch (Exception e) {
-                    sendJson(exchange, 500, "{\"error\":\"serialization failed\"}");
-                }
-            } else {
-                var yaml = sourceYaml.getBytes(StandardCharsets.UTF_8);
-                exchange.getResponseHeaders().set("Content-Type", "application/x-yaml");
-                exchange.sendResponseHeaders(200, yaml.length);
-                exchange.getResponseBody().write(yaml);
-                exchange.close();
-            }
-        } else {
-            exchange.sendResponseHeaders(404, -1);
-            exchange.close();
-        }
-    }
-
-    /**
-     * POST /api/v1/{tenantId}/dashboards — create or update dashboard.
-     */
-    private void handleCreateDashboard(HttpExchange exchange, String path) throws IOException {
-        var tenantId = extractTenantId(path, "dashboards");
-        var yamlBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-
-        if (dashboardRepo != null && !yamlBody.isBlank()) {
-            try {
-                var parsed = YamlParser.parse(yamlBody, Dashboard.class).toBuilder()
-                    .tenantId(tenantId)
-                    .sourceCode(yamlBody)
-                    .build();
-                // Preserve updated timestamp if content is unchanged, otherwise set now
-                var existing = dashboardRepo.findAll(tenantId).stream()
-                    .filter(d -> d.getId().equals(parsed.getId()))
-                    .findFirst()
-                    .orElse(null);
-                java.time.Instant updated;
-                if (
-                    existing != null
-                        && existing.getSourceCode() != null
-                        && existing.getSourceCode().strip().equals(yamlBody.strip())
-                ) {
-                    // Same content — preserve existing timestamp (use EPOCH if null so handleGetDashboardYaml fallback matches)
-                    updated = existing.getUpdated() != null ? existing.getUpdated() : java.time.Instant.EPOCH;
-                } else {
-                    updated = java.time.Instant.now();
-                }
-                dashboardRepo.save(parsed.toBuilder().updated(updated).build(), yamlBody);
-            } catch (Exception e) {
-                // log and ignore parse errors
-            }
-        }
-
-        sendJson(exchange, 200, "{\"id\":\"created\"}");
-    }
-
-    /**
-     * DELETE /api/v1/{tenantId}/dashboards/{id}
-     */
-    private void handleDeleteDashboard(HttpExchange exchange, String path) throws IOException {
-        exchange.getRequestBody().readAllBytes();
-        if (dashboardRepo != null) {
-            var parts = path.split("/");
-            if (parts.length >= 6) {
-                var tenantId = decode(parts[3]);
-                var dashboardId = decode(parts[5]);
-                dashboardRepo.delete(tenantId, dashboardId);
-            }
-        }
-        exchange.sendResponseHeaders(200, -1);
-        exchange.close();
     }
 
     // ---- utility ------------------------------------------------------------

@@ -48,6 +48,10 @@
 - Provides plugin components under `io.kestra.plugin.git`.
 - Includes classes such as `SyncFlow`, `Sync`, `SyncNamespaceFiles`, `PushNamespaceFiles`.
 
+## Dashboards
+
+Dashboard tasks (`SyncDashboards`, `PushDashboards`) moved to the Git EE plugin in Kestra 2.0.0, because dashboards are an Enterprise Edition feature. `TenantSync` no longer syncs the `_global/dashboards` directory on OSS.
+
 ## Documentation
 * Full documentation can be found under [kestra.io/docs](https://kestra.io/docs)
 * Documentation for developing a plugin is included in the [Plugin Developer Guide](https://kestra.io/docs/plugin-developer-guide/).
