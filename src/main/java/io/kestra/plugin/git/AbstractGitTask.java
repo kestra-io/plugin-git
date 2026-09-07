@@ -550,8 +550,7 @@ public abstract class AbstractGitTask extends Task {
 
     protected enum Kind {
         FLOW,
-        FILE,
-        DASHBOARD
+        FILE
     }
 
     protected enum Action {

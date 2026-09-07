@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipEntry;
@@ -165,4 +166,22 @@ class TenantSyncTest {
         method.setAccessible(true);
         return method;
     }
+
+    @Test
+    void shouldIgnoreGlobalDashboardsDirectoryWhenDiscoveringNamespaces(@TempDir Path tempDir) throws Exception {
+        Files.createDirectories(tempDir.resolve("my.namespace").resolve("flows"));
+        Path dashboardsDir = Files.createDirectories(tempDir.resolve("_global").resolve("dashboards"));
+        Files.writeString(dashboardsDir.resolve("my-dashboard.yaml"), "id: my-dashboard\n", StandardCharsets.UTF_8);
+
+        var task = TenantSync.builder().build();
+        var method = TenantSync.class.getDeclaredMethod("discoverGitNamespaces", Path.class);
+        method.setAccessible(true);
+
+        @SuppressWarnings("unchecked")
+        Set<String> namespaces = (Set<String>) method.invoke(task, tempDir);
+
+        // Dashboards moved to EE, so `_global/dashboards` is no longer a synced path and must not fail the sync
+        assertEquals(Set.of("my.namespace"), namespaces);
+    }
+
 }
