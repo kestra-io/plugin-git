@@ -1,11 +1,10 @@
 package io.kestra.plugin.git;
 
 import io.kestra.core.models.dashboards.Dashboard;
-import io.kestra.core.repositories.DashboardRepositoryInterface;
 import io.kestra.core.serializers.YamlParser;
 
 public class DashboardUtils {
-    public static Dashboard createDashboard(DashboardRepositoryInterface dashboardRepositoryInterface,
+    public static Dashboard createDashboard(MockDashboardStore dashboardStore,
         String tenantId, String title, String id) {
         String dashboardSource = """
             id:\s""" + id + """
@@ -50,6 +49,6 @@ public class DashboardUtils {
             .updated(java.time.Instant.now())
             .build();
 
-        return dashboardRepositoryInterface.save(dashboard, dashboardSource);
+        return dashboardStore.save(dashboard, dashboardSource);
     }
 }
