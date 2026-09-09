@@ -1,7 +1,5 @@
 package io.kestra.plugin.git;
 
-import io.kestra.plugin.git.shared.testkit.AbstractKestraContainerTest;
-
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -17,9 +15,10 @@ import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
+import io.kestra.plugin.git.shared.testkit.AbstractKestraContainerTest;
 import io.kestra.sdk.model.Flow;
-import io.micronaut.context.annotation.Value;
 
+import io.micronaut.context.annotation.Value;
 import jakarta.inject.Inject;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -29,7 +28,8 @@ import static org.hamcrest.Matchers.*;
  * Integration test for {@link SyncFlows} against a live Kestra container.
  * Complements (does not replace) the {@link SyncFlowsTest} mock-server tests.
  *
- * <p>The Kestra container is started once per class by {@link AbstractKestraContainerTest}.
+ * <p>
+ * The Kestra container is started once per class by {@link AbstractKestraContainerTest}.
  * Kestra API credentials ({@code admin@admin.com} / {@code Root!1234}) are hardcoded for test use only.
  * GitHub credentials are read from the {@code kestra.git.pat} Micronaut property (set via {@code GH_PERSONAL_TOKEN}).
  */
@@ -104,7 +104,8 @@ public class SyncFlowsContainerTest extends AbstractKestraContainerTest {
         assertThat("second run must produce a diff", diffLines, not(empty()));
 
         for (var line : diffLines) {
-            Map<String, Object> diff = JacksonMapper.ofIon().readValue(line, new TypeReference<Map<String, Object>>() {});
+            Map<String, Object> diff = JacksonMapper.ofIon().readValue(line, new TypeReference<Map<String, Object>>() {
+            });
             assertThat("flow " + diff.get("flowId") + " should be UNCHANGED on second run", diff.get("syncState"), is("UNCHANGED"));
         }
     }

@@ -1,8 +1,5 @@
 package io.kestra.plugin.git;
 
-import io.kestra.plugin.git.shared.AbstractCloningTask;
-import io.kestra.plugin.git.shared.services.CloneService;
-
 import java.nio.file.Path;
 
 import org.eclipse.jgit.api.errors.TransportException;
@@ -10,15 +7,17 @@ import org.slf4j.Logger;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
+import io.kestra.plugin.git.shared.AbstractCloningTask;
+import io.kestra.plugin.git.shared.services.CloneService;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -202,17 +201,19 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         logger.info("Start cloning from '{}'", url);
 
         try {
-            var result = CloneService.clone(runContext, this, CloneService.CloneRequest.builder()
-                .url(url)
-                .path(path)
-                .branch(cloneOptions.branch())
-                .depth(rDepth)
-                .commit(this.commit != null ? runContext.render(this.commit).as(String.class).orElseThrow() : null)
-                .tag(this.tag != null ? runContext.render(this.tag).as(String.class).orElseThrow() : null)
-                .cloneAllBranches(cloneOptions.cloneAllBranches())
-                .noTags(cloneOptions.noTags())
-                .cloneSubmodules(this.cloneSubmodules)
-                .build());
+            var result = CloneService.clone(
+                runContext, this, CloneService.CloneRequest.builder()
+                    .url(url)
+                    .path(path)
+                    .branch(cloneOptions.branch())
+                    .depth(rDepth)
+                    .commit(this.commit != null ? runContext.render(this.commit).as(String.class).orElseThrow() : null)
+                    .tag(this.tag != null ? runContext.render(this.tag).as(String.class).orElseThrow() : null)
+                    .cloneAllBranches(cloneOptions.cloneAllBranches())
+                    .noTags(cloneOptions.noTags())
+                    .cloneSubmodules(this.cloneSubmodules)
+                    .build()
+            );
 
             return Output.builder().directory(result.directory()).build();
         } catch (TransportException e) {
@@ -244,8 +245,8 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     private record CloneOptions(
         String branch,
         boolean cloneAllBranches,
-        boolean noTags
-    ) {}
+        boolean noTags) {
+    }
 
     @Override
     @NotNull

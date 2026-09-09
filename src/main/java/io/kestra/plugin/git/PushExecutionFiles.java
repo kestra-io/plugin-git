@@ -1,7 +1,5 @@
 package io.kestra.plugin.git;
 
-import io.kestra.plugin.git.shared.AbstractPushTask;
-
 import java.io.FileInputStream;
 import java.io.InputStream;
 import java.net.URI;
@@ -15,10 +13,12 @@ import java.util.stream.Collectors;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.utils.PathMatcherPredicate;
+import io.kestra.plugin.git.shared.AbstractPushTask;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
@@ -28,7 +28,6 @@ import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.throwFunction;
 import static io.kestra.core.utils.Rethrow.throwSupplier;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @NoArgsConstructor

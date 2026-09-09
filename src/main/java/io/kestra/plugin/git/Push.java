@@ -1,7 +1,5 @@
 package io.kestra.plugin.git;
 
-import io.kestra.plugin.git.shared.AbstractCloningTask;
-
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -40,6 +38,7 @@ import io.kestra.core.runners.FilesService;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.utils.Rethrow;
+import io.kestra.plugin.git.shared.AbstractCloningTask;
 import io.kestra.sdk.KestraClient;
 import io.kestra.sdk.internal.ApiException;
 import io.kestra.sdk.model.QueryFilter;

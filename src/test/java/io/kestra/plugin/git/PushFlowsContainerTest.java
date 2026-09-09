@@ -1,7 +1,5 @@
 package io.kestra.plugin.git;
 
-import io.kestra.plugin.git.shared.testkit.AbstractKestraContainerTest;
-
 import java.io.IOException;
 import java.util.Map;
 
@@ -17,8 +15,9 @@ import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.utils.IdUtils;
-import io.micronaut.context.annotation.Value;
+import io.kestra.plugin.git.shared.testkit.AbstractKestraContainerTest;
 
+import io.micronaut.context.annotation.Value;
 import jakarta.inject.Inject;
 
 import static org.eclipse.jgit.lib.Constants.R_HEADS;
@@ -29,7 +28,8 @@ import static org.hamcrest.Matchers.*;
  * Integration test for {@link PushFlows} against a live Kestra container and a real GitHub repository.
  * Complements (does not replace) the unit-level {@link PushFlowsTest} mock-server tests.
  *
- * <p>The Kestra container is started once per class by {@link AbstractKestraContainerTest}.
+ * <p>
+ * The Kestra container is started once per class by {@link AbstractKestraContainerTest}.
  * Kestra API credentials are hardcoded for test use only.
  * GitHub credentials are read from the {@code kestra.git.pat} Micronaut property (set via {@code GH_PERSONAL_TOKEN}).
  * The remote branch is deleted after each test run to avoid orphan branches.

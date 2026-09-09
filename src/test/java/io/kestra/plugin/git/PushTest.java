@@ -1,8 +1,5 @@
 package io.kestra.plugin.git;
 
-import io.kestra.plugin.git.shared.testkit.AbstractGitTest;
-import io.kestra.plugin.git.shared.testkit.MockKestraApiServer;
-
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -34,6 +31,8 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.IdUtils;
+import io.kestra.plugin.git.shared.testkit.AbstractGitTest;
+import io.kestra.plugin.git.shared.testkit.MockKestraApiServer;
 
 import jakarta.inject.Inject;
 
