@@ -1,5 +1,7 @@
 package io.kestra.plugin.git;
 
+import io.kestra.plugin.git.shared.AbstractPushTask;
+
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.file.Path;

@@ -1,5 +1,8 @@
 package io.kestra.plugin.git;
 
+import io.kestra.plugin.git.shared.AbstractKestraTask;
+import io.kestra.plugin.git.shared.testkit.AbstractGitTest;
+
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;

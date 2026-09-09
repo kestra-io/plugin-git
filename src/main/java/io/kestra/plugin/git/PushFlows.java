@@ -1,5 +1,7 @@
 package io.kestra.plugin.git;
 
+import io.kestra.plugin.git.shared.AbstractPushTask;
+
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;

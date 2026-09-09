@@ -1,5 +1,7 @@
 package io.kestra.plugin.git;
 
+import io.kestra.plugin.git.shared.testkit.AbstractGitTest;
+
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;

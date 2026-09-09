@@ -1,5 +1,8 @@
 package io.kestra.plugin.git;
 
+import io.kestra.plugin.git.shared.testkit.AbstractGitTest;
+import io.kestra.plugin.git.shared.testkit.MockKestraApiServer;
+
 import java.io.*;
 import java.net.URI;
 import java.nio.file.Path;

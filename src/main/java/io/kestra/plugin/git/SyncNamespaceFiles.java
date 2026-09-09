@@ -1,5 +1,7 @@
 package io.kestra.plugin.git;
 
+import io.kestra.plugin.git.shared.AbstractSyncTask;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;

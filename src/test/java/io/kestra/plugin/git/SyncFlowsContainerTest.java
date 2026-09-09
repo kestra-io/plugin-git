@@ -1,5 +1,7 @@
 package io.kestra.plugin.git;
 
+import io.kestra.plugin.git.shared.testkit.AbstractKestraContainerTest;
+
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;

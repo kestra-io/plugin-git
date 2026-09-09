@@ -1,5 +1,9 @@
 package io.kestra.plugin.git;
 
+import io.kestra.plugin.git.shared.AbstractGitTask;
+import io.kestra.plugin.git.shared.testkit.AbstractGitTest;
+import io.kestra.plugin.git.shared.testkit.MockKestraApiServer;
+
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;

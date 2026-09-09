@@ -1,5 +1,7 @@
 package io.kestra.plugin.git;
 
+import io.kestra.plugin.git.shared.testkit.AbstractGitTest;
+
 import java.io.*;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;

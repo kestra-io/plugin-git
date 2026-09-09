@@ -1,5 +1,7 @@
 package io.kestra.plugin.git;
 
+import io.kestra.plugin.git.shared.testkit.AbstractKestraContainerTest;
+
 import java.io.IOException;
 import java.util.Map;
 

@@ -42,11 +42,22 @@ Infrastructure dependencies (Docker Compose services):
 
 ```
 plugin-git/
-├── src/main/java/io/kestra/plugin/git/services/
-├── src/test/java/io/kestra/plugin/git/services/
+├── src/main/java/io/kestra/plugin/git/
+├── src/test/java/io/kestra/plugin/git/
 ├── build.gradle
 └── README.md
 ```
+
+### Shared kernel
+
+The connection, authentication and clone/push/sync plumbing (`AbstractGitTask`, `AbstractKestraTask`,
+`AbstractCloningTask`, `AbstractSyncTask`, `AbstractPushTask`, `KestraApiConnection`, `KestraApiAuth`, `GitService`,
+`CloneService`, `SshTransportConfigCallback`) lives in `io.kestra.plugin.git.shared.*`, published from
+[`plugin-git-lib`](https://github.com/kestra-io/plugin-git-lib) and consumed here via
+`api 'io.kestra.plugin:plugin-git-lib:...'`. It is shared with `plugin-ee-git` (Enterprise Edition). **Do not
+re-implement or fork this plumbing in this repository** — bump the lib version instead, and land the fix there so
+both editions pick it up. Only concrete, registered tasks (`Clone`, `Push*`, `Sync*`, `NamespaceSync`, `TenantSync`)
+belong in this repository.
 
 ## References
 
