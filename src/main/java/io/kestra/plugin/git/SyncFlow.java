@@ -104,6 +104,17 @@ public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlo
     @PluginProperty(group = "reliability")
     private Property<Boolean> dryRun = Property.ofValue(Boolean.FALSE);
 
+    @Schema(
+        title = "Fail when the branch does not exist",
+        description = """
+            When true (default), the task fails if `branch` does not exist on the remote.
+            When false, a missing branch silently falls back to the repository's default branch, \
+            which can cause the wrong version of the flow to be synced."""
+    )
+    @Builder.Default
+    @PluginProperty(group = "reliability")
+    private Property<Boolean> failOnMissingBranch = Property.ofValue(Boolean.TRUE);
+
     @Override
     public Output run(RunContext runContext) throws Exception {
 
@@ -114,7 +125,10 @@ public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlo
 
         GitService gitService = new GitService(this);
 
-        Git git = gitService.cloneBranch(runContext, runContext.render(this.getBranch()).as(String.class).orElse(null), Property.ofValue(Boolean.FALSE));
+        String renderedBranch = runContext.render(this.getBranch()).as(String.class).orElse(null);
+        // TODO(#343): requires plugin-git-lib >= <next release> for GitService.ensureBranchExistsOrFail
+        gitService.ensureBranchExistsOrFail(runContext, renderedBranch, runContext.render(this.failOnMissingBranch).as(Boolean.class).orElse(true));
+        Git git = gitService.cloneBranch(runContext, renderedBranch, Property.ofValue(Boolean.FALSE));
         Path cloneDir = git.getRepository().getWorkTree().toPath();
 
         String renderedFlowPath = runContext.render(this.flowPath).as(String.class).orElseThrow();

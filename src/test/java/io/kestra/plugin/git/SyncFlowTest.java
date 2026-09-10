@@ -287,6 +287,48 @@ public class SyncFlowTest extends AbstractGitTest {
         assertThat(exception.getMessage(), containsString("non_existent_file.yml"));
     }
 
+    @Test
+    void missingBranch_shouldFailInsteadOfFallingBackToDefaultBranch() throws Exception {
+        // if the fallback bug regresses, the task would clone the default branch and hit this endpoint
+        var importCallCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        var server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/api/v1/" + TENANT_ID + "/flows/import", exchange ->
+        {
+            importCallCount.incrementAndGet();
+            exchange.getRequestBody().readAllBytes();
+            exchange.sendResponseHeaders(200, -1);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            var kestraUrl = "http://localhost:" + server.getAddress().getPort();
+            SyncFlow task = SyncFlow.builder()
+                .url(Property.ofExpression("{{url}}"))
+                .username(Property.ofExpression("{{pat}}"))
+                .password(Property.ofExpression("{{pat}}"))
+                .branch(Property.ofValue("does-not-exist-on-remote"))
+                .targetNamespace(Property.ofValue(TARGET_NAMESPACE))
+                .flowPath(Property.ofValue("to_clone/_flows/first-flow.yml"))
+                .kestraUrl(Property.ofValue(kestraUrl))
+                .auth(
+                    AbstractKestraTask.Auth.builder()
+                        .username(Property.ofValue("user"))
+                        .password(Property.ofValue("pass"))
+                        .build()
+                )
+                .build();
+
+            assertThrows(
+                IllegalArgumentException.class,
+                () -> task.run(runContext())
+            );
+            assertThat("no flow should have been imported into the target namespace", importCallCount.get(), is(0));
+        } finally {
+            server.stop(0);
+        }
+    }
+
     private io.kestra.core.runners.RunContext runContext() {
         return runContextFactory.of(
             Map.of(
