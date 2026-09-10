@@ -32,7 +32,8 @@ import io.kestra.core.storages.StorageContext;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.Rethrow;
-import io.kestra.plugin.git.services.GitService;
+import io.kestra.plugin.git.shared.services.GitService;
+import io.kestra.plugin.git.shared.testkit.AbstractGitTest;
 
 import jakarta.inject.Inject;
 

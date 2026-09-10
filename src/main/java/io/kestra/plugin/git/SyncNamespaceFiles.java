@@ -20,6 +20,7 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.storages.Namespace;
 import io.kestra.core.storages.NamespaceFile;
+import io.kestra.plugin.git.shared.AbstractSyncTask;
 import io.kestra.sdk.internal.ApiException;
 
 import io.swagger.v3.oas.annotations.media.Schema;

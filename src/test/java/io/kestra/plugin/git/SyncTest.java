@@ -33,6 +33,8 @@ import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.KestraIgnore;
 import io.kestra.core.utils.TestsUtils;
+import io.kestra.plugin.git.shared.testkit.AbstractGitTest;
+import io.kestra.plugin.git.shared.testkit.MockKestraApiServer;
 
 import jakarta.inject.Inject;
 

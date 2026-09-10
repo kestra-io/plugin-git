@@ -55,13 +55,8 @@ dependencies {
     compileOnly group: "io.kestra", name: "core", version: kestraVersion
     compileOnly group: "io.kestra", name: "script", version: kestraVersion
 
-    // git
-    api 'org.eclipse.jgit:org.eclipse.jgit:7.6.0.202603022253-r'
-    api 'org.eclipse.jgit:org.eclipse.jgit.ssh.jsch:7.6.0.202603022253-r'
-    api "org.eclipse.jgit:org.eclipse.jgit.http.apache:7.6.0.202603022253-r"
-
-    // kestra API client
-    implementation "io.kestra:kestra-api-client:2.0.0"
+    // shared Git kernel (also brings jgit and kestra-api-client transitively as `api`)
+    api 'io.kestra.plugin:plugin-git-lib:1.0.0'
 }
 
 
@@ -106,6 +101,9 @@ dependencies {
     // Testcontainers — used for container-based integration tests (e.g. SyncFlowsContainerTest)
     testImplementation "org.testcontainers:testcontainers:2.0.5"
     testImplementation "org.testcontainers:junit-jupiter:1.21.4"
+
+    // shared Gitea/Kestra-container test scaffolding and mock Kestra API server
+    testImplementation testFixtures('io.kestra.plugin:plugin-git-lib:1.0.0')
 }
 
 /**********************************************************************************************************************\

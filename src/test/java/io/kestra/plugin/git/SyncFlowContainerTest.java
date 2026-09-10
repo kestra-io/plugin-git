@@ -10,9 +10,10 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.DefaultRunContext;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
+import io.kestra.plugin.git.shared.testkit.AbstractKestraContainerTest;
 import io.kestra.sdk.model.Flow;
-import io.micronaut.context.annotation.Value;
 
+import io.micronaut.context.annotation.Value;
 import jakarta.inject.Inject;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -22,7 +23,8 @@ import static org.hamcrest.Matchers.*;
  * Integration test for {@link SyncFlow} against a live Kestra container.
  * Complements (does not replace) the unit-level {@link SyncFlowTest} mock-server tests.
  *
- * <p>The Kestra container is started once per class by {@link AbstractKestraContainerTest}.
+ * <p>
+ * The Kestra container is started once per class by {@link AbstractKestraContainerTest}.
  * Kestra API credentials are hardcoded for test use only.
  * GitHub credentials are read from the {@code kestra.git.pat} Micronaut property (set via {@code GH_PERSONAL_TOKEN}).
  */

@@ -12,6 +12,8 @@ import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.tenant.TenantService;
+import io.kestra.plugin.git.shared.AbstractKestraTask;
+import io.kestra.plugin.git.shared.testkit.AbstractGitTest;
 
 import jakarta.inject.Inject;
 
@@ -71,10 +73,12 @@ public class SyncFlowTest extends AbstractGitTest {
                 .targetNamespace(Property.ofValue(TARGET_NAMESPACE))
                 .flowPath(Property.ofValue("to_clone/_flows/first-flow.yml"))
                 .kestraUrl(Property.ofValue(kestraUrl))
-                .auth(AbstractKestraTask.Auth.builder()
-                    .username(Property.ofValue("user"))
-                    .password(Property.ofValue("pass"))
-                    .build())
+                .auth(
+                    AbstractKestraTask.Auth.builder()
+                        .username(Property.ofValue("user"))
+                        .password(Property.ofValue("pass"))
+                        .build()
+                )
                 .build();
 
             SyncFlow.Output output = task.run(runContext());
@@ -130,10 +134,12 @@ public class SyncFlowTest extends AbstractGitTest {
                 .targetNamespace(Property.ofValue(TARGET_NAMESPACE))
                 .flowPath(Property.ofValue("to_clone/_flows/second-flow.yml"))
                 .kestraUrl(Property.ofValue(kestraUrl))
-                .auth(AbstractKestraTask.Auth.builder()
-                    .username(Property.ofValue("user"))
-                    .password(Property.ofValue("pass"))
-                    .build())
+                .auth(
+                    AbstractKestraTask.Auth.builder()
+                        .username(Property.ofValue("user"))
+                        .password(Property.ofValue("pass"))
+                        .build()
+                )
                 .build();
 
             SyncFlow.Output output = task.run(runContext());
@@ -180,10 +186,12 @@ public class SyncFlowTest extends AbstractGitTest {
                 .flowPath(Property.ofValue("to_clone/_flows/first-flow.yml"))
                 .dryRun(Property.ofValue(true))
                 .kestraUrl(Property.ofValue(kestraUrl))
-                .auth(AbstractKestraTask.Auth.builder()
-                    .username(Property.ofValue("user"))
-                    .password(Property.ofValue("pass"))
-                    .build())
+                .auth(
+                    AbstractKestraTask.Auth.builder()
+                        .username(Property.ofValue("user"))
+                        .password(Property.ofValue("pass"))
+                        .build()
+                )
                 .build();
 
             SyncFlow.Output output = task.run(runContext());
@@ -241,10 +249,12 @@ public class SyncFlowTest extends AbstractGitTest {
                 .flowPath(Property.ofValue("to_clone/_flows/first-flow.yml"))
                 .dryRun(Property.ofValue(true))
                 .kestraUrl(Property.ofValue(kestraUrl))
-                .auth(AbstractKestraTask.Auth.builder()
-                    .username(Property.ofValue("user"))
-                    .password(Property.ofValue("pass"))
-                    .build())
+                .auth(
+                    AbstractKestraTask.Auth.builder()
+                        .username(Property.ofValue("user"))
+                        .password(Property.ofValue("pass"))
+                        .build()
+                )
                 .build();
 
             SyncFlow.Output output = task.run(runContext());

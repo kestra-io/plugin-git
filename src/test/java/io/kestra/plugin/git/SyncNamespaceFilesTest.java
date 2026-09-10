@@ -26,6 +26,7 @@ import io.kestra.core.storages.Namespace;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.KestraIgnore;
 import io.kestra.core.utils.Rethrow;
+import io.kestra.plugin.git.shared.testkit.AbstractGitTest;
 
 import jakarta.inject.Inject;
 
@@ -249,12 +250,14 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
     @Test
     void syncWithDotGitInDirectoryName_ShouldSyncFiles() throws Exception {
         String specialGitDir = "to_clone.github_files";
-        String expectedFile  = "hello.txt";
+        String expectedFile = "hello.txt";
 
         Path repoDir = Files.createTempDirectory("unit-test.special-dir-repo");
-        try (org.eclipse.jgit.api.Git git = org.eclipse.jgit.api.Git.init()
-            .setDirectory(repoDir.toFile())
-            .call()) {
+        try (
+            org.eclipse.jgit.api.Git git = org.eclipse.jgit.api.Git.init()
+                .setDirectory(repoDir.toFile())
+                .call()
+        ) {
 
             Path specialDir = repoDir.resolve(specialGitDir);
             Files.createDirectories(specialDir);
@@ -267,14 +270,16 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
                 .call();
         }
 
-        RunContext runContext = runContextFactory.of(Map.of(
-            "flow", Map.of("tenantId", TENANT_ID, "namespace", "system"),
-            "url",          repoDir.toUri().toString(),
-            "pat",          "",
-            "branch",       "master",            // git init default
-            "namespace",    NAMESPACE,
-            "gitDirectory", specialGitDir
-        ));
+        RunContext runContext = runContextFactory.of(
+            Map.of(
+                "flow", Map.of("tenantId", TENANT_ID, "namespace", "system"),
+                "url", repoDir.toUri().toString(),
+                "pat", "",
+                "branch", "master", // git init default
+                "namespace", NAMESPACE,
+                "gitDirectory", specialGitDir
+            )
+        );
 
         SyncNamespaceFiles task = SyncNamespaceFiles.builder()
             .url(Property.ofExpression("{{url}}"))
@@ -291,8 +296,6 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
         );
 
     }
-
-
 
     private static List<Map<String, String>> defaultCaseDiffs(boolean withDeleted) {
         ArrayList<Map<String, String>> diffs = new ArrayList<>(

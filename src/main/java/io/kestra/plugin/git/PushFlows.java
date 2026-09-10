@@ -26,6 +26,7 @@ import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.YamlParser;
+import io.kestra.plugin.git.shared.AbstractPushTask;
 import io.kestra.sdk.KestraClient;
 import io.kestra.sdk.internal.ApiException;
 import io.kestra.sdk.model.QueryFilter;
@@ -217,7 +218,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         {
             String renderedTargetNamespace = runContext.render(targetNamespace).as(String.class).orElse(renderedSourceNamespace);
             String modifiedSource = flowWithSource.getSource()
-                .replaceAll("(?m)^revision:\\s*\\d+\\n?", "")  // strip server-side revision before writing to git
+                .replaceAll("(?m)^revision:\\s*\\d+\\n?", "") // strip server-side revision before writing to git
                 .replaceAll(
                     "(?m)^(\\s*namespace:\\s*)" + renderedSourceNamespace,
                     "$1" + renderedTargetNamespace

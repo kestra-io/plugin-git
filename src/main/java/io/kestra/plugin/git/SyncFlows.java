@@ -28,6 +28,7 @@ import io.kestra.core.models.flows.FlowWithSource;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.YamlParser;
+import io.kestra.plugin.git.shared.AbstractSyncTask;
 import io.kestra.sdk.KestraClient;
 import io.kestra.sdk.internal.ApiException;
 import io.kestra.sdk.model.QueryFilter;

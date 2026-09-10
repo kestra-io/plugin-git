@@ -38,6 +38,9 @@ import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.Rethrow;
 import io.kestra.core.utils.TestsUtils;
+import io.kestra.plugin.git.shared.AbstractSyncTask;
+import io.kestra.plugin.git.shared.testkit.AbstractGitTest;
+import io.kestra.plugin.git.shared.testkit.MockKestraApiServer;
 
 import jakarta.inject.Inject;
 
