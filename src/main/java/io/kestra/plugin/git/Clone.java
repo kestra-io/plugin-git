@@ -2,9 +2,6 @@ package io.kestra.plugin.git;
 
 import java.nio.file.Path;
 
-import org.eclipse.jgit.api.errors.TransportException;
-import org.slf4j.Logger;
-
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
@@ -181,7 +178,6 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     @Override
     public Clone.Output run(RunContext runContext) throws Exception {
 
-        Logger logger = runContext.logger();
         String url = runContext.render(this.url).as(String.class).orElse(null);
         var cloneOptions = resolveCloneOptions(runContext);
 
@@ -198,28 +194,22 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
         var rDepth = (this.commit == null && this.tag == null) ? runContext.render(this.depth).as(Integer.class).orElse(1) : null;
 
-        logger.info("Start cloning from '{}'", url);
+        // CloneService.clone() already logs the start and any transport failure, so both editions share a single log line.
+        var result = CloneService.clone(
+            runContext, this, CloneService.CloneRequest.builder()
+                .url(url)
+                .path(path)
+                .branch(cloneOptions.branch())
+                .depth(rDepth)
+                .commit(this.commit != null ? runContext.render(this.commit).as(String.class).orElseThrow() : null)
+                .tag(this.tag != null ? runContext.render(this.tag).as(String.class).orElseThrow() : null)
+                .cloneAllBranches(cloneOptions.cloneAllBranches())
+                .noTags(cloneOptions.noTags())
+                .cloneSubmodules(this.cloneSubmodules)
+                .build()
+        );
 
-        try {
-            var result = CloneService.clone(
-                runContext, this, CloneService.CloneRequest.builder()
-                    .url(url)
-                    .path(path)
-                    .branch(cloneOptions.branch())
-                    .depth(rDepth)
-                    .commit(this.commit != null ? runContext.render(this.commit).as(String.class).orElseThrow() : null)
-                    .tag(this.tag != null ? runContext.render(this.tag).as(String.class).orElseThrow() : null)
-                    .cloneAllBranches(cloneOptions.cloneAllBranches())
-                    .noTags(cloneOptions.noTags())
-                    .cloneSubmodules(this.cloneSubmodules)
-                    .build()
-            );
-
-            return Output.builder().directory(result.directory()).build();
-        } catch (TransportException e) {
-            logger.error("Git clone failed for '{}': {}", url, e.getMessage());
-            throw e;
-        }
+        return Output.builder().directory(result.directory()).build();
     }
 
     private CloneOptions resolveCloneOptions(RunContext runContext) throws Exception {
