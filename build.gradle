@@ -56,7 +56,7 @@ dependencies {
     compileOnly group: "io.kestra", name: "script", version: kestraVersion
 
     // shared Git kernel (also brings jgit and kestra-api-client transitively as `api`)
-    api 'io.kestra.plugin:plugin-git-lib:1.0.0-SNAPSHOT'
+    api 'io.kestra.plugin:plugin-git-lib:1.0.0'
 }
 
 
@@ -103,7 +103,7 @@ dependencies {
     testImplementation "org.testcontainers:junit-jupiter:1.21.4"
 
     // shared Gitea/Kestra-container test scaffolding and mock Kestra API server
-    testImplementation testFixtures('io.kestra.plugin:plugin-git-lib:1.0.0-SNAPSHOT')
+    testImplementation testFixtures('io.kestra.plugin:plugin-git-lib:1.0.0')
 }
 
 /**********************************************************************************************************************\
