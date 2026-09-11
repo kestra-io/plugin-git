@@ -850,6 +850,9 @@ public class PushFlowsTest extends AbstractGitTest {
             .kestraUrl(Property.ofValue(server.url()))
             .build();
 
+        // The DELETE_ONLY push clones into this context's working dir; it is what the finally block uses for cleanup.
+        RunContext deleteOnlyContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
+
         try {
             // 1. Baseline SYNC push of both flows.
             syncPush.run(runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory));
@@ -868,7 +871,6 @@ public class PushFlowsTest extends AbstractGitTest {
             flowRepositoryInterface.delete(deletedFlow);
 
             // 4. DELETE_ONLY push: stage only the removal of deletedFlow, leaving keptFlow untouched.
-            RunContext deleteOnlyContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
             PushFlows.Output deleteOnlyOutput = syncPush.toBuilder()
                 .commitMessage(Property.ofValue("Delete only"))
                 .delete(Property.ofValue(true))
@@ -904,10 +906,10 @@ public class PushFlowsTest extends AbstractGitTest {
                 )
             );
         } finally {
-            this.deleteRemoteBranch(
-                runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory).workingDir().path(),
-                branch
-            );
+            try {
+                this.deleteRemoteBranch(deleteOnlyContext.workingDir().path(), branch);
+            } catch (Exception ignored) {
+            }
         }
     }
 
@@ -942,6 +944,9 @@ public class PushFlowsTest extends AbstractGitTest {
             .kestraUrl(Property.ofValue(server.url()))
             .build();
 
+        // The DELETE_ONLY push clones into this context's working dir; it is what the finally block uses for cleanup.
+        RunContext deleteOnlyContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
+
         try {
             // Baseline SYNC push of both flows.
             syncPush.run(runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory));
@@ -959,7 +964,6 @@ public class PushFlowsTest extends AbstractGitTest {
             // Delete a single flow from Kestra and push only that deletion, scoped by flow id.
             flowRepositoryInterface.delete(deletedFlow);
 
-            RunContext deleteOnlyContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
             PushFlows.Output deleteOnlyOutput = syncPush.toBuilder()
                 .commitMessage(Property.ofValue("Delete single flow"))
                 .flows(deletedFlow.getId())
@@ -995,10 +999,10 @@ public class PushFlowsTest extends AbstractGitTest {
                 )
             );
         } finally {
-            this.deleteRemoteBranch(
-                runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory).workingDir().path(),
-                branch
-            );
+            try {
+                this.deleteRemoteBranch(deleteOnlyContext.workingDir().path(), branch);
+            } catch (Exception ignored) {
+            }
         }
     }
 
