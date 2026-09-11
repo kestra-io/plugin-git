@@ -175,7 +175,14 @@ public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlo
                 FlowWithSource existing = kestraClient.flows().flow(rNamespace, flowId, tenantId, false, null, false);
                 projectedRevision = existing.getRevision() != null ? existing.getRevision() + 1 : 1;
             } catch (ApiException e) {
-                // Flow does not exist yet
+                if (e.getCode() != 404) {
+                    // Only 404 means "flow does not exist yet"; any other status is a real API/permissions
+                    // failure, surfaced here so a misconfigured kestraUrl isn't silently reported as revision 1.
+                    runContext.logger().warn(
+                        "Failed to fetch existing flow {}.{} from the Kestra API (status {}): {} — assuming it does not exist yet for revision projection",
+                        rNamespace, flowId, e.getCode(), e.getMessage()
+                    );
+                }
                 projectedRevision = 1;
             }
 

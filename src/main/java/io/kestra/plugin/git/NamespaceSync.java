@@ -250,7 +250,17 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
             kestraClient.namespaces().namespace(rNamespace, tenantId);
         } catch (ApiException e) {
             if (e.getCode() == 404) {
-                throw new IllegalArgumentException("The namespace does not exist in the '" + tenantId + "' tenant.");
+                var rKestraUrl = runContext.render(this.kestraUrl).as(String.class).orElse(null);
+                throw new IllegalArgumentException(
+                    "The Kestra API returned 404 for namespace '" + rNamespace + "' in tenant '" + tenantId + "'. This usually means "
+                        + "either the namespace does not exist yet, or the `kestraUrl` this task resolved to does not point at the Kestra "
+                        + "webserver API (resolved `kestraUrl`: " + (rKestraUrl != null ? rKestraUrl
+                            : "not set on the task — falling back to "
+                                + "`kestra.tasks.sdk.authentication.url`, then `kestra.url`, then `http://localhost:8080`")
+                        + "). "
+                        + "Create the namespace first, or fix the `kestraUrl` task property / `kestra.tasks.sdk.authentication.url` / "
+                        + "`kestra.url` configuration."
+                );
             }
             throw e;
         }
