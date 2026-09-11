@@ -3,6 +3,7 @@ package io.kestra.plugin.git;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.sun.net.httpserver.HttpServer;
 
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.flows.Flow;
@@ -37,6 +39,7 @@ import jakarta.inject.Inject;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.*;
 
 @KestraTest
@@ -239,6 +242,45 @@ public class NamespaceSyncTest extends AbstractGitTest {
 
         assertTrue(Files.exists(base.resolve("flows/" + flowId + ".yaml")));
         assertFalse(Files.exists(base.resolve("flows/" + draftFlowId + ".yaml")));
+    }
+
+    @Test
+    void namespaceCheck_404_namesBothCausesAndResolvedKestraUrl() throws Exception {
+        // The mock server used by every other test never 404s on GET /namespaces/{id} (as real OSS Kestra
+        // doesn't either), so a dedicated server is needed here to force the 404 branch.
+        var server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/api/v1/" + TENANT_ID + "/namespaces/" + NAMESPACE, exchange ->
+        {
+            exchange.getRequestBody().readAllBytes();
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            var kestraUrl = "http://localhost:" + server.getAddress().getPort();
+            NamespaceSync task = NamespaceSync.builder()
+                .url(Property.ofExpression("{{url}}"))
+                .username(Property.ofExpression("{{pat}}"))
+                .password(Property.ofExpression("{{pat}}"))
+                .branch(Property.ofExpression("{{branch}}"))
+                .namespace(Property.ofExpression("{{namespace}}"))
+                .kestraUrl(Property.ofValue(kestraUrl))
+                .build();
+
+            IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> task.run(runContext())
+            );
+
+            assertThat(exception.getMessage(), containsString(NAMESPACE));
+            assertThat(exception.getMessage(), containsString(TENANT_ID));
+            assertThat(exception.getMessage(), containsString(kestraUrl));
+            assertThat(exception.getMessage(), containsString("does not exist yet"));
+            assertThat(exception.getMessage(), containsString("kestraUrl"));
+        } finally {
+            server.stop(0);
+        }
     }
 
     private RunContext runContext() {

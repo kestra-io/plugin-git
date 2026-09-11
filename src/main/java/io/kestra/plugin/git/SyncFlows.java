@@ -387,7 +387,9 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
         } catch (IOException e) {
             throw new KestraRuntimeException("Failed to export flows from Kestra for namespace " + namespace, e);
         } catch (ApiException e) {
-            throw new KestraRuntimeException("Failed to export flows from Kestra for namespace " + namespace, e);
+            throw new KestraRuntimeException(
+                "Failed to export flows from Kestra for namespace " + namespace + " (HTTP " + e.getCode() + "): " + e.getMessage(), e
+            );
         }
     }
 

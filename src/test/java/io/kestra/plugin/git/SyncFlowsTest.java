@@ -188,6 +188,18 @@ public class SyncFlowsTest extends AbstractGitTest {
         flows = flowRepositoryInterface.findAllForAllTenants();
         assertThat(flows, hasSize(6));
 
+        // Guard: 'another.namespace' is a sibling of 'my.namespace' (not a descendant) — it must never be
+        // returned by the sync or considered for deletion, even with includeChildNamespaces=true and delete=true.
+        // If the namespace filter serialization ever regressed, the mock would return every flow unfiltered and
+        // this flow would become a false deletion candidate.
+        List<Flow> siblingNamespaceFlows = flowRepositoryInterface.findByNamespace(TENANT_ID, "another.namespace");
+        assertThat(siblingNamespaceFlows, hasSize(1));
+        assertThat(siblingNamespaceFlows.getFirst().getId(), is("unpresent-on-git-flow"));
+        assertThat(
+            IOUtils.toString(runContext.storage().getFile(syncOutput.diffFileUri()), StandardCharsets.UTF_8),
+            not(containsString("unpresent-on-git-flow"))
+        );
+
         RunContext cloneRunContext = runContextFactory.of();
         Clone.builder()
             .url(Property.ofValue(repositoryUrl))
