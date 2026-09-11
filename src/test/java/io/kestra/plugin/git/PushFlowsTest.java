@@ -37,6 +37,7 @@ import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.IdUtils;
 import io.kestra.core.utils.Rethrow;
+import io.kestra.plugin.git.shared.AbstractPushTask;
 import io.kestra.plugin.git.shared.services.GitService;
 import io.kestra.plugin.git.shared.testkit.AbstractGitTest;
 import io.kestra.plugin.git.shared.testkit.MockKestraApiServer;
@@ -814,6 +815,190 @@ public class PushFlowsTest extends AbstractGitTest {
             );
         } finally {
             this.deleteRemoteBranch(runContext.workingDir().path(), branch);
+        }
+    }
+
+    /**
+     * Pylon #2332 / issue #345, need #2: "push all deletes without also including all changes and all new flows".
+     * With {@code pushMode: DELETE_ONLY} a {@code delete: true} push stages ONLY the removal of a flow deleted from
+     * Kestra; an unrelated change made to another flow must NOT ride along on the commit.
+     */
+    @Test
+    void deleteOnly_pushesOnlyDeletion_leavesUnrelatedModificationOnBranch() throws Exception {
+        String tenantId = TenantService.MAIN_TENANT;
+        String sourceNamespace = IdUtils.create().toLowerCase();
+        String targetNamespace = IdUtils.create().toLowerCase();
+        String branch = IdUtils.create();
+        String gitDirectory = "my-flows";
+
+        FlowWithSource keptFlow = this.createFlow(tenantId, "kept-flow", sourceNamespace);
+        FlowWithSource deletedFlow = this.createFlow(tenantId, "deleted-flow", sourceNamespace);
+
+        PushFlows syncPush = PushFlows.builder()
+            .id("pushFlows")
+            .type(PushFlows.class.getName())
+            .branch(Property.ofExpression("{{branch}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .commitMessage(Property.ofValue("Baseline - both flows"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .authorEmail(Property.ofExpression("{{email}}"))
+            .authorName(Property.ofExpression("{{name}}"))
+            .sourceNamespace(Property.ofExpression("{{sourceNamespace}}"))
+            .targetNamespace(Property.ofExpression("{{targetNamespace}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        try {
+            // 1. Baseline SYNC push of both flows.
+            syncPush.run(runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory));
+
+            String keptOriginalContent = keptFlow.getSource().replace(sourceNamespace, targetNamespace);
+
+            // 2. Modify the kept flow directly in Kestra (a pending change we do NOT want to push).
+            FlowWithSource keptReloaded = flowRepositoryInterface.findByNamespaceWithSource(tenantId, sourceNamespace).stream()
+                .filter(f -> f.getId().equals(keptFlow.getId()))
+                .findFirst()
+                .orElseThrow();
+            String editedSource = keptReloaded.getSource().replace("Hello from my-task", "CHANGED after baseline");
+            flowRepositoryInterface.update(GenericFlow.fromYaml(tenantId, editedSource).toBuilder().source(editedSource).build(), keptReloaded);
+
+            // 3. Delete the other flow from Kestra.
+            flowRepositoryInterface.delete(deletedFlow);
+
+            // 4. DELETE_ONLY push: stage only the removal of deletedFlow, leaving keptFlow untouched.
+            RunContext deleteOnlyContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
+            PushFlows.Output deleteOnlyOutput = syncPush.toBuilder()
+                .commitMessage(Property.ofValue("Delete only"))
+                .delete(Property.ofValue(true))
+                .pushMode(Property.ofValue(AbstractPushTask.PushMode.DELETE_ONLY))
+                .build()
+                .run(deleteOnlyContext);
+
+            // 5. Verify the branch: deletedFlow gone, keptFlow still holds its ORIGINAL (unmodified) content.
+            Clone clone = Clone.builder()
+                .id("clone")
+                .type(Clone.class.getName())
+                .url(Property.ofValue(repositoryUrl))
+                .username(Property.ofValue(pat))
+                .password(Property.ofValue(pat))
+                .branch(Property.ofValue(branch))
+                .build();
+            Clone.Output cloneOutput = clone.run(runContextFactory.of());
+
+            File deletedFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, deletedFlow.getId() + ".yml").toString());
+            assertThat("deleted flow should be removed from Git", deletedFile.exists(), is(false));
+
+            File keptFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, keptFlow.getId() + ".yml").toString());
+            assertThat("kept flow should remain on the branch", keptFile.exists(), is(true));
+            String keptContentOnBranch = FileUtils.readFileToString(keptFile, "UTF-8");
+            assertThat("kept flow must keep its original content; the unrelated change must not ride along", keptContentOnBranch, is(keptOriginalContent));
+            assertThat(keptContentOnBranch, not(containsString("CHANGED after baseline")));
+
+            assertDiffs(
+                deleteOnlyContext,
+                deleteOnlyOutput.diffFileUri(),
+                List.of(
+                    Map.of("additions", "+0", "deletions", "-10", "changes", "0", "file", gitDirectory + "/" + deletedFlow.getId() + ".yml")
+                )
+            );
+        } finally {
+            this.deleteRemoteBranch(
+                runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory).workingDir().path(),
+                branch
+            );
+        }
+    }
+
+    /**
+     * Pylon #2332 / issue #345, need #1: "push a delete of a single flow, ignoring all other". A DELETE_ONLY push
+     * scoped to a single flow id removes only that flow's file; other flows (even ones changed in Kestra) are untouched.
+     */
+    @Test
+    void deleteOnly_singleFlowGlob_deletesOnlyThatFlow() throws Exception {
+        String tenantId = TenantService.MAIN_TENANT;
+        String sourceNamespace = IdUtils.create().toLowerCase();
+        String targetNamespace = IdUtils.create().toLowerCase();
+        String branch = IdUtils.create();
+        String gitDirectory = "my-flows";
+
+        FlowWithSource keptFlow = this.createFlow(tenantId, "kept-flow", sourceNamespace);
+        FlowWithSource deletedFlow = this.createFlow(tenantId, "deleted-flow", sourceNamespace);
+
+        PushFlows syncPush = PushFlows.builder()
+            .id("pushFlows")
+            .type(PushFlows.class.getName())
+            .branch(Property.ofExpression("{{branch}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .commitMessage(Property.ofValue("Baseline - both flows"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .authorEmail(Property.ofExpression("{{email}}"))
+            .authorName(Property.ofExpression("{{name}}"))
+            .sourceNamespace(Property.ofExpression("{{sourceNamespace}}"))
+            .targetNamespace(Property.ofExpression("{{targetNamespace}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        try {
+            // Baseline SYNC push of both flows.
+            syncPush.run(runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory));
+
+            String keptOriginalContent = keptFlow.getSource().replace(sourceNamespace, targetNamespace);
+
+            // Change the kept flow in Kestra to prove a single-flow delete ignores unrelated pending changes.
+            FlowWithSource keptReloaded = flowRepositoryInterface.findByNamespaceWithSource(tenantId, sourceNamespace).stream()
+                .filter(f -> f.getId().equals(keptFlow.getId()))
+                .findFirst()
+                .orElseThrow();
+            String editedSource = keptReloaded.getSource().replace("Hello from my-task", "CHANGED after baseline");
+            flowRepositoryInterface.update(GenericFlow.fromYaml(tenantId, editedSource).toBuilder().source(editedSource).build(), keptReloaded);
+
+            // Delete a single flow from Kestra and push only that deletion, scoped by flow id.
+            flowRepositoryInterface.delete(deletedFlow);
+
+            RunContext deleteOnlyContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
+            PushFlows.Output deleteOnlyOutput = syncPush.toBuilder()
+                .commitMessage(Property.ofValue("Delete single flow"))
+                .flows(deletedFlow.getId())
+                .delete(Property.ofValue(true))
+                .pushMode(Property.ofValue(AbstractPushTask.PushMode.DELETE_ONLY))
+                .build()
+                .run(deleteOnlyContext);
+
+            Clone clone = Clone.builder()
+                .id("clone")
+                .type(Clone.class.getName())
+                .url(Property.ofValue(repositoryUrl))
+                .username(Property.ofValue(pat))
+                .password(Property.ofValue(pat))
+                .branch(Property.ofValue(branch))
+                .build();
+            Clone.Output cloneOutput = clone.run(runContextFactory.of());
+
+            File deletedFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, deletedFlow.getId() + ".yml").toString());
+            assertThat("targeted flow should be removed from Git", deletedFile.exists(), is(false));
+
+            File keptFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, keptFlow.getId() + ".yml").toString());
+            assertThat("other flow should be untouched", keptFile.exists(), is(true));
+            String keptContentOnBranch = FileUtils.readFileToString(keptFile, "UTF-8");
+            assertThat("other flow must keep its original content", keptContentOnBranch, is(keptOriginalContent));
+            assertThat(keptContentOnBranch, not(containsString("CHANGED after baseline")));
+
+            assertDiffs(
+                deleteOnlyContext,
+                deleteOnlyOutput.diffFileUri(),
+                List.of(
+                    Map.of("additions", "+0", "deletions", "-10", "changes", "0", "file", gitDirectory + "/" + deletedFlow.getId() + ".yml")
+                )
+            );
+        } finally {
+            this.deleteRemoteBranch(
+                runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory).workingDir().path(),
+                branch
+            );
         }
     }
 
