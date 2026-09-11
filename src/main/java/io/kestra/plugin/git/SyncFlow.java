@@ -126,7 +126,6 @@ public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlo
         GitService gitService = new GitService(this);
 
         String rBranch = runContext.render(this.getBranch()).as(String.class).orElse(null);
-        // TODO(#343): requires plugin-git-lib >= <next release> for GitService.ensureBranchExistsOrFail
         gitService.ensureBranchExistsOrFail(runContext, rBranch, runContext.render(this.failOnMissingBranch).as(Boolean.class).orElse(true));
         Git git = gitService.cloneBranch(runContext, rBranch, Property.ofValue(Boolean.FALSE));
         Path cloneDir = git.getRepository().getWorkTree().toPath();
