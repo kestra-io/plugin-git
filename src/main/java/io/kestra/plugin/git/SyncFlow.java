@@ -104,6 +104,17 @@ public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlo
     @PluginProperty(group = "reliability")
     private Property<Boolean> dryRun = Property.ofValue(Boolean.FALSE);
 
+    @Schema(
+        title = "Fail when the branch does not exist",
+        description = """
+            When true (default), the task fails if `branch` does not exist on the remote.
+            When false, a missing branch silently falls back to the repository's default branch, \
+            which can cause the wrong version of the flow to be synced."""
+    )
+    @Builder.Default
+    @PluginProperty(group = "reliability")
+    private Property<Boolean> failOnMissingBranch = Property.ofValue(Boolean.TRUE);
+
     @Override
     public Output run(RunContext runContext) throws Exception {
 
@@ -114,20 +125,22 @@ public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlo
 
         GitService gitService = new GitService(this);
 
-        Git git = gitService.cloneBranch(runContext, runContext.render(this.getBranch()).as(String.class).orElse(null), Property.ofValue(Boolean.FALSE));
+        String rBranch = runContext.render(this.getBranch()).as(String.class).orElse(null);
+        gitService.ensureBranchExistsOrFail(runContext, rBranch, runContext.render(this.failOnMissingBranch).as(Boolean.class).orElse(true));
+        Git git = gitService.cloneBranch(runContext, rBranch, Property.ofValue(Boolean.FALSE));
         Path cloneDir = git.getRepository().getWorkTree().toPath();
 
-        String renderedFlowPath = runContext.render(this.flowPath).as(String.class).orElseThrow();
-        Path flowFilePath = cloneDir.resolve(renderedFlowPath);
+        String rFlowPath = runContext.render(this.flowPath).as(String.class).orElseThrow();
+        Path flowFilePath = cloneDir.resolve(rFlowPath);
 
         if (!Files.exists(flowFilePath)) {
-            throw new java.io.FileNotFoundException("Flow file not found at path: " + renderedFlowPath);
+            throw new java.io.FileNotFoundException("Flow file not found at path: " + rFlowPath);
         }
 
         // Build the client only after confirming the file exists, to keep failures fast and clear
         KestraClient kestraClient = kestraClient(runContext);
 
-        String renderedNamespace = runContext.render(this.targetNamespace).as(String.class).orElseThrow();
+        String rNamespace = runContext.render(this.targetNamespace).as(String.class).orElseThrow();
         String flowSource;
         try (InputStream is = Files.newInputStream(flowFilePath)) {
             flowSource = IOUtils.toString(is, StandardCharsets.UTF_8);
@@ -135,12 +148,12 @@ public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlo
 
         // Rewrite the namespace to the target namespace
         Matcher namespaceMatcher = NAMESPACE_FINDER_PATTERN.matcher(flowSource);
-        flowSource = namespaceMatcher.replaceFirst("namespace: " + renderedNamespace);
+        flowSource = namespaceMatcher.replaceFirst("namespace: " + rNamespace);
 
         // Parse the flow id from the (potentially rewritten) YAML
         Matcher idMatcher = FLOW_ID_FINDER_PATTERN.matcher(flowSource);
         if (!idMatcher.find()) {
-            throw new IllegalStateException("Cannot parse flow id from YAML at path: " + renderedFlowPath);
+            throw new IllegalStateException("Cannot parse flow id from YAML at path: " + rFlowPath);
         }
         String flowId = idMatcher.group(1).trim();
 
@@ -159,7 +172,7 @@ public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlo
             // Projected revision: existing + 1, or 1 for a new flow
             int projectedRevision;
             try {
-                FlowWithSource existing = kestraClient.flows().flow(renderedNamespace, flowId, tenantId, false, null, false);
+                FlowWithSource existing = kestraClient.flows().flow(rNamespace, flowId, tenantId, false, null, false);
                 projectedRevision = existing.getRevision() != null ? existing.getRevision() + 1 : 1;
             } catch (ApiException e) {
                 // Flow does not exist yet
@@ -168,7 +181,7 @@ public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlo
 
             result = new FlowWithSource()
                 .id(flowId)
-                .namespace(renderedNamespace)
+                .namespace(rNamespace)
                 .revision(projectedRevision);
         } else {
             // Import the flow
@@ -176,7 +189,7 @@ public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlo
             kestraClient.flows().importFlows(tenantId, true, tempFile);
 
             // Fetch the saved flow to populate the output
-            result = kestraClient.flows().flow(renderedNamespace, flowId, tenantId, false, null, false);
+            result = kestraClient.flows().flow(rNamespace, flowId, tenantId, false, null, false);
         }
 
         git.close();
