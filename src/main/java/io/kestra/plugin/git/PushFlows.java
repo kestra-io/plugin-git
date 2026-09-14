@@ -259,7 +259,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
             throw new KestraRuntimeException("Failed to export flows from Kestra for namespace " + namespace, e);
         } catch (ApiException e) {
             throw new KestraRuntimeException(
-                "Failed to export flows from Kestra for namespace " + namespace + " (HTTP " + e.getCode() + "): " + e.getMessage(), e
+                "Failed to export flows from Kestra for namespace " + namespace + " (HTTP " + e.getCode() + "): " + ApiErrors.truncate(e.getMessage()), e
             );
         }
     }

@@ -248,17 +248,17 @@ public class NamespaceSyncTest extends AbstractGitTest {
     void namespaceCheck_404_namesBothCausesAndResolvedKestraUrl() throws Exception {
         // The mock server used by every other test never 404s on GET /namespaces/{id} (as real OSS Kestra
         // doesn't either), so a dedicated server is needed here to force the 404 branch.
-        var server = HttpServer.create(new InetSocketAddress(0), 0);
-        server.createContext("/api/v1/" + TENANT_ID + "/namespaces/" + NAMESPACE, exchange ->
+        var httpServer = HttpServer.create(new InetSocketAddress(0), 0);
+        httpServer.createContext("/api/v1/" + TENANT_ID + "/namespaces/" + NAMESPACE, exchange ->
         {
             exchange.getRequestBody().readAllBytes();
             exchange.sendResponseHeaders(404, -1);
             exchange.close();
         });
-        server.start();
+        httpServer.start();
 
         try {
-            var kestraUrl = "http://localhost:" + server.getAddress().getPort();
+            var kestraUrl = "http://localhost:" + httpServer.getAddress().getPort();
             NamespaceSync task = NamespaceSync.builder()
                 .url(Property.ofExpression("{{url}}"))
                 .username(Property.ofExpression("{{pat}}"))
@@ -279,7 +279,7 @@ public class NamespaceSyncTest extends AbstractGitTest {
             assertThat(exception.getMessage(), containsString("does not exist yet"));
             assertThat(exception.getMessage(), containsString("kestraUrl"));
         } finally {
-            server.stop(0);
+            httpServer.stop(0);
         }
     }
 

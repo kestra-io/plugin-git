@@ -388,7 +388,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             throw new KestraRuntimeException("Failed to export flows from Kestra for namespace " + namespace, e);
         } catch (ApiException e) {
             throw new KestraRuntimeException(
-                "Failed to export flows from Kestra for namespace " + namespace + " (HTTP " + e.getCode() + "): " + e.getMessage(), e
+                "Failed to export flows from Kestra for namespace " + namespace + " (HTTP " + e.getCode() + "): " + ApiErrors.truncate(e.getMessage()), e
             );
         }
     }
@@ -414,7 +414,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             // leaves the lookup unresolved, so callers must not assume the flow is absent.
             runContext.logger().warn(
                 "Failed to fetch flow {}.{} from the Kestra API (status {}): {}",
-                namespace, flowId, e.getCode(), e.getMessage()
+                namespace, flowId, e.getCode(), ApiErrors.truncate(e.getMessage())
             );
             return new FlowLookup(null, false);
         }

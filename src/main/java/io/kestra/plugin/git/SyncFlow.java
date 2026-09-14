@@ -180,7 +180,7 @@ public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlo
                     // failure, surfaced here so a misconfigured kestraUrl isn't silently reported as revision 1.
                     runContext.logger().warn(
                         "Failed to fetch existing flow {}.{} from the Kestra API (status {}): {} — assuming it does not exist yet for revision projection",
-                        rNamespace, flowId, e.getCode(), e.getMessage()
+                        rNamespace, flowId, e.getCode(), ApiErrors.truncate(e.getMessage())
                     );
                 }
                 projectedRevision = 1;
