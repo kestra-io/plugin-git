@@ -825,6 +825,30 @@ public class PushFlowsTest extends AbstractGitTest {
      */
     @Test
     void deleteOnly_pushesOnlyDeletion_leavesUnrelatedModificationOnBranch() throws Exception {
+        runDeleteOnlyScenario(null, "Delete only", false);
+    }
+
+    /**
+     * Pylon #2332 / issue #345, need #1: "push a delete of a single flow, ignoring all other". A DELETE_ONLY push
+     * scoped by a glob removes only the flow(s) matching that glob; a flow that was also deleted from Kestra but
+     * falls outside the glob's scope is left untouched on the branch, proving the glob is genuinely applied rather
+     * than every deletion being pushed regardless of the filter.
+     */
+    @Test
+    void deleteOnly_globScopedDelete_deletesOnlyMatchingFlow() throws Exception {
+        runDeleteOnlyScenario("deleted-*", "Delete matching glob", true);
+    }
+
+    /**
+     * Shared scenario for the DELETE_ONLY push-mode tests above: pushes a baseline of a kept flow and a
+     * to-be-deleted flow, makes an unrelated pending change to the kept flow in Kestra, deletes the target flow from
+     * Kestra, then runs a DELETE_ONLY push scoped by {@code flowsFilter} (or unscoped, i.e. all flows, when
+     * {@code null}). Asserts the targeted flow is removed from the branch and the kept flow keeps its original
+     * (pre-edit) content. When {@code withOutOfScopeDeletedFlow} is {@code true}, a second flow that was also
+     * deleted from Kestra but does NOT match {@code flowsFilter} is created up front, and the test asserts it
+     * remains on the branch after the push, proving the filter genuinely scopes which deletions are staged.
+     */
+    private void runDeleteOnlyScenario(String flowsFilter, String commitMessage, boolean withOutOfScopeDeletedFlow) throws Exception {
         String tenantId = TenantService.MAIN_TENANT;
         String sourceNamespace = IdUtils.create().toLowerCase();
         String targetNamespace = IdUtils.create().toLowerCase();
@@ -833,6 +857,7 @@ public class PushFlowsTest extends AbstractGitTest {
 
         FlowWithSource keptFlow = this.createFlow(tenantId, "kept-flow", sourceNamespace);
         FlowWithSource deletedFlow = this.createFlow(tenantId, "deleted-flow", sourceNamespace);
+        FlowWithSource outOfScopeDeletedFlow = withOutOfScopeDeletedFlow ? this.createFlow(tenantId, "other-flow", sourceNamespace) : null;
 
         PushFlows syncPush = PushFlows.builder()
             .id("pushFlows")
@@ -854,10 +879,10 @@ public class PushFlowsTest extends AbstractGitTest {
         RunContext deleteOnlyContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
 
         try {
-            // 1. Baseline SYNC push of both flows.
+            // 1. Baseline SYNC push of all flows.
             syncPush.run(runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory));
 
-            String keptOriginalContent = keptFlow.getSource().replace(sourceNamespace, targetNamespace);
+            String keptOriginalContent = namespaceRewritten(keptFlow.getSource(), sourceNamespace, targetNamespace);
 
             // 2. Modify the kept flow directly in Kestra (a pending change we do NOT want to push).
             FlowWithSource keptReloaded = flowRepositoryInterface.findByNamespaceWithSource(tenantId, sourceNamespace).stream()
@@ -867,16 +892,21 @@ public class PushFlowsTest extends AbstractGitTest {
             String editedSource = keptReloaded.getSource().replace("Hello from my-task", "CHANGED after baseline");
             flowRepositoryInterface.update(GenericFlow.fromYaml(tenantId, editedSource).toBuilder().source(editedSource).build(), keptReloaded);
 
-            // 3. Delete the other flow from Kestra.
+            // 3. Delete the target flow(s) from Kestra.
             flowRepositoryInterface.delete(deletedFlow);
+            if (outOfScopeDeletedFlow != null) {
+                flowRepositoryInterface.delete(outOfScopeDeletedFlow);
+            }
 
-            // 4. DELETE_ONLY push: stage only the removal of deletedFlow, leaving keptFlow untouched.
-            PushFlows.Output deleteOnlyOutput = syncPush.toBuilder()
-                .commitMessage(Property.ofValue("Delete only"))
+            // 4. DELETE_ONLY push: stage only the removal of flows matching flowsFilter, leaving everything else untouched.
+            PushFlows.PushFlowsBuilder<?, ?> deleteOnlyBuilder = syncPush.toBuilder()
+                .commitMessage(Property.ofValue(commitMessage))
                 .delete(Property.ofValue(true))
-                .pushMode(Property.ofValue(AbstractPushTask.PushMode.DELETE_ONLY))
-                .build()
-                .run(deleteOnlyContext);
+                .pushMode(Property.ofValue(AbstractPushTask.PushMode.DELETE_ONLY));
+            if (flowsFilter != null) {
+                deleteOnlyBuilder.flows(flowsFilter);
+            }
+            PushFlows.Output deleteOnlyOutput = deleteOnlyBuilder.build().run(deleteOnlyContext);
 
             // 5. Verify the branch: deletedFlow gone, keptFlow still holds its ORIGINAL (unmodified) content.
             Clone clone = Clone.builder()
@@ -898,104 +928,18 @@ public class PushFlowsTest extends AbstractGitTest {
             assertThat("kept flow must keep its original content; the unrelated change must not ride along", keptContentOnBranch, is(keptOriginalContent));
             assertThat(keptContentOnBranch, not(containsString("CHANGED after baseline")));
 
-            assertDiffs(
-                deleteOnlyContext,
-                deleteOnlyOutput.diffFileUri(),
-                List.of(
-                    Map.of("additions", "+0", "deletions", "-10", "changes", "0", "file", gitDirectory + "/" + deletedFlow.getId() + ".yml")
-                )
-            );
-        } finally {
-            try {
-                this.deleteRemoteBranch(deleteOnlyContext.workingDir().path(), branch);
-            } catch (Exception ignored) {
+            if (outOfScopeDeletedFlow != null) {
+                File outOfScopeFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, outOfScopeDeletedFlow.getId() + ".yml").toString());
+                assertThat("flow deleted from Kestra but not matching the flows filter must be preserved on the branch", outOfScopeFile.exists(), is(true));
             }
-        }
-    }
 
-    /**
-     * Pylon #2332 / issue #345, need #1: "push a delete of a single flow, ignoring all other". A DELETE_ONLY push
-     * scoped to a single flow id removes only that flow's file; other flows (even ones changed in Kestra) are untouched.
-     */
-    @Test
-    void deleteOnly_singleFlowGlob_deletesOnlyThatFlow() throws Exception {
-        String tenantId = TenantService.MAIN_TENANT;
-        String sourceNamespace = IdUtils.create().toLowerCase();
-        String targetNamespace = IdUtils.create().toLowerCase();
-        String branch = IdUtils.create();
-        String gitDirectory = "my-flows";
-
-        FlowWithSource keptFlow = this.createFlow(tenantId, "kept-flow", sourceNamespace);
-        FlowWithSource deletedFlow = this.createFlow(tenantId, "deleted-flow", sourceNamespace);
-
-        PushFlows syncPush = PushFlows.builder()
-            .id("pushFlows")
-            .type(PushFlows.class.getName())
-            .branch(Property.ofExpression("{{branch}}"))
-            .url(Property.ofExpression("{{url}}"))
-            .commitMessage(Property.ofValue("Baseline - both flows"))
-            .username(Property.ofExpression("{{pat}}"))
-            .password(Property.ofExpression("{{pat}}"))
-            .authorEmail(Property.ofExpression("{{email}}"))
-            .authorName(Property.ofExpression("{{name}}"))
-            .sourceNamespace(Property.ofExpression("{{sourceNamespace}}"))
-            .targetNamespace(Property.ofExpression("{{targetNamespace}}"))
-            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
-            .kestraUrl(Property.ofValue(server.url()))
-            .build();
-
-        // The DELETE_ONLY push clones into this context's working dir; it is what the finally block uses for cleanup.
-        RunContext deleteOnlyContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory);
-
-        try {
-            // Baseline SYNC push of both flows.
-            syncPush.run(runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory));
-
-            String keptOriginalContent = keptFlow.getSource().replace(sourceNamespace, targetNamespace);
-
-            // Change the kept flow in Kestra to prove a single-flow delete ignores unrelated pending changes.
-            FlowWithSource keptReloaded = flowRepositoryInterface.findByNamespaceWithSource(tenantId, sourceNamespace).stream()
-                .filter(f -> f.getId().equals(keptFlow.getId()))
-                .findFirst()
-                .orElseThrow();
-            String editedSource = keptReloaded.getSource().replace("Hello from my-task", "CHANGED after baseline");
-            flowRepositoryInterface.update(GenericFlow.fromYaml(tenantId, editedSource).toBuilder().source(editedSource).build(), keptReloaded);
-
-            // Delete a single flow from Kestra and push only that deletion, scoped by flow id.
-            flowRepositoryInterface.delete(deletedFlow);
-
-            PushFlows.Output deleteOnlyOutput = syncPush.toBuilder()
-                .commitMessage(Property.ofValue("Delete single flow"))
-                .flows(deletedFlow.getId())
-                .delete(Property.ofValue(true))
-                .pushMode(Property.ofValue(AbstractPushTask.PushMode.DELETE_ONLY))
-                .build()
-                .run(deleteOnlyContext);
-
-            Clone clone = Clone.builder()
-                .id("clone")
-                .type(Clone.class.getName())
-                .url(Property.ofValue(repositoryUrl))
-                .username(Property.ofValue(pat))
-                .password(Property.ofValue(pat))
-                .branch(Property.ofValue(branch))
-                .build();
-            Clone.Output cloneOutput = clone.run(runContextFactory.of());
-
-            File deletedFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, deletedFlow.getId() + ".yml").toString());
-            assertThat("targeted flow should be removed from Git", deletedFile.exists(), is(false));
-
-            File keptFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, keptFlow.getId() + ".yml").toString());
-            assertThat("other flow should be untouched", keptFile.exists(), is(true));
-            String keptContentOnBranch = FileUtils.readFileToString(keptFile, "UTF-8");
-            assertThat("other flow must keep its original content", keptContentOnBranch, is(keptOriginalContent));
-            assertThat(keptContentOnBranch, not(containsString("CHANGED after baseline")));
-
+            // The deletion diff removes exactly as many lines as the pushed flow's source has, whatever that template happens to be.
+            long deletedFlowLineCount = deletedFlow.getSource().lines().count();
             assertDiffs(
                 deleteOnlyContext,
                 deleteOnlyOutput.diffFileUri(),
                 List.of(
-                    Map.of("additions", "+0", "deletions", "-10", "changes", "0", "file", gitDirectory + "/" + deletedFlow.getId() + ".yml")
+                    Map.of("additions", "+0", "deletions", "-" + deletedFlowLineCount, "changes", "0", "file", gitDirectory + "/" + deletedFlow.getId() + ".yml")
                 )
             );
         } finally {
@@ -1060,6 +1004,14 @@ public class PushFlowsTest extends AbstractGitTest {
         assertThat(revCommit.getAuthorIdent().getName(), is(authorName));
         assertThat(revCommit.getCommitterIdent().getEmailAddress(), is(authorEmail));
         assertThat(revCommit.getCommitterIdent().getName(), is(authorName));
+    }
+
+    /**
+     * Mirrors PushFlows' anchored {@code ^(\s*namespace:\s*)<sourceNamespace>} rewrite, so the oracle can't
+     * pass/fail spuriously if {@code sourceNamespace} ever appears outside the {@code namespace:} line.
+     */
+    private static String namespaceRewritten(String source, String sourceNamespace, String targetNamespace) {
+        return source.replaceAll("(?m)^(\\s*namespace:\\s*)" + sourceNamespace, "$1" + targetNamespace);
     }
 
     private static void assertDiffs(RunContext runContext, URI diffFileUri, List<Map<String, String>> expectedDiffs) throws IOException {
