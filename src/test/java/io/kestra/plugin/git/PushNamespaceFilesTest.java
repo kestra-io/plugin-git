@@ -3,6 +3,7 @@ package io.kestra.plugin.git;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -616,6 +617,198 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
                 // Best effort local cleanup
                 FileUtils.deleteQuietly(seedClone.toFile());
             }
+        }
+    }
+
+    @Test
+    void namespaceDirectory_ScopesAndStripsPushedPaths() throws Exception {
+        String tenantId = TenantService.MAIN_TENANT;
+        String namespace = IdUtils.create().toLowerCase();
+        String branch = IdUtils.create();
+        String gitDirectory = "my-files";
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory);
+
+        String outsidePrefixPath = "outside.txt";
+        runContext.storage().namespace(namespace).putFile(Path.of(outsidePrefixPath), new ByteArrayInputStream("outside prefix".getBytes()));
+        String includedPath = "shared-scripts/included.txt";
+        String includedContent = "included content";
+        runContext.storage().namespace(namespace).putFile(Path.of(includedPath), new ByteArrayInputStream(includedContent.getBytes()));
+
+        PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
+            .id("pushNamespaceFiles-namespace-directory")
+            .type(PushNamespaceFiles.class.getName())
+            .branch(Property.ofExpression("{{branch}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .commitMessage(Property.ofExpression("Push from CI - {{description}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .authorEmail(Property.ofExpression("{{email}}"))
+            .authorName(Property.ofExpression("{{name}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .namespaceDirectory(Property.ofValue("/shared-scripts"))
+            .build();
+
+        try {
+            PushNamespaceFiles.Output pushOutput = pushNamespaceFiles.run(runContext);
+
+            Clone clone = Clone.builder()
+                .id("clone")
+                .type(Clone.class.getName())
+                .url(Property.ofValue(repositoryUrl))
+                .username(Property.ofValue(pat))
+                .password(Property.ofValue(pat))
+                .branch(Property.ofValue(branch))
+                .build();
+
+            Clone.Output cloneOutput = clone.run(runContextFactory.of());
+            Path repoGitDirectory = Path.of(cloneOutput.getDirectory(), gitDirectory);
+
+            // prefix stripped: lands at <gitDirectory>/included.txt, not <gitDirectory>/shared-scripts/included.txt
+            File includedFile = new File(repoGitDirectory.toString(), "included.txt");
+            assertThat(includedFile.exists(), is(true));
+            assertThat(FileUtils.readFileToString(includedFile, "UTF-8"), is(includedContent));
+
+            // outside the prefix: never pushed
+            assertThat(new File(repoGitDirectory.toString(), outsidePrefixPath).exists(), is(false));
+            assertThat(new File(repoGitDirectory.toString(), "shared-scripts").exists(), is(false));
+
+            assertDiffs(
+                runContext,
+                pushOutput.diffFileUri(),
+                List.of(
+                    Map.of("additions", "+1", "deletions", "-0", "changes", "0", "file", gitDirectory + "/included.txt")
+                )
+            );
+        } finally {
+            this.deleteRemoteBranch(runContext.workingDir().path(), branch);
+        }
+    }
+
+    @Test
+    void namespaceDirectory_FilesGlobMatchesFullNamespacePath() throws Exception {
+        String tenantId = TenantService.MAIN_TENANT;
+        String namespace = IdUtils.create().toLowerCase();
+        String branch = IdUtils.create();
+        String gitDirectory = "my-files";
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, namespace, gitDirectory);
+
+        String matchingPath = "shared-scripts/foo.py";
+        String matchingContent = "print(1)";
+        runContext.storage().namespace(namespace).putFile(Path.of(matchingPath), new ByteArrayInputStream(matchingContent.getBytes()));
+        String nonMatchingPath = "shared-scripts/bar.txt";
+        runContext.storage().namespace(namespace).putFile(Path.of(nonMatchingPath), new ByteArrayInputStream("not a python file".getBytes()));
+
+        PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
+            .id("pushNamespaceFiles-namespace-directory-glob")
+            .type(PushNamespaceFiles.class.getName())
+            .branch(Property.ofExpression("{{branch}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .commitMessage(Property.ofExpression("Push from CI - {{description}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .authorEmail(Property.ofExpression("{{email}}"))
+            .authorName(Property.ofExpression("{{name}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .namespaceDirectory(Property.ofValue("/shared-scripts"))
+            // proves `files` still matches against the full namespace-relative path, independently of namespaceDirectory
+            .files("shared-scripts/*.py")
+            .build();
+
+        try {
+            PushNamespaceFiles.Output pushOutput = pushNamespaceFiles.run(runContext);
+
+            Clone clone = Clone.builder()
+                .id("clone")
+                .type(Clone.class.getName())
+                .url(Property.ofValue(repositoryUrl))
+                .username(Property.ofValue(pat))
+                .password(Property.ofValue(pat))
+                .branch(Property.ofValue(branch))
+                .build();
+
+            Clone.Output cloneOutput = clone.run(runContextFactory.of());
+            Path repoGitDirectory = Path.of(cloneOutput.getDirectory(), gitDirectory);
+
+            assertThat(new File(repoGitDirectory.toString(), "foo.py").exists(), is(true));
+            assertThat(new File(repoGitDirectory.toString(), "bar.txt").exists(), is(false));
+
+            assertDiffs(
+                runContext,
+                pushOutput.diffFileUri(),
+                List.of(
+                    Map.of("additions", "+1", "deletions", "-0", "changes", "0", "file", gitDirectory + "/foo.py")
+                )
+            );
+        } finally {
+            this.deleteRemoteBranch(runContext.workingDir().path(), branch);
+        }
+    }
+
+    @Test
+    void namespaceDirectory_SyncPushRoundTrip_ProducesEmptyDiff() throws Exception {
+        String tenantId = TenantService.MAIN_TENANT;
+        String sourceNamespace = IdUtils.create().toLowerCase();
+        String roundTripNamespace = IdUtils.create().toLowerCase();
+        String branch = IdUtils.create();
+        String gitDirectory = "my-files";
+
+        RunContext runContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, gitDirectory);
+        String filePath = "shared-scripts/foo.py";
+        String fileContent = "print(1)";
+        runContext.storage().namespace(sourceNamespace).putFile(Path.of(filePath), new ByteArrayInputStream(fileContent.getBytes()));
+
+        PushNamespaceFiles firstPush = PushNamespaceFiles.builder()
+            .id("pushNamespaceFiles-round-trip-seed")
+            .type(PushNamespaceFiles.class.getName())
+            .branch(Property.ofExpression("{{branch}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .commitMessage(Property.ofExpression("Push from CI - {{description}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .authorEmail(Property.ofExpression("{{email}}"))
+            .authorName(Property.ofExpression("{{name}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .namespaceDirectory(Property.ofValue("/shared-scripts"))
+            .build();
+
+        try {
+            firstPush.run(runContext);
+
+            SyncNamespaceFiles sync = SyncNamespaceFiles.builder()
+                .url(Property.ofValue(repositoryUrl))
+                .username(Property.ofValue(pat))
+                .password(Property.ofValue(pat))
+                .branch(Property.ofValue(branch))
+                .gitDirectory(Property.ofValue(gitDirectory))
+                .namespace(Property.ofValue(roundTripNamespace))
+                .namespaceDirectory(Property.ofValue("/shared-scripts"))
+                .build();
+            sync.run(runContextFactory.of());
+
+            assertNamespaceFileContent(runContextFactory.of(), roundTripNamespace, filePath, fileContent);
+
+            RunContext secondPushRunContext = runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, roundTripNamespace, gitDirectory);
+            PushNamespaceFiles secondPush = firstPush.toBuilder()
+                .id("pushNamespaceFiles-round-trip-verify")
+                .namespace(Property.ofExpression("{{namespace}}"))
+                .build();
+            PushNamespaceFiles.Output secondPushOutput = secondPush.run(secondPushRunContext);
+
+            // identical content already on the branch: nothing to commit, proving the round trip is a no-op
+            assertThat(secondPushOutput.getCommitId(), nullValue());
+        } finally {
+            this.deleteRemoteBranch(runContext.workingDir().path(), branch);
+        }
+    }
+
+    private static void assertNamespaceFileContent(RunContext runContext, String namespace, String namespaceFileUri, String expectedFileContent) throws IOException {
+        try (InputStream is = runContext.storage().namespace(namespace).getFileContent(Path.of(namespaceFileUri))) {
+            assertThat(IOUtils.toString(is, StandardCharsets.UTF_8), is(expectedFileContent));
         }
     }
 

@@ -4,6 +4,7 @@ import java.io.InputStream;
 import java.net.URI;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,6 +63,30 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
                   - id: schedule_push_to_git
                     type: io.kestra.plugin.core.trigger.Schedule
                     cron: "*/15 * * * *"
+                """
+        ),
+        @Example(
+            title = "Push only the `shared-scripts` folder of a namespace to the root of a Git repository.",
+            full = true,
+            code = """
+                id: push_shared_scripts
+                namespace: company.ops
+
+                tasks:
+                  - id: commit_and_push
+                    type: io.kestra.plugin.git.PushNamespaceFiles
+                    namespace: company.ops
+                    gitDirectory: "."
+                    namespaceDirectory: /shared-scripts
+                    url: https://github.com/kestra-io/scripts
+                    username: git_username
+                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                    branch: main
+                    commitMessage: "update shared scripts"
+                triggers:
+                  - id: schedule_push_to_git
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "0 * * * *"
                 """
         ),
         @Example(
@@ -140,6 +165,21 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     private Object files;
 
     @Schema(
+        title = "Namespace directory prefix",
+        description = """
+            Relative path within the source namespace to export; scopes the pushed subtree to Namespace Files \
+            under this path and the prefix is stripped from the destination path in Git, so a Namespace File at \
+            `/shared-scripts/foo.py` is pushed as `foo.py` inside `gitDirectory` instead of \
+            `shared-scripts/foo.py`. Defaults to `/` (namespace root, i.e. no prefix — existing flows are \
+            unaffected). The `files` glob still matches against the full namespace-relative path, independently \
+            of this prefix. Note that `delete` (default true) still applies to the whole `gitDirectory`, so files \
+            previously pushed from outside this prefix are removed unless `files` also excludes them."""
+    )
+    @Builder.Default
+    @PluginProperty(group = "destination")
+    private Property<String> namespaceDirectory = Property.ofValue("/");
+
+    @Schema(
         title = "Include child namespaces",
         description = "Default false. When true, also pushes files from descendant namespaces, each under a directory named by its full dotted namespace inside `gitDirectory`."
     )
@@ -179,6 +219,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
 
         String renderedNamespace = runContext.render(this.namespace).as(String.class).orElse(null);
         Predicate<Path> matcher = (globs != null) ? PathMatcherPredicate.matches(globs) : (path -> true);
+        String prefix = normalizeNamespaceDirectory(runContext.render(this.namespaceDirectory).as(String.class).orElse("/"));
 
         List<String> namespaces = new ArrayList<>();
         namespaces.add(renderedNamespace);
@@ -187,19 +228,60 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
         }
 
         Map<Path, Supplier<InputStream>> filesMap = new HashMap<>();
+        boolean anyGlobMatch = false;
         for (String namespaceToPush : namespaces) {
             Namespace storage = runContext.storage().namespace(namespaceToPush);
             Path directory = namespaceToPush.equals(renderedNamespace) ? baseDirectory : baseDirectory.resolve(namespaceToPush);
             for (NamespaceFile nsFile : storage.findAllFilesMatching(matcher)) {
-                filesMap.put(directory.resolve(nsFile.path()), throwSupplier(() -> storage.getFileContent(Path.of(nsFile.path()))));
+                anyGlobMatch = true;
+                String relativeToPrefix = stripNamespaceDirectory(nsFile.path(), prefix);
+                if (relativeToPrefix == null) {
+                    continue;
+                }
+                filesMap.put(directory.resolve(relativeToPrefix), throwSupplier(() -> storage.getFileContent(Path.of(nsFile.path()))));
             }
         }
 
         if (runContext.render(errorOnMissing).as(Boolean.class).orElse(false) && filesMap.isEmpty()) {
-            throw new KestraRuntimeException("No Namespace Files matched the provided 'files' parameter to commit.");
+            throw new KestraRuntimeException(
+                anyGlobMatch
+                    ? "No Namespace Files found under 'namespaceDirectory' (" + prefix + ") to commit."
+                    : "No Namespace Files matched the provided 'files' parameter to commit."
+            );
         }
 
         return filesMap;
+    }
+
+    // "/", "" and null all normalize to "" (no prefix); a leading slash is optional on input and forced on output
+    private static String normalizeNamespaceDirectory(String rendered) {
+        if (rendered == null) {
+            return "";
+        }
+        List<String> segments = Arrays.stream(rendered.trim().split("/"))
+            .filter(segment -> !segment.isEmpty())
+            .toList();
+        if (segments.contains("..")) {
+            throw new IllegalArgumentException(
+                "Invalid 'namespaceDirectory' value '" + rendered + "': '..' path segments are not allowed."
+            );
+        }
+        return segments.isEmpty() ? "" : "/" + String.join("/", segments);
+    }
+
+    // Relativizes a namespace-relative path against the prefix, or returns null when it falls outside it
+    private static String stripNamespaceDirectory(String path, String prefix) {
+        if (prefix.isEmpty()) {
+            return path;
+        }
+        String normalizedPath = "/" + path;
+        if (normalizedPath.equals(prefix)) {
+            return "";
+        }
+        if (!normalizedPath.startsWith(prefix + "/")) {
+            return null;
+        }
+        return normalizedPath.substring(prefix.length() + 1);
     }
 
     @Override
