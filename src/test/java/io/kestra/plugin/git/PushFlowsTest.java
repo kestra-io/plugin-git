@@ -819,7 +819,7 @@ public class PushFlowsTest extends AbstractGitTest {
     }
 
     /**
-     * Pylon #2332 / issue #345, need #2: "push all deletes without also including all changes and all new flows".
+     * Issue #345, need #2: "push all deletes without also including all changes and all new flows".
      * With {@code pushMode: DELETE_ONLY} a {@code delete: true} push stages ONLY the removal of a flow deleted from
      * Kestra; an unrelated change made to another flow must NOT ride along on the commit.
      */
@@ -829,7 +829,7 @@ public class PushFlowsTest extends AbstractGitTest {
     }
 
     /**
-     * Pylon #2332 / issue #345, need #1: "push a delete of a single flow, ignoring all other". A DELETE_ONLY push
+     * Issue #345, need #1: "push a delete of a single flow, ignoring all other". A DELETE_ONLY push
      * scoped by a glob removes only the flow(s) matching that glob; a flow that was also deleted from Kestra but
      * falls outside the glob's scope is left untouched on the branch, proving the glob is genuinely applied rather
      * than every deletion being pushed regardless of the filter.
