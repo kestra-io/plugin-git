@@ -70,8 +70,12 @@ public class SyncNamespaceFilesContainerTest extends AbstractKestraContainerTest
         assertThat("the namespace must have been created and listed via the API", namespace, notNullValue());
         assertThat(namespace.getId(), is(TARGET_NAMESPACE));
 
-        var files = client.files().listNamespaceDirectoryFiles(TARGET_NAMESPACE, TENANT_ID, "/");
-        assertThat("synced files must be visible via the API", files, not(empty()));
+        // The synced files themselves are NOT asserted against the container API here on purpose:
+        // the task runs in this test JVM, so writeResource() writes files through runContext.storage()
+        // to the local test storage, while only namespace creation goes over the SDK client to the
+        // container. The container uses its own storage (no shared volume), so its API can never see
+        // files written by this JVM. File-write behavior is covered by the unit test SyncNamespaceFilesTest;
+        // this container test verifies the #338 fix: the missing namespace is created via the API.
     }
 
     private RunContext buildRunContext() {
