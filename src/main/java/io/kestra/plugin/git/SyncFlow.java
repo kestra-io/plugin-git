@@ -8,6 +8,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.eclipse.jgit.api.Git;
 
 import io.kestra.core.models.annotations.Example;
@@ -180,7 +181,7 @@ public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlo
                     // failure, surfaced here so a misconfigured kestraUrl isn't silently reported as revision 1.
                     runContext.logger().warn(
                         "Failed to fetch existing flow {}.{} from the Kestra API (status {}): {} — assuming it does not exist yet for revision projection",
-                        rNamespace, flowId, e.getCode(), ApiErrors.truncate(e.getMessage())
+                        rNamespace, flowId, e.getCode(), StringUtils.abbreviate(StringUtils.defaultString(e.getMessage()), 500)
                     );
                 }
                 projectedRevision = 1;

@@ -15,6 +15,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
 
 import io.kestra.core.exceptions.FlowProcessingException;
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
@@ -388,7 +389,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             throw new KestraRuntimeException("Failed to export flows from Kestra for namespace " + namespace, e);
         } catch (ApiException e) {
             throw new KestraRuntimeException(
-                "Failed to export flows from Kestra for namespace " + namespace + " (HTTP " + e.getCode() + "): " + ApiErrors.truncate(e.getMessage()), e
+                "Failed to export flows from Kestra for namespace " + namespace + " (HTTP " + e.getCode() + "): " + StringUtils.abbreviate(StringUtils.defaultString(e.getMessage()), 500), e
             );
         }
     }
@@ -414,7 +415,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             // leaves the lookup unresolved, so callers must not assume the flow is absent.
             runContext.logger().warn(
                 "Failed to fetch flow {}.{} from the Kestra API (status {}): {}",
-                namespace, flowId, e.getCode(), ApiErrors.truncate(e.getMessage())
+                namespace, flowId, e.getCode(), StringUtils.abbreviate(StringUtils.defaultString(e.getMessage()), 500)
             );
             return new FlowLookup(null, false);
         }
