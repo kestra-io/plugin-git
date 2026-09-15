@@ -6,19 +6,24 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
 import org.apache.commons.io.IOUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.event.Level;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 
 import io.kestra.core.junit.annotations.KestraTest;
+import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.models.property.Property;
+import io.kestra.core.queues.DispatchQueueInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
@@ -26,16 +31,19 @@ import io.kestra.core.storages.Namespace;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.core.utils.KestraIgnore;
 import io.kestra.core.utils.Rethrow;
+import io.kestra.core.utils.TestsUtils;
 import io.kestra.plugin.git.shared.testkit.AbstractGitTest;
 
 import jakarta.inject.Inject;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.notNullValue;
 
 @KestraTest
 public class SyncNamespaceFilesTest extends AbstractGitTest {
@@ -46,6 +54,9 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
 
     @Inject
     private RunContextFactory runContextFactory;
+
+    @Inject
+    private DispatchQueueInterface<LogEntry> logQueue;
 
     @BeforeEach
     void init() throws IOException {
@@ -295,6 +306,166 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
             is(true)
         );
 
+    }
+
+    /**
+     * Reproduces <a href="https://github.com/kestra-io/plugin-git/issues/338">#338</a>: syncing into a namespace
+     * that doesn't exist yet must create it so the files are visible in the UI, not just written to storage.
+     */
+    @Test
+    void namespaceMissing_ShouldBeCreatedAutomatically() throws Exception {
+        String targetNamespace = "new.namespace.missing";
+        runContextFactory.of().storage().namespace(targetNamespace).delete(Path.of("/"));
+
+        try (var apiServer = new NamespaceLifecycleMockServer()) {
+            RunContext runContext = runContextFactory.of(
+                Map.of(
+                    "flow", Map.of("tenantId", TENANT_ID, "namespace", "system"),
+                    "url", repositoryUrl,
+                    "pat", pat,
+                    "branch", BRANCH,
+                    "namespace", targetNamespace,
+                    "gitDirectory", GIT_DIRECTORY
+                )
+            );
+
+            SyncNamespaceFiles task = SyncNamespaceFiles.builder()
+                .url(Property.ofExpression("{{url}}"))
+                .username(Property.ofExpression("{{pat}}"))
+                .password(Property.ofExpression("{{pat}}"))
+                .branch(Property.ofExpression("{{branch}}"))
+                .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+                .namespace(Property.ofExpression("{{namespace}}"))
+                .kestraUrl(Property.ofValue(apiServer.url()))
+                .build();
+
+            task.run(runContext);
+
+            assertThat(apiServer.createAttempts(), is(List.of(targetNamespace)));
+            assertThat(apiServer.createdNamespaces(), is(List.of(targetNamespace)));
+            assertThat(runContext.storage().namespace(targetNamespace).exists(Path.of("/_flows/first-flow.yml")), is(true));
+        }
+    }
+
+    /**
+     * {@code GET namespaces/{id}} returns a synthetic 200 even for a namespace that was never persisted, so
+     * existence can only be established by attempting the create and treating an "already exists" response as a
+     * no-op. Kestra Enterprise Edition reports that as a {@code 422} validation error, not a {@code 409}; this
+     * must be recognized as a benign conflict, not surfaced as a misleading warning on every re-sync.
+     */
+    @Test
+    void namespaceAlreadyExists_ShouldSwallowConflict() throws Exception {
+        String targetNamespace = "existing.namespace";
+        runContextFactory.of().storage().namespace(targetNamespace).delete(Path.of("/"));
+
+        List<LogEntry> logs = new CopyOnWriteArrayList<>();
+        logQueue.addListener(logs::add);
+
+        try (var apiServer = new NamespaceLifecycleMockServer(targetNamespace)) {
+            SyncNamespaceFiles task = SyncNamespaceFiles.builder()
+                .id("sync-namespace-files-existing")
+                .type(SyncNamespaceFiles.class.getName())
+                .url(Property.ofValue(repositoryUrl))
+                .username(Property.ofValue(pat))
+                .password(Property.ofValue(pat))
+                .branch(Property.ofValue(BRANCH))
+                .gitDirectory(Property.ofValue(GIT_DIRECTORY))
+                .namespace(Property.ofValue(targetNamespace))
+                .kestraUrl(Property.ofValue(apiServer.url()))
+                .build();
+
+            RunContext runContext = TestsUtils.mockRunContext(TENANT_ID, runContextFactory, task, Collections.emptyMap());
+            task.run(runContext);
+
+            assertThat(apiServer.createAttempts(), is(List.of(targetNamespace)));
+            assertThat(apiServer.createdNamespaces(), empty());
+            assertThat(runContext.storage().namespace(targetNamespace).exists(Path.of("/_flows/first-flow.yml")), is(true));
+
+            List<LogEntry> warnLogs = TestsUtils.awaitLogs(
+                logs,
+                logEntry -> logEntry.getLevel().equals(Level.WARN) && logEntry.getMessage() != null && logEntry.getMessage().contains(targetNamespace),
+                1
+            );
+            assertThat(warnLogs, empty());
+        }
+    }
+
+    @Test
+    void dryRun_ShouldNotCreateNamespace() throws Exception {
+        String targetNamespace = "dryrun.namespace.missing";
+        runContextFactory.of().storage().namespace(targetNamespace).delete(Path.of("/"));
+
+        try (var apiServer = new NamespaceLifecycleMockServer()) {
+            RunContext runContext = runContextFactory.of(
+                Map.of(
+                    "flow", Map.of("tenantId", TENANT_ID, "namespace", "system"),
+                    "url", repositoryUrl,
+                    "pat", pat,
+                    "branch", BRANCH,
+                    "namespace", targetNamespace,
+                    "gitDirectory", GIT_DIRECTORY
+                )
+            );
+
+            SyncNamespaceFiles task = SyncNamespaceFiles.builder()
+                .url(Property.ofExpression("{{url}}"))
+                .username(Property.ofExpression("{{pat}}"))
+                .password(Property.ofExpression("{{pat}}"))
+                .branch(Property.ofExpression("{{branch}}"))
+                .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+                .namespace(Property.ofExpression("{{namespace}}"))
+                .kestraUrl(Property.ofValue(apiServer.url()))
+                .dryRun(Property.ofValue(true))
+                .build();
+
+            task.run(runContext);
+
+            assertThat(apiServer.createAttempts(), empty());
+            assertThat(apiServer.createdNamespaces(), empty());
+        }
+    }
+
+    /**
+     * Backward-compatibility guard: if the Kestra API is unreachable (e.g. no {@code auth} configured and no
+     * server at the default URL), the sync must still succeed instead of failing the task.
+     */
+    @Test
+    void kestraApiUnreachable_ShouldWarnAndStillSync() throws Exception {
+        String targetNamespace = "unreachable.namespace";
+        runContextFactory.of().storage().namespace(targetNamespace).delete(Path.of("/"));
+
+        String unreachableUrl;
+        try (var apiServer = new NamespaceLifecycleMockServer()) {
+            unreachableUrl = apiServer.url();
+        }
+
+        List<LogEntry> logs = new CopyOnWriteArrayList<>();
+        logQueue.addListener(logs::add);
+
+        SyncNamespaceFiles task = SyncNamespaceFiles.builder()
+            .id("sync-namespace-files")
+            .type(SyncNamespaceFiles.class.getName())
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
+            .gitDirectory(Property.ofValue(GIT_DIRECTORY))
+            .namespace(Property.ofValue(targetNamespace))
+            .kestraUrl(Property.ofValue(unreachableUrl))
+            .build();
+
+        RunContext runContext = TestsUtils.mockRunContext(TENANT_ID, runContextFactory, task, Collections.emptyMap());
+        SyncNamespaceFiles.Output output = task.run(runContext);
+
+        assertThat(output, notNullValue());
+        assertThat(runContext.storage().namespace(targetNamespace).exists(Path.of("/_flows/first-flow.yml")), is(true));
+
+        List<LogEntry> warnLogs = TestsUtils.awaitLogs(
+            logs,
+            logEntry -> logEntry.getLevel().equals(Level.WARN) && logEntry.getMessage().contains(targetNamespace),
+            1
+        );
+        assertThat(warnLogs, hasSize(1));
     }
 
     private static List<Map<String, String>> defaultCaseDiffs(boolean withDeleted) {
