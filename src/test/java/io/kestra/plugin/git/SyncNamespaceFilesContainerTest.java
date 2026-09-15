@@ -12,6 +12,7 @@ import io.kestra.core.runners.RunContextFactory;
 import io.kestra.plugin.git.shared.testkit.AbstractKestraContainerTest;
 import io.kestra.sdk.KestraClient;
 
+import io.micronaut.context.annotation.Value;
 import jakarta.inject.Inject;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -26,6 +27,7 @@ import static org.hamcrest.Matchers.*;
  * <p>
  * The Kestra container is started once per class by {@link AbstractKestraContainerTest}.
  * Kestra API credentials are hardcoded for test use only.
+ * GitHub credentials are read from the {@code kestra.git.pat} Micronaut property (set via {@code GH_PERSONAL_TOKEN}).
  */
 @KestraTest
 @io.micronaut.context.annotation.Property(name = "kestra.tasks.sdk.authentication.username", value = "admin@admin.com")
@@ -40,12 +42,17 @@ public class SyncNamespaceFilesContainerTest extends AbstractKestraContainerTest
     @Inject
     private RunContextFactory runContextFactory;
 
+    @Value("${kestra.git.pat}")
+    private String gitPat;
+
     @Test
     void syncIntoMissingNamespace_shouldCreateNamespaceAndSyncFiles() throws Exception {
         var runContext = buildRunContext();
 
         var task = SyncNamespaceFiles.builder()
             .url(Property.ofValue(REPO_URL))
+            .username(Property.ofValue(gitPat))
+            .password(Property.ofValue(gitPat))
             .branch(Property.ofValue(BRANCH))
             .gitDirectory(Property.ofValue(GIT_DIRECTORY))
             .namespace(Property.ofValue(TARGET_NAMESPACE))
