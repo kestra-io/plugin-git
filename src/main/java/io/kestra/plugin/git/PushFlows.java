@@ -15,6 +15,8 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import org.apache.commons.lang3.StringUtils;
+
 import com.google.common.annotations.VisibleForTesting;
 
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
@@ -258,7 +260,9 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         } catch (IOException e) {
             throw new KestraRuntimeException("Failed to export flows from Kestra for namespace " + namespace, e);
         } catch (ApiException e) {
-            throw new KestraRuntimeException("Failed to export flows from Kestra for namespace " + namespace, e);
+            throw new KestraRuntimeException(
+                "Failed to export flows from Kestra for namespace " + namespace + " (HTTP " + e.getCode() + "): " + StringUtils.abbreviate(StringUtils.defaultString(e.getMessage()), 500), e
+            );
         }
     }
 
