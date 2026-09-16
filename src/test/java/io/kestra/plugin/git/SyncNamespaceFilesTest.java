@@ -297,6 +297,81 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
 
     }
 
+    /**
+     * unit test to reproduce <a href="https://github.com/kestra-io/plugin-git/issues/330">...</a>:
+     * a file removed from Git between two syncs must be deleted from the namespace on the second sync.
+     */
+    @Test
+    void secondSyncAfterFileRemovedFromGit_WithDelete_ShouldDeleteFile() throws Exception {
+        String gitDir = "namespace_files";
+        String keptFile = "keep.txt";
+        String removedFile = "to_delete.txt";
+
+        Path repoDir = Files.createTempDirectory("unit-test.delete-on-second-sync-repo");
+        Path filesDir = repoDir.resolve(gitDir);
+        Files.createDirectories(filesDir);
+        Files.writeString(filesDir.resolve(keptFile), "keep me");
+        Files.writeString(filesDir.resolve(removedFile), "delete me");
+
+        try (org.eclipse.jgit.api.Git git = org.eclipse.jgit.api.Git.init().setDirectory(repoDir.toFile()).call()) {
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("initial commit").setAuthor("test", "test@test.com").call();
+
+            SyncNamespaceFiles task = SyncNamespaceFiles.builder()
+                .url(Property.ofExpression("{{url}}"))
+                .branch(Property.ofExpression("{{branch}}"))
+                .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+                .namespace(Property.ofExpression("{{namespace}}"))
+                .delete(Property.ofValue(true))
+                .build();
+
+            RunContext firstRunContext = runContextFactory.of(
+                Map.of(
+                    "flow", Map.of("tenantId", TENANT_ID, "namespace", "system"),
+                    "url", repoDir.toUri().toString(),
+                    "pat", "",
+                    "branch", "master",
+                    "namespace", NAMESPACE,
+                    "gitDirectory", gitDir
+                )
+            );
+            task.run(firstRunContext);
+
+            assertThat(firstRunContext.storage().namespace(NAMESPACE).exists(Path.of(keptFile)), is(true));
+            assertThat(firstRunContext.storage().namespace(NAMESPACE).exists(Path.of(removedFile)), is(true));
+
+            Files.delete(filesDir.resolve(removedFile));
+            git.rm().addFilepattern(gitDir + "/" + removedFile).call();
+            git.commit().setMessage("remove file").setAuthor("test", "test@test.com").call();
+
+            RunContext secondRunContext = runContextFactory.of(
+                Map.of(
+                    "flow", Map.of("tenantId", TENANT_ID, "namespace", "system"),
+                    "url", repoDir.toUri().toString(),
+                    "pat", "",
+                    "branch", "master",
+                    "namespace", NAMESPACE,
+                    "gitDirectory", gitDir
+                )
+            );
+            SyncNamespaceFiles.Output secondSyncOutput = task.run(secondRunContext);
+
+            assertThat(secondRunContext.storage().namespace(NAMESPACE).exists(Path.of(keptFile)), is(true));
+            assertThat(secondRunContext.storage().namespace(NAMESPACE).exists(Path.of(removedFile)), is(false));
+
+            List<Map<String, String>> secondDiffs = readDiffs(secondRunContext, secondSyncOutput.diffFileUri());
+            String expectedKestraPath = "/" + NAMESPACE.replace('.', '/') + "/_files/" + removedFile;
+            assertThat(
+                secondDiffs.stream()
+                    .filter(diff -> expectedKestraPath.equals(diff.get("kestraPath")))
+                    .findFirst()
+                    .orElseThrow(() -> new AssertionError(removedFile + " not reported as DELETED in second sync diffs: " + secondDiffs))
+                    .get("syncState"),
+                is("DELETED")
+            );
+        }
+    }
+
     private static List<Map<String, String>> defaultCaseDiffs(boolean withDeleted) {
         ArrayList<Map<String, String>> diffs = new ArrayList<>(
             List.of(
