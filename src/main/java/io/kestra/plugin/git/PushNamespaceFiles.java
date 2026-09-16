@@ -1,16 +1,21 @@
 package io.kestra.plugin.git;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
@@ -172,8 +177,9 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
             `/shared-scripts/foo.py` is pushed as `foo.py` inside `gitDirectory` instead of \
             `shared-scripts/foo.py`. Defaults to `/` (namespace root, i.e. no prefix — existing flows are \
             unaffected). The `files` glob still matches against the full namespace-relative path, independently \
-            of this prefix. Note that `delete` (default true) still applies to the whole `gitDirectory`, so files \
-            previously pushed from outside this prefix are removed unless `files` also excludes them."""
+            of this prefix. Also scopes `delete` (default true) to files already under this prefix in \
+            `gitDirectory`, so files previously pushed from outside this prefix are left untouched even on the \
+            very first scoped push."""
     )
     @Builder.Default
     @PluginProperty(group = "destination")
@@ -219,11 +225,12 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
 
         String renderedNamespace = runContext.render(this.namespace).as(String.class).orElse(null);
         Predicate<Path> matcher = (globs != null) ? PathMatcherPredicate.matches(globs) : (path -> true);
-        String prefix = normalizeNamespaceDirectory(runContext.render(this.namespaceDirectory).as(String.class).orElse("/"));
+        String prefix = NamespaceDirectories.normalize(runContext.render(this.namespaceDirectory).as(String.class).orElse("/"));
+        boolean includeChildren = runContext.render(this.includeChildNamespaces).as(Boolean.class).orElse(false);
 
         List<String> namespaces = new ArrayList<>();
         namespaces.add(renderedNamespace);
-        if (runContext.render(this.includeChildNamespaces).as(Boolean.class).orElse(false)) {
+        if (includeChildren) {
             namespaces.addAll(descendantNamespaces(runContext, runContext.flowInfo().tenantId(), renderedNamespace));
         }
 
@@ -234,7 +241,7 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
             Path directory = namespaceToPush.equals(renderedNamespace) ? baseDirectory : baseDirectory.resolve(namespaceToPush);
             for (NamespaceFile nsFile : storage.findAllFilesMatching(matcher)) {
                 anyGlobMatch = true;
-                String relativeToPrefix = stripNamespaceDirectory(nsFile.path(), prefix);
+                String relativeToPrefix = NamespaceDirectories.stripPrefix(nsFile.path(), prefix);
                 if (relativeToPrefix == null) {
                     continue;
                 }
@@ -250,38 +257,65 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
             );
         }
 
+        // AbstractPushTask#deleteOutdatedResources (plugin-git-lib, unmodifiable) walks the whole gitDirectory and
+        // stages `git rm` for every already-checked-out file not returned by this method, unaware of
+        // `namespaceDirectory`. Re-add files that fall outside the prefix, reading their current content back from
+        // disk, so a scoped push with the default delete:true doesn't wipe out everything previously pushed outside
+        // the new prefix.
+        if (!prefix.isEmpty() && runContext.render(this.getDelete()).as(Boolean.class).orElse(true)) {
+            Set<Path> childDirectories = new HashSet<>();
+            if (includeChildren) {
+                for (String namespaceToPush : namespaces) {
+                    if (!namespaceToPush.equals(renderedNamespace)) {
+                        childDirectories.add(baseDirectory.resolve(namespaceToPush));
+                    }
+                }
+            }
+            for (String namespaceToPush : namespaces) {
+                Path directory = namespaceToPush.equals(renderedNamespace) ? baseDirectory : baseDirectory.resolve(namespaceToPush);
+                Set<Path> excluded = namespaceToPush.equals(renderedNamespace) ? childDirectories : Set.of();
+                preserveFilesOutsidePrefix(directory, excluded, prefix, filesMap);
+            }
+        }
+
         return filesMap;
     }
 
-    // "/", "" and null all normalize to "" (no prefix); a leading slash is optional on input and forced on output
-    private static String normalizeNamespaceDirectory(String rendered) {
-        if (rendered == null) {
-            return "";
+    // Re-adds already-checked-out regular files under `directory` that fall outside `prefix` (e.g. left over from a
+    // previous unscoped push), skipping files under `excludedDirectories` (sibling child-namespace directories,
+    // handled by their own call) and anything nested in a .git metadata directory (relevant when gitDirectory is
+    // the repository root itself).
+    private void preserveFilesOutsidePrefix(Path directory, Set<Path> excludedDirectories, String prefix, Map<Path, Supplier<InputStream>> filesMap) throws IOException {
+        if (!Files.isDirectory(directory)) {
+            return;
         }
-        List<String> segments = Arrays.stream(rendered.trim().split("/"))
-            .filter(segment -> !segment.isEmpty())
-            .toList();
-        if (segments.contains("..")) {
-            throw new IllegalArgumentException(
-                "Invalid 'namespaceDirectory' value '" + rendered + "': '..' path segments are not allowed."
-            );
+        List<Path> existingFiles;
+        try (Stream<Path> walk = Files.walk(directory)) {
+            existingFiles = walk.filter(Files::isRegularFile).toList();
         }
-        return segments.isEmpty() ? "" : "/" + String.join("/", segments);
+        for (Path file : existingFiles) {
+            if (filesMap.containsKey(file) || excludedDirectories.stream().anyMatch(file::startsWith)) {
+                continue;
+            }
+            Path relative = directory.relativize(file);
+            if (isInsideGitMetadataDirectory(relative)) {
+                continue;
+            }
+            String candidatePath = "/" + relative.toString().replace('\\', '/');
+            if (!NamespaceDirectories.isUnderPrefix(candidatePath, prefix)) {
+                byte[] content = Files.readAllBytes(file);
+                filesMap.put(file, () -> new ByteArrayInputStream(content));
+            }
+        }
     }
 
-    // Relativizes a namespace-relative path against the prefix, or returns null when it falls outside it
-    private static String stripNamespaceDirectory(String path, String prefix) {
-        if (prefix.isEmpty()) {
-            return path;
+    private static boolean isInsideGitMetadataDirectory(Path relative) {
+        for (Path segment : relative) {
+            if (".git".equals(segment.toString())) {
+                return true;
+            }
         }
-        String normalizedPath = "/" + path;
-        if (normalizedPath.equals(prefix)) {
-            return "";
-        }
-        if (!normalizedPath.startsWith(prefix + "/")) {
-            return null;
-        }
-        return normalizedPath.substring(prefix.length() + 1);
+        return false;
     }
 
     @Override

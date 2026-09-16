@@ -8,7 +8,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -188,10 +187,6 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
     @ToString.Exclude
     private transient List<String> resolvedChildNamespaces;
 
-    @Getter(AccessLevel.NONE)
-    @ToString.Exclude
-    private transient String resolvedNamespaceDirectory;
-
     @Override
     public Property<String> fetchedNamespace() {
         return this.namespace;
@@ -209,42 +204,17 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
         return this.resolvedChildNamespaces;
     }
 
-    // Rendered and normalized once per run and reused by fetchResources and resolveTarget
+    // Rendered and normalized on every call rather than cached on the instance: a parsed Task instance can be
+    // reused concurrently across executions (e.g. namespaceDirectory driven by {{ inputs.folder }}), and an
+    // instance-level cache would let one execution read another's resolved prefix.
     private String namespaceDirectoryPrefix(RunContext runContext) throws IOException {
-        if (this.resolvedNamespaceDirectory == null) {
-            try {
-                this.resolvedNamespaceDirectory = normalizeNamespaceDirectory(
-                    runContext.render(this.namespaceDirectory).as(String.class).orElse("/")
-                );
-            } catch (IllegalVariableEvaluationException e) {
-                throw new IOException(e);
-            }
-        }
-        return this.resolvedNamespaceDirectory;
-    }
-
-    // "/", "" and null all normalize to "" (no prefix); a leading slash is optional on input and forced on output
-    private static String normalizeNamespaceDirectory(String rendered) {
-        if (rendered == null) {
-            return "";
-        }
-        List<String> segments = Arrays.stream(rendered.trim().split("/"))
-            .filter(segment -> !segment.isEmpty())
-            .toList();
-        if (segments.contains("..")) {
-            throw new IllegalArgumentException(
-                "Invalid 'namespaceDirectory' value '" + rendered + "': '..' path segments are not allowed."
+        try {
+            return NamespaceDirectories.normalize(
+                runContext.render(this.namespaceDirectory).as(String.class).orElse("/")
             );
+        } catch (IllegalVariableEvaluationException e) {
+            throw new IOException(e);
         }
-        return segments.isEmpty() ? "" : "/" + String.join("/", segments);
-    }
-
-    private static boolean isUnderNamespaceDirectory(NamespaceFile resource, String prefix) {
-        if (prefix.isEmpty()) {
-            return true;
-        }
-        String path = "/" + resource.path();
-        return path.equals(prefix) || path.startsWith(prefix + "/");
     }
 
     @Override
@@ -402,13 +372,13 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
         String prefix = this.namespaceDirectoryPrefix(runContext);
         List<NamespaceFile> resources = new ArrayList<>(
             runContext.storage().namespace(renderedNamespace).all().stream()
-                .filter(resource -> isUnderNamespaceDirectory(resource, prefix))
+                .filter(resource -> NamespaceDirectories.isUnderPrefix("/" + resource.path(), prefix))
                 .toList()
         );
         if (runContext.render(this.includeChildNamespaces).as(Boolean.class).orElse(false)) {
             for (String child : childNamespaces(runContext, renderedNamespace)) {
                 runContext.storage().namespace(child).all().stream()
-                    .filter(resource -> isUnderNamespaceDirectory(resource, prefix))
+                    .filter(resource -> NamespaceDirectories.isUnderPrefix("/" + resource.path(), prefix))
                     .forEach(resources::add);
             }
         }
@@ -456,7 +426,17 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
         }
 
         String prefix = this.namespaceDirectoryPrefix(runContext);
-        return prefix.isEmpty() ? routed : new Target(routed.namespace(), URI.create(prefix + routed.uri()));
+        if (prefix.isEmpty()) {
+            return routed;
+        }
+        try {
+            return new Target(routed.namespace(), URI.create(prefix + routed.uri()));
+        } catch (IllegalArgumentException e) {
+            throw new IOException(
+                "Invalid 'namespaceDirectory' value '" + prefix + "': combined with the destination path, it does not form a valid URI (" + e.getMessage() + ").",
+                e
+            );
+        }
     }
 
     @Override

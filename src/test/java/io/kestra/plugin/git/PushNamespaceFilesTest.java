@@ -806,6 +806,153 @@ public class PushNamespaceFilesTest extends AbstractGitTest {
         }
     }
 
+    @Test
+    void namespaceDirectory_Delete_PreservesFilesOutsidePrefix() throws Exception {
+        String tenantId = TenantService.MAIN_TENANT;
+        String namespace = IdUtils.create().toLowerCase();
+        String branch = IdUtils.create();
+        String gitDirectory = "my-files";
+
+        Path remoteRepo = createLocalBareRepo();
+        seedBranch(remoteRepo, branch, Map.of(gitDirectory + "/existing/outside.txt", "outside prefix content"));
+
+        RunContext runContext = runContext(tenantId, localUrl(remoteRepo), gitUserEmail, gitUserName, branch, namespace, gitDirectory);
+        runContext.storage().namespace(namespace).putFile(Path.of("shared-scripts/keep.txt"), new ByteArrayInputStream("kept".getBytes(StandardCharsets.UTF_8)));
+
+        PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
+            .id("pushNamespaceFiles-namespace-directory-preserve")
+            .type(PushNamespaceFiles.class.getName())
+            .branch(Property.ofExpression("{{branch}}"))
+            .url(Property.ofExpression("{{url}}"))
+            .commitMessage(Property.ofExpression("Push from CI - {{description}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .authorEmail(Property.ofExpression("{{email}}"))
+            .authorName(Property.ofExpression("{{name}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .namespaceDirectory(Property.ofValue("/shared-scripts"))
+            .build();
+
+        // delete defaults to true: without the namespaceDirectory-aware preserve fix, this scoped push would wipe
+        // out `existing/outside.txt`, which is outside the prefix but already checked out in gitDirectory
+        pushNamespaceFiles.run(runContext);
+
+        Clone clone = Clone.builder()
+            .id("clone")
+            .type(Clone.class.getName())
+            .url(Property.ofValue(localUrl(remoteRepo)))
+            .branch(Property.ofValue(branch))
+            .build();
+        Clone.Output cloneOutput = clone.run(runContextFactory.of());
+        Path repoGitDirectory = Path.of(cloneOutput.getDirectory(), gitDirectory);
+
+        File preserved = new File(repoGitDirectory.toString(), "existing/outside.txt");
+        assertThat(preserved.exists(), is(true));
+        assertThat(FileUtils.readFileToString(preserved, StandardCharsets.UTF_8), is("outside prefix content"));
+
+        File keepFile = new File(repoGitDirectory.toString(), "keep.txt");
+        assertThat(keepFile.exists(), is(true));
+        assertThat(FileUtils.readFileToString(keepFile, StandardCharsets.UTF_8), is("kept"));
+    }
+
+    @Test
+    void namespaceDirectory_IncludeChildNamespaces_ScopesEachNamespace() throws Exception {
+        String tenantId = TenantService.MAIN_TENANT;
+        String namespace = IdUtils.create().toLowerCase();
+        String childNamespace = namespace + ".child";
+        String branch = IdUtils.create();
+        String gitDirectory = "my-files";
+
+        Path remoteRepo = createLocalBareRepo();
+
+        RunContext runContext = runContext(tenantId, localUrl(remoteRepo), gitUserEmail, gitUserName, branch, namespace, gitDirectory);
+        runContext.storage().namespace(namespace).putFile(Path.of("shared-scripts/foo.py"), new ByteArrayInputStream("print(1)".getBytes(StandardCharsets.UTF_8)));
+        runContext.storage().namespace(childNamespace).putFile(Path.of("shared-scripts/bar.py"), new ByteArrayInputStream("print(2)".getBytes(StandardCharsets.UTF_8)));
+
+        try (NamespacesSearchMockServer namespaces = NamespacesSearchMockServer.start(List.of(childNamespace))) {
+            PushNamespaceFiles pushNamespaceFiles = PushNamespaceFiles.builder()
+                .id("pushNamespaceFiles-namespace-directory-children")
+                .type(PushNamespaceFiles.class.getName())
+                .branch(Property.ofExpression("{{branch}}"))
+                .url(Property.ofExpression("{{url}}"))
+                .commitMessage(Property.ofExpression("Push from CI - {{description}}"))
+                .username(Property.ofExpression("{{pat}}"))
+                .password(Property.ofExpression("{{pat}}"))
+                .authorEmail(Property.ofExpression("{{email}}"))
+                .authorName(Property.ofExpression("{{name}}"))
+                .namespace(Property.ofExpression("{{namespace}}"))
+                .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+                .namespaceDirectory(Property.ofValue("/shared-scripts"))
+                .includeChildNamespaces(Property.ofValue(true))
+                .kestraUrl(Property.ofValue(namespaces.url()))
+                .build();
+
+            pushNamespaceFiles.run(runContext);
+        }
+
+        Clone clone = Clone.builder()
+            .id("clone")
+            .type(Clone.class.getName())
+            .url(Property.ofValue(localUrl(remoteRepo)))
+            .branch(Property.ofValue(branch))
+            .build();
+        Clone.Output cloneOutput = clone.run(runContextFactory.of());
+        Path repoGitDirectory = Path.of(cloneOutput.getDirectory(), gitDirectory);
+
+        // primary namespace file: prefix stripped, lands at the gitDirectory root
+        File primaryFile = new File(repoGitDirectory.toString(), "foo.py");
+        assertThat(primaryFile.exists(), is(true));
+        assertThat(FileUtils.readFileToString(primaryFile, StandardCharsets.UTF_8), is("print(1)"));
+
+        // child namespace file: nested under its own dotted-name folder, prefix stripped inside it
+        File childFile = new File(repoGitDirectory.toString(), childNamespace + "/bar.py");
+        assertThat(childFile.exists(), is(true));
+        assertThat(FileUtils.readFileToString(childFile, StandardCharsets.UTF_8), is("print(2)"));
+    }
+
+    // Creates a local, non-bare-backed git repository usable as a push remote without external credentials or
+    // network access: a bare repo (so pushes are never rejected as updating "the currently checked out branch")
+    // seeded with one commit on its default branch.
+    private Path createLocalBareRepo() throws Exception {
+        Path repoDir = Files.createTempDirectory("unit-test.push-namespace-directory-bare");
+        Git.init().setDirectory(repoDir.toFile()).setBare(true).call().close();
+
+        Path seedClone = Files.createTempDirectory("unit-test.push-namespace-directory-seed");
+        try (Git git = Git.cloneRepository().setURI(repoDir.toUri().toString()).setDirectory(seedClone.toFile()).call()) {
+            Files.writeString(seedClone.resolve("README.md"), "seed");
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("seed commit").setAuthor("test", "test@test.com").call();
+            git.push().call();
+        } finally {
+            FileUtils.deleteQuietly(seedClone.toFile());
+        }
+        return repoDir;
+    }
+
+    // Pushes the given files as a new commit on a new branch of the local bare repo, so the branch already exists
+    // with pre-existing content before the task under test clones and pushes to it.
+    private void seedBranch(Path bareRepoDir, String branch, Map<String, String> filesByRelativePath) throws Exception {
+        Path seedClone = Files.createTempDirectory("unit-test.push-namespace-directory-branch-seed");
+        try (Git git = Git.cloneRepository().setURI(bareRepoDir.toUri().toString()).setDirectory(seedClone.toFile()).call()) {
+            git.checkout().setCreateBranch(true).setName(branch).call();
+            for (Map.Entry<String, String> entry : filesByRelativePath.entrySet()) {
+                Path filePath = seedClone.resolve(entry.getKey());
+                Files.createDirectories(filePath.getParent());
+                Files.writeString(filePath, entry.getValue());
+            }
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("branch seed commit").setAuthor("test", "test@test.com").call();
+            git.push().call();
+        } finally {
+            FileUtils.deleteQuietly(seedClone.toFile());
+        }
+    }
+
+    private static String localUrl(Path repoDir) {
+        return repoDir.toUri().toString();
+    }
+
     private static void assertNamespaceFileContent(RunContext runContext, String namespace, String namespaceFileUri, String expectedFileContent) throws IOException {
         try (InputStream is = runContext.storage().namespace(namespace).getFileContent(Path.of(namespaceFileUri))) {
             assertThat(IOUtils.toString(is, StandardCharsets.UTF_8), is(expectedFileContent));

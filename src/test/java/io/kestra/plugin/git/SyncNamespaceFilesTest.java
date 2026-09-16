@@ -405,6 +405,39 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
     }
 
     @Test
+    void namespaceDirectory_Delete_ChildNamespace_ScopesToPrefix() throws Exception {
+        String childNamespace = NAMESPACE + ".child";
+        runContextFactory.of().storage().namespace(childNamespace).delete(Path.of("/"));
+
+        Path repoDir = createLocalRepo(Map.of("content/" + childNamespace + "/keep.txt", "kept from git"));
+
+        RunContext setupContext = runContext();
+        setupContext.storage().namespace(childNamespace).putFile(Path.of("outside.txt"), new ByteArrayInputStream("outside prefix".getBytes()));
+        setupContext.storage().namespace(childNamespace).putFile(Path.of("shared-scripts/stale.txt"), new ByteArrayInputStream("stale".getBytes()));
+
+        try (NamespacesSearchMockServer namespaces = NamespacesSearchMockServer.start(List.of(childNamespace))) {
+            SyncNamespaceFiles task = SyncNamespaceFiles.builder()
+                .url(Property.ofExpression("{{url}}"))
+                .branch(Property.ofExpression("{{branch}}"))
+                .namespace(Property.ofExpression("{{namespace}}"))
+                .gitDirectory(Property.ofValue("content"))
+                .namespaceDirectory(Property.ofValue("/shared-scripts"))
+                .includeChildNamespaces(Property.ofValue(true))
+                .delete(Property.ofValue(true))
+                .kestraUrl(Property.ofValue(namespaces.url()))
+                .build();
+            task.run(localRunContext(repoDir));
+        }
+
+        Namespace childStorage = runContext().storage().namespace(childNamespace);
+        assertThat(childStorage.exists(Path.of("outside.txt")), is(true));
+        assertThat(childStorage.exists(Path.of("shared-scripts/stale.txt")), is(false));
+        try (InputStream is = childStorage.getFileContent(Path.of("shared-scripts/keep.txt"))) {
+            assertThat(new BufferedReader(new InputStreamReader(is)).lines().collect(Collectors.joining("\n")), is("kept from git"));
+        }
+    }
+
+    @Test
     void namespaceDirectory_AcceptsWithAndWithoutLeadingSlash() throws Exception {
         Path repoDir = createLocalRepo(Map.of("content/foo.py", "print(1)"));
 
