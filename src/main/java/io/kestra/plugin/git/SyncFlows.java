@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -48,7 +49,7 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @Schema(
     title = "Sync flows from Git",
-    description = "Imports flows from a Git branch into `targetNamespace`, optionally traversing child namespaces. Can rewrite namespaces to `targetNamespace`, delete missing flows when `delete` is true, and emit a diff on dry-run."
+    description = "Imports flows from a Git branch into `targetNamespace`, optionally traversing child namespaces. Can rewrite namespaces to `targetNamespace`, delete missing flows when `delete` is true, and emit a diff on dry-run. See `Output.unresolvedFlowLookups` for a signal that some flows may be misreported in the diff because their Kestra state could not be resolved."
 )
 @Plugin(
     examples = {
@@ -171,9 +172,51 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     @PluginProperty(group = "advanced")
     private Property<Boolean> ignoreInvalidFlows = Property.ofValue(false);
 
+    // Per-run counters for single-flow API lookups (fetchFlowFromApi), reset at the start of every run() so a task
+    // instance reused across concurrent executions never leaks one execution's counts into another's.
+    @Getter(AccessLevel.NONE)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private transient AtomicInteger attemptedFlowLookups;
+
+    @Getter(AccessLevel.NONE)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private transient AtomicInteger unresolvedFlowLookups;
+
     @Override
     public Property<String> fetchedNamespace() {
         return this.targetNamespace;
+    }
+
+    @Override
+    public Output run(RunContext runContext) throws Exception {
+        this.attemptedFlowLookups = new AtomicInteger(0);
+        this.unresolvedFlowLookups = new AtomicInteger(0);
+
+        Output output = super.run(runContext);
+
+        int attempted = this.attemptedFlowLookups.get();
+        int unresolved = this.unresolvedFlowLookups.get();
+        if (unresolved > 0) {
+            if (unresolved == attempted) {
+                runContext.logger().warn(
+                    "All {} flow lookup(s) failed during this sync: the whole diff was computed on degraded input, " +
+                        "and every affected flow may be misreported as UNCHANGED with no revision. This usually means " +
+                        "the token used to call the Kestra API lost read access to the single-flow endpoint, or the " +
+                        "Kestra API is currently degraded.",
+                    attempted
+                );
+            } else {
+                runContext.logger().warn(
+                    "{} of {} flow lookup(s) could not be resolved during this sync; affected flows may be " +
+                        "misreported as UNCHANGED with no revision.",
+                    unresolved, attempted
+                );
+            }
+        }
+
+        return output;
     }
 
     @Override
@@ -395,6 +438,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     }
 
     private FlowLookup fetchFlowFromApi(RunContext runContext, KestraClient kestraClient, String tenantId, String namespace, String flowId) {
+        this.attemptedFlowLookups.incrementAndGet();
         try {
             var apiFlow = kestraClient.flows().flow(namespace, flowId, tenantId, true, null, false);
             return new FlowLookup(
@@ -413,6 +457,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             }
             // Only 404 means "flow does not exist"; any other status is a real API/permissions failure that
             // leaves the lookup unresolved, so callers must not assume the flow is absent.
+            this.unresolvedFlowLookups.incrementAndGet();
             runContext.logger().warn(
                 "Failed to fetch flow {}.{} from the Kestra API (status {}): {}",
                 namespace, flowId, e.getCode(), StringUtils.abbreviate(StringUtils.defaultString(e.getMessage()), 500)
@@ -448,6 +493,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     protected Output output(URI diffFileStorageUri) {
         return Output.builder()
             .flows(diffFileStorageUri)
+            .unresolvedFlowLookups(this.unresolvedFlowLookups.get())
             .build();
     }
 
@@ -459,6 +505,17 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             description = "ION file listing per-flow sync actions (added, deleted, overwritten, updated)."
         )
         private URI flows;
+
+        @Schema(
+            title = "Unresolved flow lookups",
+            description = """
+                Count of single-flow API lookups that failed for a reason other than "flow does not exist" (e.g. \
+                the calling token lost read access to the single-flow endpoint, or the Kestra API is degraded) \
+                during this run. Always populated, 0 on a clean run. When greater than 0, the corresponding flow(s) \
+                may be misreported as UNCHANGED with no revision in the diff instead of their actual sync state, \
+                since the lookup used to detect changes could not be resolved."""
+        )
+        private Integer unresolvedFlowLookups;
 
         @Override
         public URI diffFileUri() {

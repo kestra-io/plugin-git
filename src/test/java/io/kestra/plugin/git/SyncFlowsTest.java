@@ -789,6 +789,9 @@ public class SyncFlowsTest extends AbstractGitTest {
         Map<String, Object> diff = findDiffByFlowId(dryRunContext, dryOutput.diffFileUri(), "unchanged-flow");
         assertThat(diff.get("syncState"), is("UNCHANGED"));
 
+        // The single forced-500 lookup ("unchanged-flow") must be surfaced as unresolved, out of every flow lookup attempted
+        assertThat(dryOutput.getUnresolvedFlowLookups(), is(1));
+
         List<LogEntry> warnLogs = TestsUtils.awaitLogs(
             logs,
             logEntry -> logEntry.getLevel().equals(Level.WARN) &&
@@ -831,6 +834,142 @@ public class SyncFlowsTest extends AbstractGitTest {
 
         Map<String, Object> diff = findDiffByFlowId(dryRunContext, dryOutput.diffFileUri(), "unchanged-flow");
         assertThat(diff.get("revision"), is(nullValue()));
+    }
+
+    /**
+     * Escalated aggregate signal for https://github.com/kestra-io/plugin-git/issues/336: when every single-flow
+     * lookup fails (e.g. the calling token lost read access to the endpoint, or the Kestra API is degraded), every
+     * flow silently falls back to source comparison and gets reported as UNCHANGED with no aggregate signal today.
+     * unresolvedFlowLookups must report every attempted lookup as unresolved, and a louder aggregate WARN naming
+     * likely causes must be emitted (as opposed to the partial-failure case, which only gets the quieter wording).
+     */
+    @Test
+    void dryRun_whenEveryFlowLookupFails_shouldSurfaceFullyUnresolvedCountAndEscalatedLog() throws Exception {
+        List<LogEntry> logs = new CopyOnWriteArrayList<>();
+        logQueue.addListener(logs::add);
+
+        SyncFlows task = SyncFlows.builder()
+            .id("sync-flows")
+            .type(SyncFlows.class.getName())
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
+            .gitDirectory(Property.ofValue(GIT_DIRECTORY))
+            .targetNamespace(Property.ofValue(NAMESPACE))
+            .includeChildNamespaces(Property.ofValue(false))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        // Establish a baseline: every top-level flow (unchanged-flow, first-flow, second-flow) now exists
+        // identically in Git and Kestra
+        task.run(TestsUtils.mockRunContext(TENANT_ID, runContextFactory, task, Collections.emptyMap()));
+
+        for (String flowId : List.of("unchanged-flow", "first-flow", "second-flow")) {
+            server.forceGetFlowStatus(NAMESPACE, flowId, 500);
+        }
+
+        SyncFlows dryRunTask = task.toBuilder().dryRun(Property.ofValue(true)).build();
+        RunContext dryRunContext = TestsUtils.mockRunContext(TENANT_ID, runContextFactory, dryRunTask, Collections.emptyMap());
+        SyncFlows.Output dryOutput = dryRunTask.run(dryRunContext);
+
+        // Symptom preserved: with every lookup unresolved, the diff still (mis)reports every flow as UNCHANGED
+        assertAllDiffsHaveSyncState(dryRunContext, dryOutput.diffFileUri(), "UNCHANGED");
+
+        // The fix: every attempted lookup (3) is now surfaced as unresolved instead of leaving no aggregate signal
+        assertThat(dryOutput.getUnresolvedFlowLookups(), is(3));
+
+        List<LogEntry> perFlowWarnLogs = TestsUtils.awaitLogs(
+            logs,
+            logEntry -> logEntry.getLevel().equals(Level.WARN) &&
+                logEntry.getMessage().contains(NAMESPACE) &&
+                logEntry.getMessage().contains("500"),
+            3
+        );
+        assertThat(perFlowWarnLogs, hasSize(3));
+
+        List<LogEntry> escalatedAggregateLogs = TestsUtils.awaitLogs(
+            logs,
+            logEntry -> logEntry.getLevel().equals(Level.WARN) &&
+                logEntry.getMessage().contains("3") &&
+                logEntry.getMessage().toLowerCase().contains("degraded"),
+            1
+        );
+        assertThat(escalatedAggregateLogs, hasSize(1));
+    }
+
+    /**
+     * A dry run against flows that are new to Kestra (single-flow lookup returns 404, i.e. "flow does not exist")
+     * must not count those lookups as unresolved: a 404 is a resolved outcome, not a failure.
+     */
+    @Test
+    void dryRun_whenFlowsAreNewToKestra_shouldReportZeroUnresolvedLookups() throws Exception {
+        SyncFlows task = SyncFlows.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .targetNamespace(Property.ofExpression("{{namespace}}"))
+            .includeChildNamespaces(Property.ofValue(true))
+            .dryRun(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        SyncFlows.Output output = task.run(runContext());
+
+        assertThat(output.getUnresolvedFlowLookups(), is(0));
+    }
+
+    /**
+     * A clean dry run against flows that already exist identically in Kestra (single-flow lookup succeeds with a
+     * 200) must report zero unresolved lookups.
+     */
+    @Test
+    void dryRun_withoutAnyForcedFailure_shouldReportZeroUnresolvedLookups() throws Exception {
+        SyncFlows task = SyncFlows.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .targetNamespace(Property.ofExpression("{{namespace}}"))
+            .includeChildNamespaces(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        // Establish a baseline so the following dry run's lookups resolve with a 200, not a 404
+        task.run(runContext());
+
+        SyncFlows.Output output = task.toBuilder().dryRun(Property.ofValue(true)).build().run(runContext());
+
+        assertThat(output.getUnresolvedFlowLookups(), is(0));
+    }
+
+    /**
+     * The non-dry-run path re-fetches a flow's authoritative revision from the API right after importing it
+     * (SyncFlows.writeResource). That re-fetch is a single-flow lookup like any other and must be counted too.
+     */
+    @Test
+    void write_whenPostImportRefetchFailsWithNon404Status_shouldCountUnresolvedLookup() throws Exception {
+        SyncFlows task = SyncFlows.builder()
+            .id("sync-flows")
+            .type(SyncFlows.class.getName())
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
+            .gitDirectory(Property.ofValue(GIT_DIRECTORY))
+            .targetNamespace(Property.ofValue(NAMESPACE))
+            .includeChildNamespaces(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        server.forceGetFlowStatus(NAMESPACE, "unchanged-flow", 500);
+
+        SyncFlows.Output output = task.run(TestsUtils.mockRunContext(TENANT_ID, runContextFactory, task, Collections.emptyMap()));
+
+        assertThat(output.getUnresolvedFlowLookups(), is(1));
     }
 
     /**
