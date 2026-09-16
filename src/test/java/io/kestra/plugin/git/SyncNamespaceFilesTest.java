@@ -479,6 +479,23 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
         assertThrows(IllegalArgumentException.class, () -> task.run(localRunContext(repoDir)));
     }
 
+    @Test
+    void namespaceDirectory_RejectsPercentEncodedPathTraversal() throws Exception {
+        Path repoDir = createLocalRepo(Map.of("content/foo.py", "print(1)"));
+
+        // %2e%2e decodes back to `..` once the prefix is concatenated into a URI in resolveTarget, so it must be
+        // rejected just like a literal `..` — otherwise the destination path could escape the namespace subtree.
+        SyncNamespaceFiles task = SyncNamespaceFiles.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .gitDirectory(Property.ofValue("content"))
+            .namespaceDirectory(Property.ofValue("/%2e%2e/escape"))
+            .build();
+
+        assertThrows(IllegalArgumentException.class, () -> task.run(localRunContext(repoDir)));
+    }
+
     private Path createLocalRepo(Map<String, String> filesByRelativePath) throws Exception {
         Path repoDir = Files.createTempDirectory("unit-test.namespace-directory-repo");
         try (Git git = Git.init().setDirectory(repoDir.toFile()).call()) {

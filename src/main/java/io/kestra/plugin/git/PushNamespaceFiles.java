@@ -1,8 +1,8 @@
 package io.kestra.plugin.git;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -303,8 +303,16 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
             }
             String candidatePath = "/" + relative.toString().replace('\\', '/');
             if (!NamespaceDirectories.isUnderPrefix(candidatePath, prefix)) {
-                byte[] content = Files.readAllBytes(file);
-                filesMap.put(file, () -> new ByteArrayInputStream(content));
+                // Defer the read like the in-prefix branch above, rather than buffering every out-of-prefix file
+                // into memory up front: on a first scoped push these files are only read when actually committed.
+                filesMap.put(file, () ->
+                {
+                    try {
+                        return Files.newInputStream(file);
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                });
             }
         }
     }
