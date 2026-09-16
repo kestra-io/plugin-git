@@ -270,16 +270,7 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
                 .call();
         }
 
-        RunContext runContext = runContextFactory.of(
-            Map.of(
-                "flow", Map.of("tenantId", TENANT_ID, "namespace", "system"),
-                "url", repoDir.toUri().toString(),
-                "pat", "",
-                "branch", "master", // git init default
-                "namespace", NAMESPACE,
-                "gitDirectory", specialGitDir
-            )
-        );
+        RunContext runContext = localRepoRunContext(repoDir, specialGitDir);
 
         SyncNamespaceFiles task = SyncNamespaceFiles.builder()
             .url(Property.ofExpression("{{url}}"))
@@ -325,16 +316,7 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
                 .delete(Property.ofValue(true))
                 .build();
 
-            RunContext firstRunContext = runContextFactory.of(
-                Map.of(
-                    "flow", Map.of("tenantId", TENANT_ID, "namespace", "system"),
-                    "url", repoDir.toUri().toString(),
-                    "pat", "",
-                    "branch", "master",
-                    "namespace", NAMESPACE,
-                    "gitDirectory", gitDir
-                )
-            );
+            RunContext firstRunContext = localRepoRunContext(repoDir, gitDir);
             task.run(firstRunContext);
 
             assertThat(firstRunContext.storage().namespace(NAMESPACE).exists(Path.of(keptFile)), is(true));
@@ -344,16 +326,7 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
             git.rm().addFilepattern(gitDir + "/" + removedFile).call();
             git.commit().setMessage("remove file").setAuthor("test", "test@test.com").call();
 
-            RunContext secondRunContext = runContextFactory.of(
-                Map.of(
-                    "flow", Map.of("tenantId", TENANT_ID, "namespace", "system"),
-                    "url", repoDir.toUri().toString(),
-                    "pat", "",
-                    "branch", "master",
-                    "namespace", NAMESPACE,
-                    "gitDirectory", gitDir
-                )
-            );
+            RunContext secondRunContext = localRepoRunContext(repoDir, gitDir);
             SyncNamespaceFiles.Output secondSyncOutput = task.run(secondRunContext);
 
             assertThat(secondRunContext.storage().namespace(NAMESPACE).exists(Path.of(keptFile)), is(true));
@@ -413,6 +386,19 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
             );
         }
         return diffs;
+    }
+
+    private RunContext localRepoRunContext(Path repoDir, String gitDir) {
+        return runContextFactory.of(
+            Map.of(
+                "flow", Map.of("tenantId", TENANT_ID, "namespace", "system"),
+                "url", repoDir.toUri().toString(),
+                "pat", "",
+                "branch", "master",
+                "namespace", NAMESPACE,
+                "gitDirectory", gitDir
+            )
+        );
     }
 
     private RunContext runContext() {
