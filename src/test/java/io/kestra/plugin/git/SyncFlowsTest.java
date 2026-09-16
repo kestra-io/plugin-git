@@ -6,7 +6,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -970,6 +975,61 @@ public class SyncFlowsTest extends AbstractGitTest {
         SyncFlows.Output output = task.run(TestsUtils.mockRunContext(TENANT_ID, runContextFactory, task, Collections.emptyMap()));
 
         assertThat(output.getUnresolvedFlowLookups(), is(1));
+    }
+
+    /**
+     * Guards against the per-run counters (attemptedFlowLookups / unresolvedFlowLookups) being shared, mutable
+     * instance state: a previous implementation reset them by reassigning an instance field at the top of run(),
+     * which is only safe for sequential reuse of the same SyncFlows instance, not for concurrent reuse (e.g. the
+     * same templated child task invoked once per parallel-loop iteration, or two overlapping executions of the
+     * same flow). A fully deterministic race reproduction isn't feasible with this test harness: the mock API
+     * server's forced-failure state is keyed only by namespace/flowId (identical for both concurrent invocations
+     * of this task instance, since they target the same namespace), and there is no hook to force interleaving at
+     * the exact instant the old code reassigned the shared counter field. This test instead runs the SAME task
+     * instance concurrently from two threads and asserts each invocation's own output reflects only its own
+     * lookups (3 attempted, 1 unresolved). Per-invocation isolation (this task uses a ThreadLocal) makes that
+     * assertion hold deterministically, whereas the old shared-field approach could let one thread's reset or
+     * increments bleed into the other's final count under real thread interleaving.
+     */
+    @Test
+    void run_concurrentInvocationsOnSameInstance_shouldKeepIndependentUnresolvedCounts() throws Exception {
+        SyncFlows task = SyncFlows.builder()
+            .id("sync-flows")
+            .type(SyncFlows.class.getName())
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
+            .gitDirectory(Property.ofValue(GIT_DIRECTORY))
+            .targetNamespace(Property.ofValue(NAMESPACE))
+            .includeChildNamespaces(Property.ofValue(false))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        // Establish a baseline: every top-level flow (unchanged-flow, first-flow, second-flow) now exists
+        // identically in Git and Kestra
+        task.run(TestsUtils.mockRunContext(TENANT_ID, runContextFactory, task, Collections.emptyMap()));
+
+        server.forceGetFlowStatus(NAMESPACE, "second-flow", 500);
+
+        SyncFlows dryRunTask = task.toBuilder().dryRun(Property.ofValue(true)).build();
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            CyclicBarrier barrier = new CyclicBarrier(2);
+            Callable<SyncFlows.Output> invocation = () ->
+            {
+                barrier.await();
+                return dryRunTask.run(TestsUtils.mockRunContext(TENANT_ID, runContextFactory, dryRunTask, Collections.emptyMap()));
+            };
+
+            List<Future<SyncFlows.Output>> futures = executor.invokeAll(List.of(invocation, invocation));
+            for (Future<SyncFlows.Output> future : futures) {
+                assertThat(future.get().getUnresolvedFlowLookups(), is(1));
+            }
+        } finally {
+            executor.shutdown();
+        }
     }
 
     /**

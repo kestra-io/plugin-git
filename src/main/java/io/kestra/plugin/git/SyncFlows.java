@@ -9,7 +9,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -172,17 +171,20 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     @PluginProperty(group = "advanced")
     private Property<Boolean> ignoreInvalidFlows = Property.ofValue(false);
 
-    // Per-run counters for single-flow API lookups (fetchFlowFromApi), reset at the start of every run() so a task
-    // instance reused across concurrent executions never leaks one execution's counts into another's.
-    @Getter(AccessLevel.NONE)
-    @ToString.Exclude
-    @EqualsAndHashCode.Exclude
-    private transient AtomicInteger attemptedFlowLookups;
+    /**
+     * Per-invocation counters for single-flow API lookups (fetchFlowFromApi). Held in a static
+     * ThreadLocal — rather than an instance field reset at the top of run() — so that concurrent
+     * reuse of the same SyncFlows instance (e.g. the same templated child task invoked once per
+     * parallel-loop iteration, or two overlapping executions) never lets one invocation's reset or
+     * increments bleed into another's count. Each invocation sets its own counters in run() and
+     * clears them in a finally block once output() has read them.
+     */
+    private static final ThreadLocal<LookupCounters> LOOKUP_COUNTERS = new ThreadLocal<>();
 
-    @Getter(AccessLevel.NONE)
-    @ToString.Exclude
-    @EqualsAndHashCode.Exclude
-    private transient AtomicInteger unresolvedFlowLookups;
+    private static final class LookupCounters {
+        private int attempted;
+        private int unresolved;
+    }
 
     @Override
     public Property<String> fetchedNamespace() {
@@ -191,32 +193,35 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
     @Override
     public Output run(RunContext runContext) throws Exception {
-        this.attemptedFlowLookups = new AtomicInteger(0);
-        this.unresolvedFlowLookups = new AtomicInteger(0);
+        LOOKUP_COUNTERS.set(new LookupCounters());
+        try {
+            var output = super.run(runContext);
 
-        Output output = super.run(runContext);
-
-        int attempted = this.attemptedFlowLookups.get();
-        int unresolved = this.unresolvedFlowLookups.get();
-        if (unresolved > 0) {
-            if (unresolved == attempted) {
-                runContext.logger().warn(
-                    "All {} flow lookup(s) failed during this sync: the whole diff was computed on degraded input, " +
-                        "and every affected flow may be misreported as UNCHANGED with no revision. This usually means " +
-                        "the token used to call the Kestra API lost read access to the single-flow endpoint, or the " +
-                        "Kestra API is currently degraded.",
-                    attempted
-                );
-            } else {
-                runContext.logger().warn(
-                    "{} of {} flow lookup(s) could not be resolved during this sync; affected flows may be " +
-                        "misreported as UNCHANGED with no revision.",
-                    unresolved, attempted
-                );
+            var counters = LOOKUP_COUNTERS.get();
+            var attempted = counters.attempted;
+            var unresolved = counters.unresolved;
+            if (unresolved > 0) {
+                if (unresolved == attempted) {
+                    runContext.logger().warn(
+                        "All {} flow lookup(s) failed during this sync: the whole diff was computed on degraded input, " +
+                            "and every affected flow may be misreported as UNCHANGED with no revision. This usually means " +
+                            "the token used to call the Kestra API lost read access to the single-flow endpoint, or the " +
+                            "Kestra API is currently degraded.",
+                        attempted
+                    );
+                } else {
+                    runContext.logger().warn(
+                        "{} of {} flow lookup(s) could not be resolved during this sync; affected flows may be " +
+                            "misreported as UNCHANGED with no revision.",
+                        unresolved, attempted
+                    );
+                }
             }
-        }
 
-        return output;
+            return output;
+        } finally {
+            LOOKUP_COUNTERS.remove();
+        }
     }
 
     @Override
@@ -438,7 +443,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     }
 
     private FlowLookup fetchFlowFromApi(RunContext runContext, KestraClient kestraClient, String tenantId, String namespace, String flowId) {
-        this.attemptedFlowLookups.incrementAndGet();
+        LOOKUP_COUNTERS.get().attempted++;
         try {
             var apiFlow = kestraClient.flows().flow(namespace, flowId, tenantId, true, null, false);
             return new FlowLookup(
@@ -457,7 +462,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             }
             // Only 404 means "flow does not exist"; any other status is a real API/permissions failure that
             // leaves the lookup unresolved, so callers must not assume the flow is absent.
-            this.unresolvedFlowLookups.incrementAndGet();
+            LOOKUP_COUNTERS.get().unresolved++;
             runContext.logger().warn(
                 "Failed to fetch flow {}.{} from the Kestra API (status {}): {}",
                 namespace, flowId, e.getCode(), StringUtils.abbreviate(StringUtils.defaultString(e.getMessage()), 500)
@@ -493,7 +498,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     protected Output output(URI diffFileStorageUri) {
         return Output.builder()
             .flows(diffFileStorageUri)
-            .unresolvedFlowLookups(this.unresolvedFlowLookups.get())
+            .unresolvedFlowLookups(LOOKUP_COUNTERS.get().unresolved)
             .build();
     }
 
