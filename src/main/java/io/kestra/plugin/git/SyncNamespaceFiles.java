@@ -225,8 +225,8 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
             try {
                 client.namespaces().createNamespace(tenantId, new io.kestra.sdk.model.Namespace().id(namespace));
             } catch (ApiException e) {
-                // 409 across versions; EE returns 422 with a "namespace.id already exists" validation error instead
-                if (e.getCode() != 409 && !isNamespaceAlreadyExistsError(e)) {
+                // 409 across versions; EE returns 422 with a validation error on namespace.id instead
+                if (e.getCode() != 409 && !isNamespaceIdValidationError(e)) {
                     throw e;
                 }
                 return;
@@ -242,15 +242,21 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
         }
     }
 
-    // A 422 validation error is only a benign "already exists" conflict when the offending field is
-    // namespace.id and says so; any other 422 (e.g. an invalid id) must still surface as a failure.
-    private static boolean isNamespaceAlreadyExistsError(ApiException e) {
+    // EE reports an already-existing namespace as a 422 validation error on the namespace.id field
+    // rather than a 409. The validation body carries no machine-readable error code (only path/pointer/
+    // detail), so we key on the structural field, not the human message: any 422 whose error targets
+    // namespace.id is treated as a benign "already exists" and lets the sync continue. A different kind
+    // of invalid id would still surface downstream on the actual file write, which does hard-fail.
+    private static boolean isNamespaceIdValidationError(ApiException e) {
         if (e.getCode() != 422 || e.getResponseBody() == null) {
             return false;
         }
         try {
             for (JsonNode error : JacksonMapper.ofJson().readTree(e.getResponseBody()).path("errors")) {
-                if ("namespace.id".equals(error.path("path").asText()) && error.path("detail").asText("").contains("already exists")) {
+                if (
+                    "namespace.id".equals(error.path("path").asText())
+                        || "/namespace/id".equals(error.path("pointer").asText())
+                ) {
                     return true;
                 }
             }
