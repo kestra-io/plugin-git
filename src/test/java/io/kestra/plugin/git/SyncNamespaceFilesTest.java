@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.apache.commons.io.IOUtils;
+import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -35,6 +36,7 @@ import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @KestraTest
 public class SyncNamespaceFilesTest extends AbstractGitTest {
@@ -249,12 +251,14 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
     @Test
     void syncWithDotGitInDirectoryName_ShouldSyncFiles() throws Exception {
         String specialGitDir = "to_clone.github_files";
-        String expectedFile  = "hello.txt";
+        String expectedFile = "hello.txt";
 
         Path repoDir = Files.createTempDirectory("unit-test.special-dir-repo");
-        try (org.eclipse.jgit.api.Git git = org.eclipse.jgit.api.Git.init()
-            .setDirectory(repoDir.toFile())
-            .call()) {
+        try (
+            org.eclipse.jgit.api.Git git = org.eclipse.jgit.api.Git.init()
+                .setDirectory(repoDir.toFile())
+                .call()
+        ) {
 
             Path specialDir = repoDir.resolve(specialGitDir);
             Files.createDirectories(specialDir);
@@ -267,14 +271,16 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
                 .call();
         }
 
-        RunContext runContext = runContextFactory.of(Map.of(
-            "flow", Map.of("tenantId", TENANT_ID, "namespace", "system"),
-            "url",          repoDir.toUri().toString(),
-            "pat",          "",
-            "branch",       "master",            // git init default
-            "namespace",    NAMESPACE,
-            "gitDirectory", specialGitDir
-        ));
+        RunContext runContext = runContextFactory.of(
+            Map.of(
+                "flow", Map.of("tenantId", TENANT_ID, "namespace", "system"),
+                "url", repoDir.toUri().toString(),
+                "pat", "",
+                "branch", "master", // git init default
+                "namespace", NAMESPACE,
+                "gitDirectory", specialGitDir
+            )
+        );
 
         SyncNamespaceFiles task = SyncNamespaceFiles.builder()
             .url(Property.ofExpression("{{url}}"))
@@ -292,7 +298,195 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
 
     }
 
+    @Test
+    void namespaceDirectory_DefaultIsNoOp() throws Exception {
+        Path repoDir = createLocalRepo(Map.of("content/hello.txt", "hello"));
 
+        SyncNamespaceFiles task = SyncNamespaceFiles.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .gitDirectory(Property.ofValue("content"))
+            .build();
+        task.run(localRunContext(repoDir));
+
+        assertThat(runContext().storage().namespace(NAMESPACE).exists(Path.of("hello.txt")), is(true));
+    }
+
+    @Test
+    void namespaceDirectory_PrefixesDestinationPath() throws Exception {
+        Path repoDir = createLocalRepo(Map.of("content/foo.py", "print(1)"));
+
+        SyncNamespaceFiles task = SyncNamespaceFiles.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .gitDirectory(Property.ofValue("content"))
+            .namespaceDirectory(Property.ofValue("/shared-scripts"))
+            .build();
+        task.run(localRunContext(repoDir));
+
+        assertNamespaceFileContent(runContext(), "shared-scripts/foo.py", "print(1)");
+        assertThat(runContext().storage().namespace(NAMESPACE).exists(Path.of("foo.py")), is(false));
+    }
+
+    @Test
+    void namespaceDirectory_DryRun_ReportsPrefixedKestraPath() throws Exception {
+        Path repoDir = createLocalRepo(Map.of("content/foo.py", "print(1)"));
+
+        SyncNamespaceFiles task = SyncNamespaceFiles.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .gitDirectory(Property.ofValue("content"))
+            .namespaceDirectory(Property.ofValue("/shared-scripts"))
+            .dryRun(Property.ofValue(true))
+            .build();
+        RunContext runContext = localRunContext(repoDir);
+        SyncNamespaceFiles.Output output = task.run(runContext);
+
+        List<Map<String, String>> diffs = readDiffs(runContext, output.diffFileUri());
+        assertThat(
+            diffs.stream().map(diff -> diff.get("kestraPath")).toList(),
+            hasItem("/my/namespace/_files/shared-scripts/foo.py")
+        );
+        assertThat(runContext.storage().namespace(NAMESPACE).exists(Path.of("shared-scripts/foo.py")), is(false));
+    }
+
+    @Test
+    void namespaceDirectory_Delete_LeavesFilesOutsidePrefixUntouched() throws Exception {
+        Path repoDir = createLocalRepo(Map.of("content/keep.txt", "kept from git"));
+
+        RunContext setupContext = runContext();
+        setupContext.storage().namespace(NAMESPACE).putFile(Path.of("outside.txt"), new ByteArrayInputStream("outside prefix".getBytes()));
+        setupContext.storage().namespace(NAMESPACE).putFile(Path.of("shared-scripts/stale.txt"), new ByteArrayInputStream("stale".getBytes()));
+
+        SyncNamespaceFiles task = SyncNamespaceFiles.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .gitDirectory(Property.ofValue("content"))
+            .namespaceDirectory(Property.ofValue("/shared-scripts"))
+            .delete(Property.ofValue(true))
+            .build();
+        task.run(localRunContext(repoDir));
+
+        Namespace namespace = runContext().storage().namespace(NAMESPACE);
+        assertThat(namespace.exists(Path.of("outside.txt")), is(true));
+        assertThat(namespace.exists(Path.of("shared-scripts/stale.txt")), is(false));
+        assertNamespaceFileContent(runContext(), "shared-scripts/keep.txt", "kept from git");
+    }
+
+    @Test
+    void namespaceDirectory_Delete_EmptyGitSubtree_RemovesOnlyInPrefixFiles() throws Exception {
+        // .gitkeep is filtered out of sync content (see isGitInternalPath), so the repo is effectively empty
+        Path repoDir = createLocalRepo(Map.of("content/.gitkeep", ""));
+
+        RunContext setupContext = runContext();
+        setupContext.storage().namespace(NAMESPACE).putFile(Path.of("outside.txt"), new ByteArrayInputStream("outside prefix".getBytes()));
+        setupContext.storage().namespace(NAMESPACE).putFile(Path.of("shared-scripts/a.txt"), new ByteArrayInputStream("a".getBytes()));
+        setupContext.storage().namespace(NAMESPACE).putFile(Path.of("shared-scripts/nested/b.txt"), new ByteArrayInputStream("b".getBytes()));
+
+        SyncNamespaceFiles task = SyncNamespaceFiles.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .gitDirectory(Property.ofValue("content"))
+            .namespaceDirectory(Property.ofValue("/shared-scripts"))
+            .delete(Property.ofValue(true))
+            .build();
+        task.run(localRunContext(repoDir));
+
+        Namespace namespace = runContext().storage().namespace(NAMESPACE);
+        assertThat(namespace.exists(Path.of("outside.txt")), is(true));
+        assertThat(namespace.exists(Path.of("shared-scripts/a.txt")), is(false));
+        assertThat(namespace.exists(Path.of("shared-scripts/nested/b.txt")), is(false));
+    }
+
+    @Test
+    void namespaceDirectory_AcceptsWithAndWithoutLeadingSlash() throws Exception {
+        Path repoDir = createLocalRepo(Map.of("content/foo.py", "print(1)"));
+
+        SyncNamespaceFiles withoutLeadingSlash = SyncNamespaceFiles.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .gitDirectory(Property.ofValue("content"))
+            .namespaceDirectory(Property.ofValue("shared-scripts"))
+            .build();
+        withoutLeadingSlash.run(localRunContext(repoDir));
+        assertThat(runContext().storage().namespace(NAMESPACE).exists(Path.of("shared-scripts/foo.py")), is(true));
+
+        runContext().storage().namespace(NAMESPACE).delete(Path.of("/"));
+
+        SyncNamespaceFiles withTrailingSlash = SyncNamespaceFiles.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .gitDirectory(Property.ofValue("content"))
+            .namespaceDirectory(Property.ofValue("/shared-scripts/"))
+            .build();
+        withTrailingSlash.run(localRunContext(repoDir));
+        assertThat(runContext().storage().namespace(NAMESPACE).exists(Path.of("shared-scripts/foo.py")), is(true));
+    }
+
+    @Test
+    void namespaceDirectory_RejectsPathTraversal() throws Exception {
+        Path repoDir = createLocalRepo(Map.of("content/foo.py", "print(1)"));
+
+        SyncNamespaceFiles task = SyncNamespaceFiles.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .gitDirectory(Property.ofValue("content"))
+            .namespaceDirectory(Property.ofValue("../escape"))
+            .build();
+
+        assertThrows(IllegalArgumentException.class, () -> task.run(localRunContext(repoDir)));
+    }
+
+    @Test
+    void namespaceDirectory_RejectsPercentEncodedPathTraversal() throws Exception {
+        Path repoDir = createLocalRepo(Map.of("content/foo.py", "print(1)"));
+
+        // %2e%2e decodes back to `..` once the prefix is concatenated into the destination URI, so it must be
+        // rejected just like a literal `..` — otherwise the destination path could escape the namespace subtree.
+        SyncNamespaceFiles task = SyncNamespaceFiles.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .gitDirectory(Property.ofValue("content"))
+            .namespaceDirectory(Property.ofValue("/%2e%2e/escape"))
+            .build();
+
+        assertThrows(IllegalArgumentException.class, () -> task.run(localRunContext(repoDir)));
+    }
+
+    private Path createLocalRepo(Map<String, String> filesByRelativePath) throws Exception {
+        Path repoDir = Files.createTempDirectory("unit-test.namespace-directory-repo");
+        try (Git git = Git.init().setDirectory(repoDir.toFile()).call()) {
+            for (Map.Entry<String, String> entry : filesByRelativePath.entrySet()) {
+                Path filePath = repoDir.resolve(entry.getKey());
+                Files.createDirectories(filePath.getParent());
+                Files.writeString(filePath, entry.getValue());
+            }
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("test commit").setAuthor("test", "test@test.com").call();
+        }
+        return repoDir;
+    }
+
+    private RunContext localRunContext(Path repoDir) {
+        return runContextFactory.of(
+            Map.of(
+                "flow", Map.of("tenantId", TENANT_ID, "namespace", "system"),
+                "url", repoDir.toUri().toString(),
+                "pat", "",
+                "branch", "master", // git init default
+                "namespace", NAMESPACE
+            )
+        );
+    }
 
     private static List<Map<String, String>> defaultCaseDiffs(boolean withDeleted) {
         ArrayList<Map<String, String>> diffs = new ArrayList<>(

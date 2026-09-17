@@ -1,14 +1,18 @@
 package io.kestra.plugin.git;
 
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.net.URI;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
@@ -17,13 +21,13 @@ import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.storages.Namespace;
+import io.kestra.core.storages.NamespaceFile;
 import io.kestra.core.utils.PathMatcherPredicate;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-import static io.kestra.core.utils.Rethrow.throwFunction;
 import static io.kestra.core.utils.Rethrow.throwSupplier;
 
 @SuperBuilder(toBuilder = true)
@@ -60,6 +64,30 @@ import static io.kestra.core.utils.Rethrow.throwSupplier;
                   - id: schedule_push_to_git
                     type: io.kestra.plugin.core.trigger.Schedule
                     cron: "*/15 * * * *"
+                """
+        ),
+        @Example(
+            title = "Push only the `shared-scripts` folder of a namespace to the root of a Git repository.",
+            full = true,
+            code = """
+                id: push_shared_scripts
+                namespace: company.ops
+
+                tasks:
+                  - id: commit_and_push
+                    type: io.kestra.plugin.git.PushNamespaceFiles
+                    namespace: company.ops
+                    gitDirectory: "."
+                    namespaceDirectory: /shared-scripts
+                    url: https://github.com/kestra-io/scripts
+                    username: git_username
+                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                    branch: main
+                    commitMessage: "update shared scripts"
+                triggers:
+                  - id: schedule_push_to_git
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "0 * * * *"
                 """
         ),
         @Example(
@@ -137,6 +165,22 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
     private Object files;
 
     @Schema(
+        title = "Namespace directory prefix",
+        description = """
+            Relative path within the source namespace to export; scopes the pushed subtree to Namespace Files \
+            under this path and the prefix is stripped from the destination path in Git, so a Namespace File at \
+            `/shared-scripts/foo.py` is pushed as `foo.py` inside `gitDirectory` instead of \
+            `shared-scripts/foo.py`. Defaults to `/` (namespace root, i.e. no prefix — existing flows are \
+            unaffected). The `files` glob still matches against the full namespace-relative path, independently \
+            of this prefix. Also scopes `delete` (default true) to files already under this prefix in \
+            `gitDirectory`, so files previously pushed from outside this prefix are left untouched even on the \
+            very first scoped push."""
+    )
+    @Builder.Default
+    @PluginProperty(group = "source")
+    private Property<String> namespaceDirectory = Property.ofValue("/");
+
+    @Schema(
         title = "Git commit message",
         defaultValue = "Add files from `namespace` namespace"
     )
@@ -168,22 +212,80 @@ public class PushNamespaceFiles extends AbstractPushTask<PushNamespaceFiles.Outp
 
         Namespace storage = runContext.storage().namespace(runContext.render(this.namespace).as(String.class).orElse(null));
         Predicate<Path> matcher = (globs != null) ? PathMatcherPredicate.matches(globs) : (path -> true);
+        String prefix = NamespaceDirectories.normalize(runContext.render(this.namespaceDirectory).as(String.class).orElse("/"));
 
-        Map<Path, Supplier<InputStream>> filesMap = storage
-            .findAllFilesMatching(matcher)
-            .stream()
-            .collect(
-                Collectors.toMap(
-                    nsFile -> baseDirectory.resolve(nsFile.path()),
-                    throwFunction(nsFile -> throwSupplier(() -> storage.getFileContent(Path.of(nsFile.path()))))
-                )
-            );
+        var filesMap = new HashMap<Path, Supplier<InputStream>>();
+        boolean anyGlobMatch = false;
+        for (NamespaceFile nsFile : storage.findAllFilesMatching(matcher)) {
+            anyGlobMatch = true;
+            String relativeToPrefix = NamespaceDirectories.stripPrefix(nsFile.path(), prefix);
+            if (relativeToPrefix == null) {
+                continue;
+            }
+            filesMap.put(baseDirectory.resolve(relativeToPrefix), throwSupplier(() -> storage.getFileContent(Path.of(nsFile.path()))));
+        }
 
         if (runContext.render(errorOnMissing).as(Boolean.class).orElse(false) && filesMap.isEmpty()) {
-            throw new KestraRuntimeException("No Namespace Files matched the provided 'files' parameter to commit.");
+            throw new KestraRuntimeException(
+                anyGlobMatch
+                    ? "No Namespace Files found under 'namespaceDirectory' (" + prefix + ") to commit."
+                    : "No Namespace Files matched the provided 'files' parameter to commit."
+            );
+        }
+
+        // AbstractPushTask#deleteOutdatedResources (unmodifiable here) walks the whole gitDirectory and stages
+        // `git rm` for every already-checked-out file not returned by this method, unaware of `namespaceDirectory`.
+        // Re-add files that fall outside the prefix, reading their current content back from disk, so a scoped
+        // push with the default delete:true doesn't wipe out everything previously pushed outside the new prefix.
+        if (!prefix.isEmpty() && runContext.render(this.getDelete()).as(Boolean.class).orElse(true)) {
+            preserveFilesOutsidePrefix(baseDirectory, prefix, filesMap);
         }
 
         return filesMap;
+    }
+
+    // Re-adds already-checked-out regular files under `directory` that fall outside `prefix` (e.g. left over from a
+    // previous unscoped push), skipping anything nested in a .git metadata directory (relevant when gitDirectory is
+    // the repository root itself).
+    private void preserveFilesOutsidePrefix(Path directory, String prefix, Map<Path, Supplier<InputStream>> filesMap) throws IOException {
+        if (!Files.isDirectory(directory)) {
+            return;
+        }
+        List<Path> existingFiles;
+        try (Stream<Path> walk = Files.walk(directory)) {
+            existingFiles = walk.filter(Files::isRegularFile).toList();
+        }
+        for (Path file : existingFiles) {
+            if (filesMap.containsKey(file)) {
+                continue;
+            }
+            Path relative = directory.relativize(file);
+            if (isInsideGitMetadataDirectory(relative)) {
+                continue;
+            }
+            String candidatePath = "/" + relative.toString().replace('\\', '/');
+            if (!NamespaceDirectories.isUnderPrefix(candidatePath, prefix)) {
+                // Defer the read like the in-prefix branch above, rather than buffering every out-of-prefix file
+                // into memory up front: on a first scoped push these files are only read when actually committed.
+                filesMap.put(file, () ->
+                {
+                    try {
+                        return Files.newInputStream(file);
+                    } catch (IOException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                });
+            }
+        }
+    }
+
+    private static boolean isInsideGitMetadataDirectory(Path relative) {
+        for (Path segment : relative) {
+            if (".git".equals(segment.toString())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override

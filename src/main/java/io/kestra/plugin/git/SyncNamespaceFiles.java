@@ -11,8 +11,10 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.storages.Namespace;
@@ -21,7 +23,6 @@ import io.kestra.core.storages.NamespaceFile;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @ToString
@@ -57,6 +58,30 @@ import io.kestra.core.models.annotations.PluginProperty;
                   - id: every_minute
                     type: io.kestra.plugin.core.trigger.Schedule
                     cron: "*/1 * * * *"
+                """
+        ),
+        @Example(
+            title = "Sync only the `shared-scripts` folder of a namespace from the root of a Git repository.",
+            full = true,
+            code = """
+                id: sync_shared_scripts
+                namespace: company.ops
+
+                tasks:
+                  - id: git
+                    type: io.kestra.plugin.git.SyncNamespaceFiles
+                    namespace: company.ops
+                    gitDirectory: "."
+                    namespaceDirectory: /shared-scripts
+                    url: https://github.com/kestra-io/scripts
+                    branch: main
+                    username: git_username
+                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+
+                triggers:
+                  - id: every_full_hour
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "0 * * * *"
                 """
         ),
         @Example(
@@ -132,9 +157,53 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
     @PluginProperty(group = "advanced")
     private Property<Boolean> delete = Property.ofValue(false);
 
+    @Schema(
+        title = "Namespace directory prefix",
+        description = """
+            Relative path within the target namespace under which every synced destination path is written. \
+            Mirrors `gitDirectory`, but on the Kestra namespace side: with `/shared-scripts`, a Git file `foo.py` \
+            is written to `<namespace>:/shared-scripts/foo.py` instead of `<namespace>:/foo.py`. Defaults to `/` \
+            (namespace root, i.e. no prefix — existing flows are unaffected). Also scopes `delete: true` to \
+            Namespace Files already under this prefix, so files elsewhere in the namespace are left untouched \
+            even on the very first sync."""
+    )
+    @Builder.Default
+    @PluginProperty(group = "destination")
+    private Property<String> namespaceDirectory = Property.ofValue("/");
+
     @Override
     public Property<String> fetchedNamespace() {
         return this.namespace;
+    }
+
+    // Rendered and normalized on every call rather than cached on the instance: a parsed Task instance can be
+    // reused concurrently across executions (e.g. namespaceDirectory driven by {{ inputs.folder }}), and an
+    // instance-level cache would let one execution read another's resolved prefix.
+    private String namespaceDirectoryPrefix(RunContext runContext) throws IOException {
+        try {
+            return NamespaceDirectories.normalize(
+                runContext.render(this.namespaceDirectory).as(String.class).orElse("/")
+            );
+        } catch (IllegalVariableEvaluationException e) {
+            throw new IOException(e);
+        }
+    }
+
+    // If `namespaceDirectory` is set, the effective destination is the Git-relative uri reparented under the
+    // prefix, e.g. `/foo.py` under `/shared-scripts` becomes `/shared-scripts/foo.py`.
+    private URI prefixedDestinationUri(RunContext runContext, URI uri) throws IOException {
+        String prefix = this.namespaceDirectoryPrefix(runContext);
+        if (prefix.isEmpty()) {
+            return uri;
+        }
+        try {
+            return URI.create(prefix + uri);
+        } catch (IllegalArgumentException e) {
+            throw new IOException(
+                "Invalid 'namespaceDirectory' value '" + prefix + "': combined with the destination path, it does not form a valid URI (" + e.getMessage() + ").",
+                e
+            );
+        }
     }
 
     @Override
@@ -144,12 +213,13 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
 
     @Override
     protected NamespaceFile simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+        URI destinationUri = this.prefixedDestinationUri(runContext, uri);
         var namespace = runContext.storage().namespace(renderedNamespace);
-        var path = Path.of(uri.getPath());
-        var existingResource = this.findExistingResource(namespace, renderedNamespace, uri);
+        var path = Path.of(destinationUri.getPath());
+        var existingResource = this.findExistingResource(namespace, renderedNamespace, destinationUri);
 
         if (inputStream == null) {
-            return existingResource.orElseGet(() -> NamespaceFile.of(renderedNamespace, uri));
+            return existingResource.orElseGet(() -> NamespaceFile.of(renderedNamespace, destinationUri));
         }
 
         if (existingResource.isPresent() && !existingResource.get().isDirectory()) {
@@ -157,17 +227,18 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
                 return existingResource.get();
             }
 
-            return NamespaceFile.of(renderedNamespace, uri, existingResource.get().version() + 1);
+            return NamespaceFile.of(renderedNamespace, destinationUri, existingResource.get().version() + 1);
         }
 
-        return NamespaceFile.of(renderedNamespace, uri);
+        return NamespaceFile.of(renderedNamespace, destinationUri);
     }
 
     @Override
     protected NamespaceFile writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+        URI destinationUri = this.prefixedDestinationUri(runContext, uri);
         var namespace = runContext.storage().namespace(renderedNamespace);
-        var path = Path.of(uri.getPath());
-        var existingResource = this.findExistingResource(namespace, renderedNamespace, uri);
+        var path = Path.of(destinationUri.getPath());
+        var existingResource = this.findExistingResource(namespace, renderedNamespace, destinationUri);
 
         try {
             if (inputStream == null) {
@@ -284,7 +355,10 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
 
     @Override
     protected List<NamespaceFile> fetchResources(RunContext runContext, String renderedNamespace) throws IOException {
-        return runContext.storage().namespace(renderedNamespace).all();
+        String prefix = this.namespaceDirectoryPrefix(runContext);
+        return runContext.storage().namespace(renderedNamespace).all().stream()
+            .filter(resource -> NamespaceDirectories.isUnderPrefix("/" + resource.path(), prefix))
+            .toList();
     }
 
     @Override
