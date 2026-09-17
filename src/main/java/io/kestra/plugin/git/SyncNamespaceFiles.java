@@ -12,12 +12,15 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+import com.fasterxml.jackson.databind.JsonNode;
+
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.storages.Namespace;
 import io.kestra.core.storages.NamespaceFile;
 import io.kestra.plugin.git.shared.AbstractSyncTask;
@@ -34,7 +37,7 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @Schema(
     title = "Sync Namespace Files from Git",
-    description = "Imports Namespace Files from a Git branch into a Kestra namespace (optionally child namespaces via `includeChildNamespaces`). Can delete files missing in Git, honors `.kestraignore`, and supports dry-run diff output."
+    description = "Imports Namespace Files from a Git branch into a Kestra namespace (optionally child namespaces via `includeChildNamespaces`). Can delete files missing in Git, honors `.kestraignore`, and supports dry-run diff output. If the target `namespace` does not exist yet, it is created automatically (best-effort, skipped in `dryRun`), so the synced files are immediately visible in the UI; descendant namespaces resolved via `includeChildNamespaces` are not auto-created. Creating the namespace requires the Kestra API to be reachable and authenticated — set `auth` on this task, or rely on a default authentication configured on the instance (`kestra.tasks.sdk.authentication.*`); otherwise a warning is logged and the file sync still proceeds without creating the namespace."
 )
 @Plugin(
     examples = {
@@ -139,7 +142,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
 
     @Schema(
         title = "Target namespace",
-        description = "Namespace receiving the files; defaults to the current flow namespace."
+        description = "Namespace receiving the files; defaults to the current flow namespace. If it does not exist yet, it is created automatically so the synced files are visible in the UI, provided the Kestra API is reachable and authenticated (see `auth`); otherwise the namespace is left unregistered and a warning is logged."
     )
     @Builder.Default
     @PluginProperty(group = "source")
@@ -187,9 +190,80 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
     @ToString.Exclude
     private transient List<String> resolvedChildNamespaces;
 
+    @Getter(AccessLevel.NONE)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
+    private transient boolean targetNamespaceEnsured;
+
     @Override
     public Property<String> fetchedNamespace() {
         return this.namespace;
+    }
+
+    // Lazily invoked from the first real write of a run: skips namespace creation entirely when
+    // dryRun (simulateResourceWrite never calls this) or when nothing is actually synced.
+    private void ensureTargetNamespaceExists(RunContext runContext, String renderedNamespace) {
+        if (this.targetNamespaceEnsured) {
+            return;
+        }
+        this.targetNamespaceEnsured = true;
+
+        if (renderedNamespace == null || renderedNamespace.equals(runContext.flowInfo().namespace())) {
+            return;
+        }
+
+        ensureNamespaceExists(runContext, runContext.flowInfo().tenantId(), renderedNamespace);
+    }
+
+    // GET namespaces/{id} is not a reliable existence check: it returns 200 with a synthetic body for a
+    // namespace that was never persisted instead of 404. Create-and-swallow-conflict works regardless.
+    private void ensureNamespaceExists(RunContext runContext, String tenantId, String namespace) {
+        var logger = runContext.logger();
+        try {
+            var client = kestraClient(runContext);
+
+            try {
+                client.namespaces().createNamespace(tenantId, new io.kestra.sdk.model.Namespace().id(namespace));
+            } catch (ApiException e) {
+                // 409 across versions; EE returns 422 with a validation error on namespace.id instead
+                if (e.getCode() != 409 && !isNamespaceIdValidationError(e)) {
+                    throw e;
+                }
+                return;
+            }
+
+            logger.info("Namespace {} did not exist and was created", namespace);
+        } catch (ApiException | IllegalVariableEvaluationException e) {
+            logger.warn(
+                "Namespace '{}' could not be created automatically ({}). Configure 'auth' on this task, or a default Kestra API authentication " +
+                    "on this instance ('kestra.tasks.sdk.authentication.*'), or create the namespace manually so the synced files are visible in the UI.",
+                namespace, e.getMessage()
+            );
+        }
+    }
+
+    // EE reports an already-existing namespace as a 422 validation error on the namespace.id field
+    // rather than a 409. The validation body carries no machine-readable error code (only path/pointer/
+    // detail), so we key on the structural field, not the human message: any 422 whose error targets
+    // namespace.id is treated as a benign "already exists" and lets the sync continue. A different kind
+    // of invalid id would still surface downstream on the actual file write, which does hard-fail.
+    private static boolean isNamespaceIdValidationError(ApiException e) {
+        if (e.getCode() != 422 || e.getResponseBody() == null) {
+            return false;
+        }
+        try {
+            for (JsonNode error : JacksonMapper.ofJson().readTree(e.getResponseBody()).path("errors")) {
+                if (
+                    "namespace.id".equals(error.path("path").asText())
+                        || "/namespace/id".equals(error.path("pointer").asText())
+                ) {
+                    return true;
+                }
+            }
+        } catch (IOException ignored) {
+            // unparsable body: do not risk swallowing a genuine failure
+        }
+        return false;
     }
 
     // Fetched once per run and reused by fetchResources and resolveTarget
@@ -246,6 +320,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
 
     @Override
     protected NamespaceFile writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
+        ensureTargetNamespaceExists(runContext, renderedNamespace);
         var target = resolveTarget(runContext, renderedNamespace, uri);
         if (inputStream == null && "/".equals(target.uri().getPath())) {
             return NamespaceFile.of(target.namespace());
