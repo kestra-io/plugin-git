@@ -64,6 +64,30 @@ import lombok.experimental.SuperBuilder;
                 """
         ),
         @Example(
+            title = "Sync only the `shared-scripts` folder of a namespace from the root of a Git repository.",
+            full = true,
+            code = """
+                id: sync_shared_scripts
+                namespace: company.ops
+
+                tasks:
+                  - id: git
+                    type: io.kestra.plugin.git.SyncNamespaceFiles
+                    namespace: company.ops
+                    gitDirectory: "."
+                    namespaceDirectory: /shared-scripts
+                    url: https://github.com/kestra-io/scripts
+                    branch: main
+                    username: git_username
+                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+
+                triggers:
+                  - id: every_full_hour
+                    type: io.kestra.plugin.core.trigger.Schedule
+                    cron: "0 * * * *"
+                """
+        ),
+        @Example(
             title = "Sync all flows and scripts for selected namespaces from Git to Kestra every full hour. Note that this is a [System Flow](https://kestra.io/docs/concepts/system-flows), so make sure to adjust the Scope to SYSTEM in the UI filter to see this flow or its executions.",
             full = true,
             code = """
@@ -138,6 +162,20 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
     private Property<Boolean> delete = Property.ofValue(false);
 
     @Schema(
+        title = "Namespace directory prefix",
+        description = """
+            Relative path within the target namespace under which every synced destination path is written. \
+            Mirrors `gitDirectory`, but on the Kestra namespace side: with `/shared-scripts`, a Git file `foo.py` \
+            is written to `<namespace>:/shared-scripts/foo.py` instead of `<namespace>:/foo.py`. Defaults to `/` \
+            (namespace root, i.e. no prefix — existing flows are unaffected). Also scopes `delete: true` to \
+            Namespace Files already under this prefix, so files elsewhere in the namespace are left untouched \
+            even on the very first sync."""
+    )
+    @Builder.Default
+    @PluginProperty(group = "destination")
+    private Property<String> namespaceDirectory = Property.ofValue("/");
+
+    @Schema(
         title = "Include child namespaces",
         description = "Default false. When true, a directory under `gitDirectory` named by an existing descendant namespace (full dotted name, e.g. `company.team`) is synced into that namespace, and descendant namespaces are included when `delete` is true."
     )
@@ -164,6 +202,19 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
             }
         }
         return this.resolvedChildNamespaces;
+    }
+
+    // Rendered and normalized on every call rather than cached on the instance: a parsed Task instance can be
+    // reused concurrently across executions (e.g. namespaceDirectory driven by {{ inputs.folder }}), and an
+    // instance-level cache would let one execution read another's resolved prefix.
+    private String namespaceDirectoryPrefix(RunContext runContext) throws IOException {
+        try {
+            return NamespaceDirectories.normalize(
+                runContext.render(this.namespaceDirectory).as(String.class).orElse("/")
+            );
+        } catch (IllegalVariableEvaluationException e) {
+            throw new IOException(e);
+        }
     }
 
     @Override
@@ -318,10 +369,17 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
 
     @Override
     protected List<NamespaceFile> fetchResources(RunContext runContext, String renderedNamespace) throws IOException, IllegalVariableEvaluationException {
-        List<NamespaceFile> resources = new ArrayList<>(runContext.storage().namespace(renderedNamespace).all());
+        String prefix = this.namespaceDirectoryPrefix(runContext);
+        List<NamespaceFile> resources = new ArrayList<>(
+            runContext.storage().namespace(renderedNamespace).all().stream()
+                .filter(resource -> NamespaceDirectories.isUnderPrefix("/" + resource.path(), prefix))
+                .toList()
+        );
         if (runContext.render(this.includeChildNamespaces).as(Boolean.class).orElse(false)) {
             for (String child : childNamespaces(runContext, renderedNamespace)) {
-                resources.addAll(runContext.storage().namespace(child).all());
+                runContext.storage().namespace(child).all().stream()
+                    .filter(resource -> NamespaceDirectories.isUnderPrefix("/" + resource.path(), prefix))
+                    .forEach(resources::add);
             }
         }
         return resources;
@@ -346,26 +404,39 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
     private record Target(String namespace, URI uri) {
     }
 
-    // With includeChildNamespaces, a first path segment naming an existing descendant namespace routes the file there
+    // With includeChildNamespaces, a first path segment naming an existing descendant namespace routes the file there;
+    // namespaceDirectory is then applied inside whichever namespace the file was routed to.
     private Target resolveTarget(RunContext runContext, String renderedNamespace, URI uri) throws IOException {
+        Target routed;
         try {
             if (!runContext.render(this.includeChildNamespaces).as(Boolean.class).orElse(false)) {
-                return new Target(renderedNamespace, uri);
+                routed = new Target(renderedNamespace, uri);
+            } else {
+                String raw = uri.toString().replaceFirst("^/+", "");
+                int slash = raw.indexOf('/');
+                String first = slash < 0 ? null : raw.substring(0, slash);
+                if (first == null || !isDescendant(renderedNamespace, first) || !childNamespaces(runContext, renderedNamespace).contains(first)) {
+                    routed = new Target(renderedNamespace, uri);
+                } else {
+                    routed = new Target(first, URI.create(raw.substring(slash)));
+                }
             }
         } catch (IllegalVariableEvaluationException e) {
             throw new IOException(e);
         }
 
-        String raw = uri.toString().replaceFirst("^/+", "");
-        int slash = raw.indexOf('/');
-        if (slash < 0) {
-            return new Target(renderedNamespace, uri);
+        String prefix = this.namespaceDirectoryPrefix(runContext);
+        if (prefix.isEmpty()) {
+            return routed;
         }
-        String first = raw.substring(0, slash);
-        if (!isDescendant(renderedNamespace, first) || !childNamespaces(runContext, renderedNamespace).contains(first)) {
-            return new Target(renderedNamespace, uri);
+        try {
+            return new Target(routed.namespace(), URI.create(prefix + routed.uri()));
+        } catch (IllegalArgumentException e) {
+            throw new IOException(
+                "Invalid 'namespaceDirectory' value '" + prefix + "': combined with the destination path, it does not form a valid URI (" + e.getMessage() + ").",
+                e
+            );
         }
-        return new Target(first, URI.create(raw.substring(slash)));
     }
 
     @Override
