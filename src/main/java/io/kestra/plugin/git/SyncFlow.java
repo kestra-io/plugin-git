@@ -4,13 +4,14 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang3.StringUtils;
 import org.eclipse.jgit.api.Git;
 
+import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
@@ -18,6 +19,7 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.plugin.git.shared.AbstractKestraTask;
+import io.kestra.plugin.git.shared.services.FlowLookupService;
 import io.kestra.plugin.git.shared.services.GitService;
 import io.kestra.sdk.KestraClient;
 import io.kestra.sdk.internal.ApiException;
@@ -172,22 +174,27 @@ public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlo
                     throw new IllegalStateException("Flow validation failed: " + violations.getFirst().getConstraints());
                 }
 
-                // Projected revision: existing + 1, or 1 for a new flow
-                int projectedRevision;
+                // Projected revision: existing + 1, or 1 for a new flow. Only a 404 means the flow is absent;
+                // any other lookup failure must not be treated as "flow does not exist", which would fabricate
+                // revision 1 for a possibly existing flow. Fail fast instead of reporting a wrong revision.
+                Optional<io.kestra.core.models.flows.FlowWithSource> existing;
                 try {
-                    FlowWithSource existing = kestraClient.flows().flow(rNamespace, flowId, tenantId, false, null, false);
-                    projectedRevision = existing.getRevision() != null ? existing.getRevision() + 1 : 1;
+                    existing = FlowLookupService.fetch(kestraClient, tenantId, rNamespace, flowId, false);
                 } catch (ApiException e) {
-                    if (e.getCode() != 404) {
-                        // Only 404 means "flow does not exist yet"; any other status is a real API/permissions
-                        // failure, surfaced here so a misconfigured kestraUrl isn't silently reported as revision 1.
-                        runContext.logger().warn(
-                            "Failed to fetch existing flow {}.{} from the Kestra API (status {}): {} — assuming it does not exist yet for revision projection",
-                            rNamespace, flowId, e.getCode(), StringUtils.abbreviate(StringUtils.defaultString(e.getMessage()), 500)
-                        );
-                    }
-                    projectedRevision = 1;
+                    String statusDescription = e.getCode() == 0 ? "no HTTP response" : "HTTP " + e.getCode();
+                    runContext.logger().warn(
+                        "Single-flow lookup for {}.{} failed ({}); check that 'auth' can read flows in this namespace and that 'kestraUrl' targets the intended instance",
+                        rNamespace, flowId, statusDescription
+                    );
+                    throw new KestraRuntimeException(
+                        "Cannot compute the projected revision for " + rNamespace + "." + flowId
+                            + ": the Kestra API single-flow lookup returned " + statusDescription
+                            + ". Dry-run aborted rather than reporting a possibly wrong revision."
+                    );
                 }
+                int projectedRevision = existing
+                    .map(existingFlow -> existingFlow.getRevision() != null ? existingFlow.getRevision() + 1 : 1)
+                    .orElse(1);
 
                 result = new FlowWithSource()
                     .id(flowId)

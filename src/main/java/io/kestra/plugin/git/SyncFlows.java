@@ -30,6 +30,7 @@ import io.kestra.core.models.property.Property;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.YamlParser;
 import io.kestra.plugin.git.shared.AbstractSyncTask;
+import io.kestra.plugin.git.shared.services.FlowLookupService;
 import io.kestra.sdk.KestraClient;
 import io.kestra.sdk.internal.ApiException;
 import io.kestra.sdk.model.QueryFilter;
@@ -448,23 +449,11 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     private FlowLookup fetchFlowFromApi(RunContext runContext, KestraClient kestraClient, String tenantId, String namespace, String flowId) {
         LOOKUP_COUNTERS.get().attempted++;
         try {
-            var apiFlow = kestraClient.flows().flow(namespace, flowId, tenantId, true, null, false);
-            return new FlowLookup(
-                FlowWithSource.builder()
-                    .id(apiFlow.getId())
-                    .namespace(apiFlow.getNamespace())
-                    .revision(apiFlow.getRevision())
-                    .tenantId(tenantId)
-                    .source(apiFlow.getSource())
-                    .build(),
-                true
-            );
+            // A 404 resolves to "absent" (empty); any other status propagates as ApiException below.
+            return new FlowLookup(FlowLookupService.fetch(kestraClient, tenantId, namespace, flowId, true).orElse(null), true);
         } catch (ApiException e) {
-            if (e.getCode() == 404) {
-                return new FlowLookup(null, true);
-            }
-            // Only 404 means "flow does not exist"; any other status is a real API/permissions failure that
-            // leaves the lookup unresolved, so callers must not assume the flow is absent.
+            // Any non-404 status is a real API/permissions failure that leaves the lookup unresolved, so
+            // callers must not assume the flow is absent.
             LOOKUP_COUNTERS.get().unresolved++;
             runContext.logger().warn(
                 "Failed to fetch flow {}.{} from the Kestra API (status {}): {}",
