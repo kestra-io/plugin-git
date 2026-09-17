@@ -177,9 +177,12 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
      * reuse of the same SyncFlows instance (e.g. the same templated child task invoked once per
      * parallel-loop iteration, or two overlapping executions) never lets one invocation's reset or
      * increments bleed into another's count. Each invocation sets its own counters in run() and
-     * clears them in a finally block once output() has read them.
+     * clears them in a finally block once output() has read them. It is self-initializing
+     * (withInitial) so that a lookup reaching fetchFlowFromApi() on any thread that did not go
+     * through run() — should a future plugin-git-lib version parallelize the resource stream —
+     * gets a fresh counter rather than NPEing on a null value.
      */
-    private static final ThreadLocal<LookupCounters> LOOKUP_COUNTERS = new ThreadLocal<>();
+    private static final ThreadLocal<LookupCounters> LOOKUP_COUNTERS = ThreadLocal.withInitial(LookupCounters::new);
 
     private static final class LookupCounters {
         private int attempted;
