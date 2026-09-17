@@ -128,85 +128,86 @@ public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlo
 
         String rBranch = runContext.render(this.getBranch()).as(String.class).orElse(null);
         gitService.ensureBranchExistsOrFail(runContext, rBranch, runContext.render(this.failOnMissingBranch).as(Boolean.class).orElse(true));
-        Git git = gitService.cloneBranch(runContext, rBranch, Property.ofValue(Boolean.FALSE));
-        Path cloneDir = git.getRepository().getWorkTree().toPath();
+        // try-with-resources so the JGit clone is always released, including on every throw path below
+        // (previously git.close() was only reached when run() returned normally).
+        try (Git git = gitService.cloneBranch(runContext, rBranch, Property.ofValue(Boolean.FALSE))) {
+            Path cloneDir = git.getRepository().getWorkTree().toPath();
 
-        String rFlowPath = runContext.render(this.flowPath).as(String.class).orElseThrow();
-        Path flowFilePath = cloneDir.resolve(rFlowPath);
+            String rFlowPath = runContext.render(this.flowPath).as(String.class).orElseThrow();
+            Path flowFilePath = cloneDir.resolve(rFlowPath);
 
-        if (!Files.exists(flowFilePath)) {
-            throw new java.io.FileNotFoundException("Flow file not found at path: " + rFlowPath);
-        }
-
-        // Build the client only after confirming the file exists, to keep failures fast and clear
-        KestraClient kestraClient = kestraClient(runContext);
-
-        String rNamespace = runContext.render(this.targetNamespace).as(String.class).orElseThrow();
-        String flowSource;
-        try (InputStream is = Files.newInputStream(flowFilePath)) {
-            flowSource = IOUtils.toString(is, StandardCharsets.UTF_8);
-        }
-
-        // Rewrite the namespace to the target namespace
-        Matcher namespaceMatcher = NAMESPACE_FINDER_PATTERN.matcher(flowSource);
-        flowSource = namespaceMatcher.replaceFirst("namespace: " + rNamespace);
-
-        // Parse the flow id from the (potentially rewritten) YAML
-        Matcher idMatcher = FLOW_ID_FINDER_PATTERN.matcher(flowSource);
-        if (!idMatcher.find()) {
-            throw new IllegalStateException("Cannot parse flow id from YAML at path: " + rFlowPath);
-        }
-        String flowId = idMatcher.group(1).trim();
-
-        String tenantId = runContext.flowInfo().tenantId();
-        boolean rDryRun = runContext.render(this.dryRun).as(Boolean.class).orElse(Boolean.FALSE);
-
-        FlowWithSource result;
-
-        if (rDryRun) {
-            // Validate without importing; compute projected revision
-            var violations = kestraClient.flows().validateFlows(tenantId, flowSource);
-            if (!violations.isEmpty() && violations.getFirst().getConstraints() != null) {
-                throw new IllegalStateException("Flow validation failed: " + violations.getFirst().getConstraints());
+            if (!Files.exists(flowFilePath)) {
+                throw new java.io.FileNotFoundException("Flow file not found at path: " + rFlowPath);
             }
 
-            // Projected revision: existing + 1, or 1 for a new flow
-            int projectedRevision;
-            try {
-                FlowWithSource existing = kestraClient.flows().flow(rNamespace, flowId, tenantId, false, null, false);
-                projectedRevision = existing.getRevision() != null ? existing.getRevision() + 1 : 1;
-            } catch (ApiException e) {
-                if (e.getCode() != 404) {
-                    // Only 404 means "flow does not exist yet"; any other status is a real API/permissions
-                    // failure, surfaced here so a misconfigured kestraUrl isn't silently reported as revision 1.
-                    runContext.logger().warn(
-                        "Failed to fetch existing flow {}.{} from the Kestra API (status {}): {} — assuming it does not exist yet for revision projection",
-                        rNamespace, flowId, e.getCode(), StringUtils.abbreviate(StringUtils.defaultString(e.getMessage()), 500)
-                    );
+            // Build the client only after confirming the file exists, to keep failures fast and clear
+            KestraClient kestraClient = kestraClient(runContext);
+
+            String rNamespace = runContext.render(this.targetNamespace).as(String.class).orElseThrow();
+            String flowSource;
+            try (InputStream is = Files.newInputStream(flowFilePath)) {
+                flowSource = IOUtils.toString(is, StandardCharsets.UTF_8);
+            }
+
+            // Rewrite the namespace to the target namespace
+            Matcher namespaceMatcher = NAMESPACE_FINDER_PATTERN.matcher(flowSource);
+            flowSource = namespaceMatcher.replaceFirst("namespace: " + rNamespace);
+
+            // Parse the flow id from the (potentially rewritten) YAML
+            Matcher idMatcher = FLOW_ID_FINDER_PATTERN.matcher(flowSource);
+            if (!idMatcher.find()) {
+                throw new IllegalStateException("Cannot parse flow id from YAML at path: " + rFlowPath);
+            }
+            String flowId = idMatcher.group(1).trim();
+
+            String tenantId = runContext.flowInfo().tenantId();
+            boolean rDryRun = runContext.render(this.dryRun).as(Boolean.class).orElse(Boolean.FALSE);
+
+            FlowWithSource result;
+
+            if (rDryRun) {
+                // Validate without importing; compute projected revision
+                var violations = kestraClient.flows().validateFlows(tenantId, flowSource);
+                if (!violations.isEmpty() && violations.getFirst().getConstraints() != null) {
+                    throw new IllegalStateException("Flow validation failed: " + violations.getFirst().getConstraints());
                 }
-                projectedRevision = 1;
+
+                // Projected revision: existing + 1, or 1 for a new flow
+                int projectedRevision;
+                try {
+                    FlowWithSource existing = kestraClient.flows().flow(rNamespace, flowId, tenantId, false, null, false);
+                    projectedRevision = existing.getRevision() != null ? existing.getRevision() + 1 : 1;
+                } catch (ApiException e) {
+                    if (e.getCode() != 404) {
+                        // Only 404 means "flow does not exist yet"; any other status is a real API/permissions
+                        // failure, surfaced here so a misconfigured kestraUrl isn't silently reported as revision 1.
+                        runContext.logger().warn(
+                            "Failed to fetch existing flow {}.{} from the Kestra API (status {}): {} — assuming it does not exist yet for revision projection",
+                            rNamespace, flowId, e.getCode(), StringUtils.abbreviate(StringUtils.defaultString(e.getMessage()), 500)
+                        );
+                    }
+                    projectedRevision = 1;
+                }
+
+                result = new FlowWithSource()
+                    .id(flowId)
+                    .namespace(rNamespace)
+                    .revision(projectedRevision);
+            } else {
+                // Import the flow
+                var tempFile = toNamedTempFile(flowId + ".yaml", flowSource.stripTrailing());
+                kestraClient.flows().importFlows(tenantId, true, tempFile);
+
+                // Fetch the saved flow to populate the output
+                result = kestraClient.flows().flow(rNamespace, flowId, tenantId, false, null, false);
             }
 
-            result = new FlowWithSource()
-                .id(flowId)
-                .namespace(rNamespace)
-                .revision(projectedRevision);
-        } else {
-            // Import the flow
-            var tempFile = toNamedTempFile(flowId + ".yaml", flowSource.stripTrailing());
-            kestraClient.flows().importFlows(tenantId, true, tempFile);
-
-            // Fetch the saved flow to populate the output
-            result = kestraClient.flows().flow(rNamespace, flowId, tenantId, false, null, false);
+            return Output.builder()
+                .flowId(result.getId())
+                .namespace(result.getNamespace())
+                .revision(result.getRevision())
+                .build();
         }
-
-        git.close();
-
-        return Output.builder()
-            .flowId(result.getId())
-            .namespace(result.getNamespace())
-            .revision(result.getRevision())
-            .build();
     }
 
     private java.io.File toNamedTempFile(String fileName, String yaml) {
