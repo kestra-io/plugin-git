@@ -33,6 +33,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.exceptions.KestraRuntimeException;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
@@ -51,7 +52,6 @@ import static io.kestra.core.utils.Rethrow.*;
 import static java.nio.file.FileVisitResult.CONTINUE;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder(toBuilder = true)
 @NoArgsConstructor
