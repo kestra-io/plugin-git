@@ -5,15 +5,19 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.sun.net.httpserver.HttpServer;
 
 import io.kestra.core.junit.annotations.KestraTest;
 import io.kestra.core.models.property.Property;
+import io.kestra.core.repositories.FlowRepositoryInterface;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.plugin.git.shared.AbstractKestraTask;
 import io.kestra.plugin.git.shared.testkit.AbstractGitTest;
+import io.kestra.plugin.git.shared.testkit.MockKestraApiServer;
 
 import jakarta.inject.Inject;
 
@@ -29,6 +33,48 @@ public class SyncFlowTest extends AbstractGitTest {
 
     @Inject
     private RunContextFactory runContextFactory;
+
+    @Inject
+    private FlowRepositoryInterface flowRepository;
+
+    /**
+     * Regression test for https://github.com/kestra-io/plugin-git/issues/335: a non-404 failure on the
+     * single-flow lookup used to fall through to `projectedRevision = 1`, fabricating a revision for what
+     * might be an existing flow. Dry-run must now abort with an actionable error instead. Driven through the
+     * shared {@link MockKestraApiServer} harness so the whole task path is exercised, not a hand-rolled server.
+     */
+    @ParameterizedTest
+    @ValueSource(ints = {401, 403, 500})
+    void dryRun_flowLookupFailsWithNon404Status_shouldThrowInsteadOfFabricatingRevision(int status) throws Exception {
+        try (MockKestraApiServer server = MockKestraApiServer.start(flowRepository)) {
+            server.forceGetFlowStatus(TARGET_NAMESPACE, "first-flow", status);
+
+            SyncFlow task = SyncFlow.builder()
+                .url(Property.ofExpression("{{url}}"))
+                .username(Property.ofExpression("{{pat}}"))
+                .password(Property.ofExpression("{{pat}}"))
+                .branch(Property.ofExpression("{{branch}}"))
+                .targetNamespace(Property.ofValue(TARGET_NAMESPACE))
+                .flowPath(Property.ofValue("to_clone/_flows/first-flow.yml"))
+                .dryRun(Property.ofValue(true))
+                .kestraUrl(Property.ofValue(server.url()))
+                .auth(
+                    AbstractKestraTask.Auth.builder()
+                        .username(Property.ofValue("user"))
+                        .password(Property.ofValue("pass"))
+                        .build()
+                )
+                .build();
+
+            Exception exception = assertThrows(
+                io.kestra.core.exceptions.KestraRuntimeException.class,
+                () -> task.run(runContext())
+            );
+            assertThat(exception.getMessage(), containsString(TARGET_NAMESPACE));
+            assertThat(exception.getMessage(), containsString("first-flow"));
+            assertThat(exception.getMessage(), containsString(String.valueOf(status)));
+        }
+    }
 
     @Test
     void createNewFlow() throws Exception {
