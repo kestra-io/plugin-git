@@ -8,6 +8,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -21,8 +23,15 @@ import com.sun.net.httpserver.HttpServer;
 
 import io.kestra.core.exceptions.KestraRuntimeException;
 import io.kestra.core.junit.annotations.KestraTest;
+import io.kestra.core.models.flows.FlowWithSource;
+import io.kestra.core.models.property.Property;
+import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
+import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.tenant.TenantService;
+import io.kestra.plugin.git.shared.AbstractGitTask;
+import io.kestra.plugin.git.shared.SourceOfTruth;
+import io.kestra.plugin.git.shared.SourceOfTruthOverrides;
 import io.kestra.sdk.KestraClient;
 
 import jakarta.inject.Inject;
@@ -31,7 +40,9 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @KestraTest
 class TenantSyncTest {
@@ -129,7 +140,7 @@ class TenantSyncTest {
         var method = TenantSync.class.getDeclaredMethod(
             "fetchFlowsFromKestra",
             KestraClient.class,
-            io.kestra.core.runners.RunContext.class,
+            RunContext.class,
             String.class,
             TenantSync.OnInvalidSyntax.class
         );
@@ -182,6 +193,107 @@ class TenantSyncTest {
 
         // Dashboards moved to EE, so `_global/dashboards` is no longer a synced path and must not fail the sync
         assertEquals(Set.of("my.namespace"), namespaces);
+    }
+
+    @Test
+    void sourceOfTruthOverrides_resolvesPerKindWithFallback() throws Exception {
+        RunContext runContext = runContextFactory.of();
+
+        assertEquals(SourceOfTruth.KESTRA, SourceOfTruthOverrides.resolve(runContext, null, SourceOfTruth.KESTRA));
+        assertEquals(
+            SourceOfTruth.GIT,
+            SourceOfTruthOverrides.resolve(runContext, Property.ofValue(SourceOfTruth.GIT), SourceOfTruth.KESTRA)
+        );
+    }
+
+    @Test
+    void gitHasContent_narrowsProbeToResolvedSourcePerKind(@TempDir Path tempDir) throws Exception {
+        Path namespaceRoot = Files.createDirectories(tempDir.resolve("my.namespace"));
+        Files.createDirectories(namespaceRoot.resolve("files"));
+
+        var method = TenantSync.class.getDeclaredMethod(
+            "gitHasContent", Path.class, SourceOfTruth.class, SourceOfTruth.class
+        );
+        method.setAccessible(true);
+
+        // namespaceFiles is GIT-sourced and files/ exists -> counts, even though flows/ is missing entirely
+        assertEquals(true, method.invoke(null, namespaceRoot, SourceOfTruth.KESTRA, SourceOfTruth.GIT));
+
+        // flows is GIT-sourced but flows/ doesn't exist; files/ exists but stays KESTRA-sourced -> must not false-positive
+        assertEquals(false, method.invoke(null, namespaceRoot, SourceOfTruth.GIT, SourceOfTruth.KESTRA));
+    }
+
+    @Test
+    void mixedDirections_recordsBothAPushAndAPullDiffInOneRun(@TempDir Path tempDir) throws Exception {
+        var task = TenantSync.builder().build();
+        var runContext = runContextFactory.of(
+            Map.of(
+                "flow", Map.of(
+                    "tenantId", TENANT_ID,
+                    "namespace", NAMESPACE,
+                    "id", "tenant-sync-mixed-test"
+                )
+            )
+        );
+
+        var flowYaml = """
+            id: pushed-flow
+            namespace: my.namespace
+
+            tasks:
+              - id: log
+                type: io.kestra.plugin.core.log.Log
+                message: hello
+            """;
+        var kestraFlows = List.of(FlowWithSource.of(YamlParser.parse(flowYaml, io.kestra.core.models.flows.Flow.class), flowYaml));
+
+        var diffs = new ArrayList<AbstractGitTask.DiffLine>();
+        var apply = new ArrayList<Runnable>();
+
+        // flows: Kestra is the source of truth -> a Kestra-only flow is pushed to Git
+        planFlowsMethod().invoke(
+            task, null, runContext, tempDir.resolve("flows"),
+            Map.of(), kestraFlows, NAMESPACE,
+            SourceOfTruth.KESTRA, TenantSync.WhenMissingInSource.KEEP, TenantSync.OnInvalidSyntax.FAIL,
+            List.of(), true, diffs, apply
+        );
+
+        // Namespace Files: Git is the source of truth -> a Git-only file is pulled into Kestra
+        planNamespaceFilesMethod().invoke(
+            task, runContext, null, tempDir.resolve("files"),
+            Map.of("pulled.txt", "from-git".getBytes(StandardCharsets.UTF_8)), Map.of(), NAMESPACE,
+            SourceOfTruth.GIT, TenantSync.WhenMissingInSource.KEEP,
+            List.of(), true, diffs, apply
+        );
+
+        assertEquals(2, diffs.size());
+        assertTrue(diffs.stream().anyMatch(d -> d.getKind() == AbstractGitTask.Kind.FLOW && d.getAction() == AbstractGitTask.Action.ADDED));
+        assertTrue(diffs.stream().anyMatch(d -> d.getKind() == AbstractGitTask.Kind.FILE && d.getAction() == AbstractGitTask.Action.ADDED));
+        assertFalse(diffs.stream().anyMatch(d -> d.getKind() == AbstractGitTask.Kind.FLOW && d.getAction() == AbstractGitTask.Action.DELETED_GIT));
+    }
+
+    private static Method planFlowsMethod() throws Exception {
+        var method = TenantSync.class.getDeclaredMethod(
+            "planFlows",
+            KestraClient.class, RunContext.class, Path.class,
+            Map.class, List.class, String.class,
+            SourceOfTruth.class, TenantSync.WhenMissingInSource.class, TenantSync.OnInvalidSyntax.class,
+            List.class, boolean.class, List.class, List.class
+        );
+        method.setAccessible(true);
+        return method;
+    }
+
+    private static Method planNamespaceFilesMethod() throws Exception {
+        var method = TenantSync.class.getDeclaredMethod(
+            "planNamespaceFiles",
+            RunContext.class, KestraClient.class, Path.class,
+            Map.class, Map.class, String.class,
+            SourceOfTruth.class, TenantSync.WhenMissingInSource.class,
+            List.class, boolean.class, List.class, List.class
+        );
+        method.setAccessible(true);
+        return method;
     }
 
 }

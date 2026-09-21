@@ -32,6 +32,8 @@ import io.kestra.core.storages.NamespaceFile;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.tenant.TenantService;
 import io.kestra.plugin.git.shared.AbstractGitTask;
+import io.kestra.plugin.git.shared.SourceOfTruth;
+import io.kestra.plugin.git.shared.SourceOfTruthOverrides;
 import io.kestra.plugin.git.shared.testkit.AbstractGitTest;
 import io.kestra.plugin.git.shared.testkit.MockKestraApiServer;
 
@@ -104,7 +106,7 @@ public class NamespaceSyncTest extends AbstractGitTest {
             .branch(Property.ofExpression("{{branch}}"))
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
             .namespace(Property.ofExpression("{{namespace}}"))
-            .sourceOfTruth(Property.ofValue(NamespaceSync.SourceOfTruth.KESTRA))
+            .sourceOfTruth(Property.ofValue(SourceOfTruth.KESTRA))
             .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.KEEP))
             .dryRun(Property.ofValue(true))
             .kestraUrl(Property.ofValue(server.url()))
@@ -136,7 +138,7 @@ public class NamespaceSyncTest extends AbstractGitTest {
             .branch(Property.ofExpression("{{branch}}"))
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
             .namespace(Property.ofExpression("{{namespace}}"))
-            .sourceOfTruth(Property.ofValue(NamespaceSync.SourceOfTruth.KESTRA))
+            .sourceOfTruth(Property.ofValue(SourceOfTruth.KESTRA))
             .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.KEEP))
             .dryRun(Property.ofValue(false))
             .kestraUrl(Property.ofValue(server.url()))
@@ -186,7 +188,7 @@ public class NamespaceSyncTest extends AbstractGitTest {
             .branch(Property.ofExpression("{{branch}}"))
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
             .namespace(Property.ofExpression("{{namespace}}"))
-            .sourceOfTruth(Property.ofValue(NamespaceSync.SourceOfTruth.GIT))
+            .sourceOfTruth(Property.ofValue(SourceOfTruth.GIT))
             .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.KEEP))
             .dryRun(Property.ofValue(false))
             .kestraUrl(Property.ofValue(server.url()))
@@ -218,7 +220,7 @@ public class NamespaceSyncTest extends AbstractGitTest {
             .branch(Property.ofExpression("{{branch}}"))
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
             .namespace(Property.ofExpression("{{namespace}}"))
-            .sourceOfTruth(Property.ofValue(NamespaceSync.SourceOfTruth.KESTRA))
+            .sourceOfTruth(Property.ofValue(SourceOfTruth.KESTRA))
             .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.KEEP))
             .dryRun(Property.ofValue(false))
             .kestraUrl(Property.ofValue(server.url()))
@@ -281,6 +283,196 @@ public class NamespaceSyncTest extends AbstractGitTest {
         }
     }
 
+    @Test
+    void mixed_pushesFlowsToGitAndPullsFilesFromGit_inOneRun() throws Exception {
+        RunContext rc = runContext();
+
+        String suf = Long.toHexString(System.nanoTime());
+        String flowId = "push-" + suf;
+        String fileRel = "pulled/data-" + suf + ".txt";
+
+        putNsFile(rc, fileRel, "from-git");
+        runKestraToGitApply();
+        deleteNsFile(rc, fileRel);
+
+        createFlowInKestra(flowId, NAMESPACE);
+
+        NamespaceSync task = NamespaceSync.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .sourceOfTruth(Property.ofValue(SourceOfTruth.KESTRA))
+            .sourceOfTruthOverrides(SourceOfTruthOverrides.builder().namespaceFiles(Property.ofValue(SourceOfTruth.GIT)).build())
+            .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.KEEP))
+            .dryRun(Property.ofValue(false))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        NamespaceSync.Output out = task.run(rc);
+
+        RunContext cloneCtx = runContextFactory.of();
+        Clone.builder()
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(branch))
+            .build()
+            .run(cloneCtx);
+
+        Path base = cloneCtx.workingDir().path().resolve(GIT_DIRECTORY).resolve(NAMESPACE);
+        assertTrue(Files.exists(base.resolve("flows/" + flowId + ".yaml")), "flow should have been pushed to Git");
+
+        assertTrue(
+            rc.storage().namespace(NAMESPACE).all().stream().anyMatch(f -> f.path().toString().replace("\\", "/").endsWith(fileRel)),
+            "file should have been pulled back into Kestra"
+        );
+
+        // Mixed direction must record both sides (createIonDiff alone would only see the flow push, not the file pull)
+        List<AbstractGitTask.DiffLine> diffs = readIon(out.getDiff(), rc);
+        assertTrue(diffs.stream().anyMatch(d -> d.getKind() == AbstractGitTask.Kind.FLOW));
+        assertTrue(diffs.stream().anyMatch(d -> d.getKind() == AbstractGitTask.Kind.FILE));
+    }
+
+    @Test
+    void mixed_dryRun_diffContainsBothDirectionsAndAppliesNothing() throws Exception {
+        RunContext rc = runContext();
+
+        String suf = Long.toHexString(System.nanoTime());
+        String flowId = "dryflow-" + suf;
+        String fileRel = "dry/data-" + suf + ".txt";
+
+        putNsFile(rc, fileRel, "from-git");
+        runKestraToGitApply();
+        deleteNsFile(rc, fileRel);
+
+        createFlowInKestra(flowId, NAMESPACE);
+
+        NamespaceSync task = NamespaceSync.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .sourceOfTruth(Property.ofValue(SourceOfTruth.KESTRA))
+            .sourceOfTruthOverrides(SourceOfTruthOverrides.builder().namespaceFiles(Property.ofValue(SourceOfTruth.GIT)).build())
+            .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.KEEP))
+            .dryRun(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        NamespaceSync.Output out = task.run(rc);
+        assertNull(out.getCommitId());
+
+        List<AbstractGitTask.DiffLine> diffs = readIon(out.getDiff(), rc);
+        assertTrue(diffs.stream().anyMatch(d -> d.getKind() == AbstractGitTask.Kind.FLOW && d.getKey().contains(flowId)));
+        assertTrue(diffs.stream().anyMatch(d -> d.getKind() == AbstractGitTask.Kind.FILE));
+
+        assertTrue(
+            rc.storage().namespace(NAMESPACE).all().stream().noneMatch(f -> f.path().toString().replace("\\", "/").endsWith(fileRel)),
+            "dry run must not have applied the pull"
+        );
+    }
+
+    @Test
+    void mixed_whenMissingInSourceDelete_deletesOnCorrectSidePerKind() throws Exception {
+        RunContext rc = runContext();
+
+        String suf = Long.toHexString(System.nanoTime());
+        String gitOnlyFlowId = "gitonly-" + suf;
+        String kestraOnlyFileRel = "extra/only-in-kestra-" + suf + ".txt";
+
+        createFlowInKestra(gitOnlyFlowId, NAMESPACE);
+        runKestraToGitApply();
+        flowRepository.findByNamespaceWithSource(TENANT_ID, NAMESPACE).stream()
+            .filter(f -> gitOnlyFlowId.equals(f.getId()))
+            .forEach(f -> flowRepository.delete(f));
+
+        putNsFile(rc, kestraOnlyFileRel, "kestra-only");
+
+        NamespaceSync task = NamespaceSync.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .sourceOfTruth(Property.ofValue(SourceOfTruth.KESTRA))
+            .sourceOfTruthOverrides(SourceOfTruthOverrides.builder().namespaceFiles(Property.ofValue(SourceOfTruth.GIT)).build())
+            .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.DELETE))
+            .dryRun(Property.ofValue(false))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        task.run(rc);
+
+        // flows: Kestra is the source of truth -> missing-from-Kestra flow is deleted from Git
+        RunContext cloneCtx = runContextFactory.of();
+        Clone.builder()
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(branch))
+            .build()
+            .run(cloneCtx);
+        Path base = cloneCtx.workingDir().path().resolve(GIT_DIRECTORY).resolve(NAMESPACE);
+        assertFalse(Files.exists(base.resolve("flows/" + gitOnlyFlowId + ".yaml")));
+
+        // Namespace Files: Git is the source of truth -> missing-from-Git file is deleted from Kestra
+        assertTrue(
+            rc.storage().namespace(NAMESPACE).all().stream().noneMatch(f -> f.path().toString().replace("\\", "/").endsWith(kestraOnlyFileRel))
+        );
+    }
+
+    @Test
+    void noOverride_and_degenerateOverride_produceTheSameDiff() throws Exception {
+        String suf = Long.toHexString(System.nanoTime());
+        String flowId = "match-" + suf;
+        createFlowInKestra(flowId, NAMESPACE);
+
+        NamespaceSync withoutOverride = NamespaceSync.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .sourceOfTruth(Property.ofValue(SourceOfTruth.KESTRA))
+            .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.KEEP))
+            .dryRun(Property.ofValue(true))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+        RunContext rcWithoutOverride = runContext();
+        List<AbstractGitTask.DiffLine> diffsWithoutOverride = readIon(withoutOverride.run(rcWithoutOverride).getDiff(), rcWithoutOverride);
+
+        NamespaceSync withDegenerateOverride = withoutOverride.toBuilder()
+            .sourceOfTruthOverrides(
+                SourceOfTruthOverrides.builder()
+                    .flows(Property.ofValue(SourceOfTruth.KESTRA))
+                    .namespaceFiles(Property.ofValue(SourceOfTruth.KESTRA))
+                    .build()
+            )
+            .build();
+        RunContext rcWithOverride = runContext();
+        List<AbstractGitTask.DiffLine> diffsWithOverride = readIon(withDegenerateOverride.run(rcWithOverride).getDiff(), rcWithOverride);
+
+        assertEquals(
+            diffsWithoutOverride.stream().map(d -> d.getKind() + ":" + d.getKey() + ":" + d.getAction()).sorted().toList(),
+            diffsWithOverride.stream().map(d -> d.getKind() + ":" + d.getKey() + ":" + d.getAction()).sorted().toList()
+        );
+    }
+
+    private void deleteNsFile(RunContext rc, String rel) throws Exception {
+        var toDelete = rc.storage().namespace(NAMESPACE).all().stream()
+            .filter(f -> f.path().toString().replace("\\", "/").endsWith(rel))
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException("Namespace file not found: " + rel));
+        rc.storage().namespace(NAMESPACE).delete(toDelete);
+    }
+
     private RunContext runContext() {
         Map<String, Object> ctx = new HashMap<>(
             Map.of(
@@ -329,7 +521,7 @@ public class NamespaceSyncTest extends AbstractGitTest {
             .branch(Property.ofExpression("{{branch}}"))
             .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
             .namespace(Property.ofExpression("{{namespace}}"))
-            .sourceOfTruth(Property.ofValue(NamespaceSync.SourceOfTruth.KESTRA))
+            .sourceOfTruth(Property.ofValue(SourceOfTruth.KESTRA))
             .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.DELETE))
             .dryRun(Property.ofValue(false))
             .kestraUrl(Property.ofValue(server.url()))
