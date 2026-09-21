@@ -291,38 +291,12 @@ public class NamespaceSyncTest extends AbstractGitTest {
         String flowId = "push-" + suf;
         String fileRel = "pulled/data-" + suf + ".txt";
 
-        putNsFile(rc, fileRel, "from-git");
-        runKestraToGitApply();
-        deleteNsFile(rc, fileRel);
-
+        seedGitOnlyFile(rc, fileRel);
         createFlowInKestra(flowId, NAMESPACE);
 
-        NamespaceSync task = NamespaceSync.builder()
-            .url(Property.ofExpression("{{url}}"))
-            .username(Property.ofExpression("{{pat}}"))
-            .password(Property.ofExpression("{{pat}}"))
-            .branch(Property.ofExpression("{{branch}}"))
-            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
-            .namespace(Property.ofExpression("{{namespace}}"))
-            .sourceOfTruth(Property.ofValue(SourceOfTruth.KESTRA))
-            .sourceOfTruthOverrides(SourceOfTruthOverrides.builder().namespaceFiles(Property.ofValue(SourceOfTruth.GIT)).build())
-            .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.KEEP))
-            .dryRun(Property.ofValue(false))
-            .kestraUrl(Property.ofValue(server.url()))
-            .build();
+        NamespaceSync.Output out = mixedTask(NamespaceSync.WhenMissingInSource.KEEP, false).run(rc);
 
-        NamespaceSync.Output out = task.run(rc);
-
-        RunContext cloneCtx = runContextFactory.of();
-        Clone.builder()
-            .url(Property.ofValue(repositoryUrl))
-            .username(Property.ofValue(pat))
-            .password(Property.ofValue(pat))
-            .branch(Property.ofValue(branch))
-            .build()
-            .run(cloneCtx);
-
-        Path base = cloneCtx.workingDir().path().resolve(GIT_DIRECTORY).resolve(NAMESPACE);
+        Path base = clonedNamespaceBase();
         assertTrue(Files.exists(base.resolve("flows/" + flowId + ".yaml")), "flow should have been pushed to Git");
 
         assertTrue(
@@ -344,27 +318,10 @@ public class NamespaceSyncTest extends AbstractGitTest {
         String flowId = "dryflow-" + suf;
         String fileRel = "dry/data-" + suf + ".txt";
 
-        putNsFile(rc, fileRel, "from-git");
-        runKestraToGitApply();
-        deleteNsFile(rc, fileRel);
-
+        seedGitOnlyFile(rc, fileRel);
         createFlowInKestra(flowId, NAMESPACE);
 
-        NamespaceSync task = NamespaceSync.builder()
-            .url(Property.ofExpression("{{url}}"))
-            .username(Property.ofExpression("{{pat}}"))
-            .password(Property.ofExpression("{{pat}}"))
-            .branch(Property.ofExpression("{{branch}}"))
-            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
-            .namespace(Property.ofExpression("{{namespace}}"))
-            .sourceOfTruth(Property.ofValue(SourceOfTruth.KESTRA))
-            .sourceOfTruthOverrides(SourceOfTruthOverrides.builder().namespaceFiles(Property.ofValue(SourceOfTruth.GIT)).build())
-            .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.KEEP))
-            .dryRun(Property.ofValue(true))
-            .kestraUrl(Property.ofValue(server.url()))
-            .build();
-
-        NamespaceSync.Output out = task.run(rc);
+        NamespaceSync.Output out = mixedTask(NamespaceSync.WhenMissingInSource.KEEP, true).run(rc);
         assertNull(out.getCommitId());
 
         List<AbstractGitTask.DiffLine> diffs = readIon(out.getDiff(), rc);
@@ -393,32 +350,10 @@ public class NamespaceSyncTest extends AbstractGitTest {
 
         putNsFile(rc, kestraOnlyFileRel, "kestra-only");
 
-        NamespaceSync task = NamespaceSync.builder()
-            .url(Property.ofExpression("{{url}}"))
-            .username(Property.ofExpression("{{pat}}"))
-            .password(Property.ofExpression("{{pat}}"))
-            .branch(Property.ofExpression("{{branch}}"))
-            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
-            .namespace(Property.ofExpression("{{namespace}}"))
-            .sourceOfTruth(Property.ofValue(SourceOfTruth.KESTRA))
-            .sourceOfTruthOverrides(SourceOfTruthOverrides.builder().namespaceFiles(Property.ofValue(SourceOfTruth.GIT)).build())
-            .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.DELETE))
-            .dryRun(Property.ofValue(false))
-            .kestraUrl(Property.ofValue(server.url()))
-            .build();
-
-        task.run(rc);
+        mixedTask(NamespaceSync.WhenMissingInSource.DELETE, false).run(rc);
 
         // flows: Kestra is the source of truth -> missing-from-Kestra flow is deleted from Git
-        RunContext cloneCtx = runContextFactory.of();
-        Clone.builder()
-            .url(Property.ofValue(repositoryUrl))
-            .username(Property.ofValue(pat))
-            .password(Property.ofValue(pat))
-            .branch(Property.ofValue(branch))
-            .build()
-            .run(cloneCtx);
-        Path base = cloneCtx.workingDir().path().resolve(GIT_DIRECTORY).resolve(NAMESPACE);
+        Path base = clonedNamespaceBase();
         assertFalse(Files.exists(base.resolve("flows/" + gitOnlyFlowId + ".yaml")));
 
         // Namespace Files: Git is the source of truth -> missing-from-Git file is deleted from Kestra
@@ -471,6 +406,43 @@ public class NamespaceSyncTest extends AbstractGitTest {
             .findFirst()
             .orElseThrow(() -> new IllegalStateException("Namespace file not found: " + rel));
         rc.storage().namespace(NAMESPACE).delete(toDelete);
+    }
+
+    /** Pushes {@code rel} to Git via a uniform Kestra->Git run, then removes it from Kestra, leaving it Git-only. */
+    private void seedGitOnlyFile(RunContext rc, String rel) throws Exception {
+        putNsFile(rc, rel, "from-git");
+        runKestraToGitApply();
+        deleteNsFile(rc, rel);
+    }
+
+    /** A mixed-direction task: flows pushed Kestra->Git (default), Namespace Files pulled Git->Kestra (override). */
+    private NamespaceSync mixedTask(NamespaceSync.WhenMissingInSource whenMissingInSource, boolean dryRun) {
+        return NamespaceSync.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .sourceOfTruth(Property.ofValue(SourceOfTruth.KESTRA))
+            .sourceOfTruthOverrides(SourceOfTruthOverrides.builder().namespaceFiles(Property.ofValue(SourceOfTruth.GIT)).build())
+            .whenMissingInSource(Property.ofValue(whenMissingInSource))
+            .dryRun(Property.ofValue(dryRun))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+    }
+
+    /** Clones the branch fresh and returns the working-tree path for {@link #NAMESPACE} under {@link #GIT_DIRECTORY}. */
+    private Path clonedNamespaceBase() throws Exception {
+        RunContext cloneCtx = runContextFactory.of();
+        Clone.builder()
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(branch))
+            .build()
+            .run(cloneCtx);
+        return cloneCtx.workingDir().path().resolve(GIT_DIRECTORY).resolve(NAMESPACE);
     }
 
     private RunContext runContext() {
