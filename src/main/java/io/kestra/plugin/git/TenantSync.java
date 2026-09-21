@@ -257,16 +257,16 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         String rGitDirectory = runContext.render(this.gitDirectory).as(String.class).orElse(null);
         SourceOfTruth rSourceOfTruth = runContext.render(this.sourceOfTruth).as(SourceOfTruth.class)
             .orElse(SourceOfTruth.KESTRA);
-        SourceOfTruthOverrides.Resolved resolvedSource = SourceOfTruthOverrides.resolveAll(
+        var resolvedSource = SourceOfTruthOverrides.resolveAll(
             runContext,
             this.sourceOfTruthOverrides == null ? null : this.sourceOfTruthOverrides.getFlows(),
             this.sourceOfTruthOverrides == null ? null : this.sourceOfTruthOverrides.getNamespaceFiles(),
             rSourceOfTruth
         );
-        SourceOfTruth flowsSource = resolvedSource.flows();
-        SourceOfTruth filesSource = resolvedSource.namespaceFiles();
-        boolean anyGit = resolvedSource.anyGit();
-        boolean mixed = resolvedSource.mixed();
+        var flowsSource = resolvedSource.flows();
+        var filesSource = resolvedSource.namespaceFiles();
+        var anyGit = resolvedSource.anyGit();
+        var mixed = resolvedSource.mixed();
         WhenMissingInSource rWhenMissingInSource = runContext.render(this.whenMissingInSource)
             .as(WhenMissingInSource.class).orElse(WhenMissingInSource.DELETE);
         boolean rDryRun = runContext.render(this.dryRun).as(Boolean.class).orElse(false);
