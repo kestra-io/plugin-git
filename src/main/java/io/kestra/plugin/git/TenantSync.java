@@ -178,7 +178,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
     @Schema(
         title = "Per-resource source of truth overrides",
-        description = "Overrides `sourceOfTruth` independently for flows and Namespace Files, letting a single run push one kind to Git while pulling the other kind from Git in the same execution. Unset fields fall back to `sourceOfTruth`."
+        description = "Overrides `sourceOfTruth` independently for flows and Namespace Files, letting a single run push one kind to Git while pulling the other kind from Git in the same execution. Unset fields fall back to `sourceOfTruth`. `whenMissingInSource` stays a single global setting, but its effect flips per kind with the resolved source: for example, with `sourceOfTruth: KESTRA`, `sourceOfTruthOverrides.namespaceFiles: GIT`, and `whenMissingInSource: DELETE`, a Namespace File present in Kestra but absent from Git is deleted from Kestra, since Git is the source for files."
     )
     @PluginProperty(group = "source")
     private SourceOfTruthOverrides sourceOfTruthOverrides;
