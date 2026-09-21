@@ -257,14 +257,16 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         String rGitDirectory = runContext.render(this.gitDirectory).as(String.class).orElse(null);
         SourceOfTruth rSourceOfTruth = runContext.render(this.sourceOfTruth).as(SourceOfTruth.class)
             .orElse(SourceOfTruth.KESTRA);
-        SourceOfTruth flowsSource = SourceOfTruthOverrides.resolve(
-            runContext, this.sourceOfTruthOverrides == null ? null : this.sourceOfTruthOverrides.getFlows(), rSourceOfTruth
+        SourceOfTruthOverrides.Resolved resolvedSource = SourceOfTruthOverrides.resolveAll(
+            runContext,
+            this.sourceOfTruthOverrides == null ? null : this.sourceOfTruthOverrides.getFlows(),
+            this.sourceOfTruthOverrides == null ? null : this.sourceOfTruthOverrides.getNamespaceFiles(),
+            rSourceOfTruth
         );
-        SourceOfTruth filesSource = SourceOfTruthOverrides.resolve(
-            runContext, this.sourceOfTruthOverrides == null ? null : this.sourceOfTruthOverrides.getNamespaceFiles(), rSourceOfTruth
-        );
-        boolean anyGit = flowsSource == SourceOfTruth.GIT || filesSource == SourceOfTruth.GIT;
-        boolean mixed = flowsSource != filesSource;
+        SourceOfTruth flowsSource = resolvedSource.flows();
+        SourceOfTruth filesSource = resolvedSource.namespaceFiles();
+        boolean anyGit = resolvedSource.anyGit();
+        boolean mixed = resolvedSource.mixed();
         WhenMissingInSource rWhenMissingInSource = runContext.render(this.whenMissingInSource)
             .as(WhenMissingInSource.class).orElse(WhenMissingInSource.DELETE);
         boolean rDryRun = runContext.render(this.dryRun).as(Boolean.class).orElse(false);
@@ -897,16 +899,6 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         if (rEmail == null || rName == null)
             return null;
         return new PersonIdent(rName, rEmail);
-    }
-
-    /**
-     * Whether a namespace known only in Git carries content for the resolved GIT-sourced kind(s), narrowed per
-     * kind so a namespace whose {@code files/} directory is Git-sourced doesn't get auto-created from a stray
-     * {@code flows/} directory that stays Kestra-sourced (and vice versa).
-     */
-    private static boolean gitHasContent(Path namespaceRoot, SourceOfTruth flowsSource, SourceOfTruth filesSource) {
-        return (flowsSource == SourceOfTruth.GIT && Files.isDirectory(namespaceRoot.resolve(FLOWS_DIR)))
-            || (filesSource == SourceOfTruth.GIT && Files.isDirectory(namespaceRoot.resolve(FILES_DIR)));
     }
 
     private Set<String> discoverGitNamespaces(Path baseDir) throws IOException {

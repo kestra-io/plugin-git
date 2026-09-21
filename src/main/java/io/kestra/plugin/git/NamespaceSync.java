@@ -290,15 +290,17 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
         var rGitDirectory = runContext.render(this.gitDirectory).as(String.class).orElse(null);
         var rSourceOfTruth = runContext.render(this.sourceOfTruth).as(SourceOfTruth.class).orElse(SourceOfTruth.KESTRA);
-        var flowsSource = SourceOfTruthOverrides.resolve(
-            runContext, this.sourceOfTruthOverrides == null ? null : this.sourceOfTruthOverrides.getFlows(), rSourceOfTruth
+        var resolvedSource = SourceOfTruthOverrides.resolveAll(
+            runContext,
+            this.sourceOfTruthOverrides == null ? null : this.sourceOfTruthOverrides.getFlows(),
+            this.sourceOfTruthOverrides == null ? null : this.sourceOfTruthOverrides.getNamespaceFiles(),
+            rSourceOfTruth
         );
-        var filesSource = SourceOfTruthOverrides.resolve(
-            runContext, this.sourceOfTruthOverrides == null ? null : this.sourceOfTruthOverrides.getNamespaceFiles(), rSourceOfTruth
-        );
-        var anyGit = flowsSource == SourceOfTruth.GIT || filesSource == SourceOfTruth.GIT;
-        var anyKestra = flowsSource == SourceOfTruth.KESTRA || filesSource == SourceOfTruth.KESTRA;
-        var mixed = flowsSource != filesSource;
+        var flowsSource = resolvedSource.flows();
+        var filesSource = resolvedSource.namespaceFiles();
+        var anyGit = resolvedSource.anyGit();
+        var anyKestra = resolvedSource.anyKestra();
+        var mixed = resolvedSource.mixed();
         var rWhenMissingInSource = runContext.render(this.whenMissingInSource).as(WhenMissingInSource.class).orElse(WhenMissingInSource.DELETE);
         var rDryRun = runContext.render(this.dryRun).as(Boolean.class).orElse(false);
         var rOnInvalidSyntax = runContext.render(this.onInvalidSyntax).as(OnInvalidSyntax.class).orElse(OnInvalidSyntax.FAIL);
@@ -319,7 +321,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         if (rIncludeChildNamespaces) {
             syncNamespaces.addAll(descendantNamespaces(runContext, tenantId, rNamespace));
             if (anyGit) {
-                for (String gitNamespace : gitDescendantNamespaces(baseDir, rNamespace)) {
+                for (String gitNamespace : gitDescendantNamespaces(baseDir, rNamespace, flowsSource, filesSource)) {
                     if (syncNamespaces.contains(gitNamespace)) {
                         continue;
                     }
@@ -813,13 +815,18 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         return out;
     }
 
-    private Set<String> gitDescendantNamespaces(Path baseDir, String rootNamespace) throws IOException {
+    /**
+     * Discovers direct child directories of {@code baseDir} that are Git-only descendants of {@code rootNamespace},
+     * narrowed per kind via {@link #gitHasContent} so a child holding only a {@code flows/} directory isn't
+     * auto-created when flows stay Kestra-sourced (and symmetrically for a Namespace-Files-only child).
+     */
+    private Set<String> gitDescendantNamespaces(Path baseDir, String rootNamespace, SourceOfTruth flowsSource, SourceOfTruth filesSource) throws IOException {
         Set<String> out = new HashSet<>();
         if (baseDir == null || !Files.exists(baseDir))
             return out;
         try (Stream<Path> paths = Files.list(baseDir)) {
             paths.filter(Files::isDirectory)
-                .filter(p -> Files.isDirectory(p.resolve(FLOWS_DIR)) || Files.isDirectory(p.resolve(FILES_DIR)))
+                .filter(p -> gitHasContent(p, flowsSource, filesSource))
                 .map(p -> p.getFileName().toString())
                 .filter(name -> isDescendant(rootNamespace, name))
                 .forEach(out::add);

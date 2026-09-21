@@ -400,6 +400,42 @@ public class NamespaceSyncTest extends AbstractGitTest {
         );
     }
 
+    @Test
+    void includeChildNamespaces_gitOnlyChildWithOnlyFlows_staysKestraSourced_notTouchedByFileSourceOfTruth() throws Exception {
+        String suf = Long.toHexString(System.nanoTime());
+        String childNamespace = NAMESPACE + ".childonly-" + suf;
+        String flowId = "childflow-" + suf;
+
+        seedGitOnlyChildFlow(childNamespace, flowId);
+
+        // flows stay Kestra-sourced (default); only Namespace Files are Git-sourced. With whenMissingInSource
+        // DELETE, a child namespace holding only a Git-only flows/ directory must never be pulled into the sync
+        // via includeChildNamespaces — otherwise its Git-only flow (missing from Kestra) would be wrongly deleted
+        // from Git, even though flows are not Git-sourced.
+        NamespaceSync task = NamespaceSync.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .includeChildNamespaces(Property.ofValue(true))
+            .sourceOfTruth(Property.ofValue(SourceOfTruth.KESTRA))
+            .sourceOfTruthOverrides(SourceOfTruthOverrides.builder().namespaceFiles(Property.ofValue(SourceOfTruth.GIT)).build())
+            .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.DELETE))
+            .dryRun(Property.ofValue(false))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+
+        task.run(runContext());
+
+        Path childBase = clonedBase(childNamespace);
+        assertTrue(
+            Files.exists(childBase.resolve("flows/" + flowId + ".yaml")),
+            "flows stay Kestra-sourced: a Git-only child namespace with only flows/ must not be auto-created nor have its flow deleted"
+        );
+    }
+
     private void deleteNsFile(RunContext rc, String rel) throws Exception {
         var toDelete = rc.storage().namespace(NAMESPACE).all().stream()
             .filter(f -> f.path().toString().replace("\\", "/").endsWith(rel))
@@ -434,6 +470,11 @@ public class NamespaceSyncTest extends AbstractGitTest {
 
     /** Clones the branch fresh and returns the working-tree path for {@link #NAMESPACE} under {@link #GIT_DIRECTORY}. */
     private Path clonedNamespaceBase() throws Exception {
+        return clonedBase(NAMESPACE);
+    }
+
+    /** Clones the branch fresh and returns the working-tree path for {@code namespace} under {@link #GIT_DIRECTORY}. */
+    private Path clonedBase(String namespace) throws Exception {
         RunContext cloneCtx = runContextFactory.of();
         Clone.builder()
             .url(Property.ofValue(repositoryUrl))
@@ -442,7 +483,47 @@ public class NamespaceSyncTest extends AbstractGitTest {
             .branch(Property.ofValue(branch))
             .build()
             .run(cloneCtx);
-        return cloneCtx.workingDir().path().resolve(GIT_DIRECTORY).resolve(NAMESPACE);
+        return cloneCtx.workingDir().path().resolve(GIT_DIRECTORY).resolve(namespace);
+    }
+
+    /**
+     * Pushes {@code flowId} from Kestra to Git for {@code childNamespace} directly (bypassing
+     * {@code includeChildNamespaces}, since the mock Kestra API server used here does not implement the
+     * namespaces-search endpoint it relies on), then deletes it from Kestra — leaving the child namespace with a
+     * Git-only {@code flows/} directory and no matching Kestra namespace.
+     */
+    private void seedGitOnlyChildFlow(String childNamespace, String flowId) throws Exception {
+        createFlowInKestra(flowId, childNamespace);
+
+        Map<String, Object> ctx = new HashMap<>(
+            Map.of(
+                "flow", Map.of("tenantId", TENANT_ID, "namespace", childNamespace),
+                "url", repositoryUrl,
+                "pat", pat,
+                "branch", branch,
+                "namespace", childNamespace,
+                "gitDirectory", GIT_DIRECTORY
+            )
+        );
+        RunContext rc = runContextFactory.of(ctx);
+
+        NamespaceSync push = NamespaceSync.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .username(Property.ofExpression("{{pat}}"))
+            .password(Property.ofExpression("{{pat}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .sourceOfTruth(Property.ofValue(SourceOfTruth.KESTRA))
+            .whenMissingInSource(Property.ofValue(NamespaceSync.WhenMissingInSource.KEEP))
+            .dryRun(Property.ofValue(false))
+            .kestraUrl(Property.ofValue(server.url()))
+            .build();
+        push.run(rc);
+
+        flowRepository.findByNamespaceWithSource(TENANT_ID, childNamespace).stream()
+            .filter(f -> flowId.equals(f.getId()))
+            .forEach(flowRepository::delete);
     }
 
     private RunContext runContext() {

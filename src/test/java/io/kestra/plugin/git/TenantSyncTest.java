@@ -211,7 +211,8 @@ class TenantSyncTest {
         Path namespaceRoot = Files.createDirectories(tempDir.resolve("my.namespace"));
         Files.createDirectories(namespaceRoot.resolve("files"));
 
-        var method = TenantSync.class.getDeclaredMethod(
+        // gitHasContent now lives on the shared AbstractGitTask base (reused by NamespaceSync too), not on TenantSync itself
+        var method = AbstractGitTask.class.getDeclaredMethod(
             "gitHasContent", Path.class, SourceOfTruth.class, SourceOfTruth.class
         );
         method.setAccessible(true);
