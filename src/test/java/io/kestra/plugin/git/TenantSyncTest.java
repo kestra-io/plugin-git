@@ -273,6 +273,47 @@ class TenantSyncTest {
         assertFalse(diffs.stream().anyMatch(d -> d.getKind() == AbstractGitTask.Kind.FLOW && d.getAction() == AbstractGitTask.Action.DELETED_GIT));
     }
 
+    @Test
+    void protectedNamespace_skipsGitSideFileDelete_evenWithDelete(@TempDir Path tempDir) throws Exception {
+        var task = TenantSync.builder().build();
+        var runContext = runContextFactory.of(
+            Map.of("flow", Map.of("tenantId", TENANT_ID, "namespace", NAMESPACE, "id", "tenant-sync-protected-test"))
+        );
+
+        // A file present only in Git, with Kestra as the source of truth and whenMissingInSource=DELETE:
+        // the file is "missing in the source" (Kestra), so DELETE would remove it from Git.
+        var gitFiles = Map.of("stale.txt", "in-git-only".getBytes(StandardCharsets.UTF_8));
+
+        // Protected namespace -> the Git-side delete must be skipped (the branch that previously lacked the guard).
+        var protectedDiffs = new ArrayList<AbstractGitTask.DiffLine>();
+        var protectedApply = new ArrayList<Runnable>();
+        planNamespaceFilesMethod().invoke(
+            task, runContext, null, tempDir.resolve("files"),
+            gitFiles, Map.of(), NAMESPACE,
+            SourceOfTruth.KESTRA, TenantSync.WhenMissingInSource.DELETE,
+            List.of(NAMESPACE), false, protectedDiffs, protectedApply
+        );
+        assertFalse(
+            protectedDiffs.stream().anyMatch(d -> d.getKind() == AbstractGitTask.Kind.FILE && d.getAction() == AbstractGitTask.Action.DELETED_GIT),
+            "a protected namespace's Git file must not be scheduled for deletion"
+        );
+        assertTrue(protectedApply.isEmpty(), "no delete action must be queued for a protected namespace");
+
+        // Control: the same run on an unprotected namespace does record the Git-side delete, proving the branch is reached.
+        var unprotectedDiffs = new ArrayList<AbstractGitTask.DiffLine>();
+        var unprotectedApply = new ArrayList<Runnable>();
+        planNamespaceFilesMethod().invoke(
+            task, runContext, null, tempDir.resolve("files"),
+            gitFiles, Map.of(), NAMESPACE,
+            SourceOfTruth.KESTRA, TenantSync.WhenMissingInSource.DELETE,
+            List.of(), true, unprotectedDiffs, unprotectedApply
+        );
+        assertTrue(
+            unprotectedDiffs.stream().anyMatch(d -> d.getKind() == AbstractGitTask.Kind.FILE && d.getAction() == AbstractGitTask.Action.DELETED_GIT),
+            "an unprotected namespace's Git file is deleted, so the guard is what suppresses it above"
+        );
+    }
+
     private static Method planFlowsMethod() throws Exception {
         var method = TenantSync.class.getDeclaredMethod(
             "planFlows",

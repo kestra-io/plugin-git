@@ -644,9 +644,13 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                     switch (rWhenMissingInSource) {
                         case KEEP -> diffs.add(DiffLine.unchanged(filePath.toString(), rel, Kind.FILE));
                         case DELETE -> {
-                            diffs.add(DiffLine.deletedGit(filePath.toString(), rel, Kind.FILE));
-                            if (!rDryRun)
-                                apply.add(() -> deleteGitFile(filePath));
+                            if (isProtected(namespace, rProtectedNamespaces)) {
+                                runContext.logger().warn("Protected namespace, skipping delete in Git for FILE {}", rel);
+                            } else {
+                                diffs.add(DiffLine.deletedGit(filePath.toString(), rel, Kind.FILE));
+                                if (!rDryRun)
+                                    apply.add(() -> deleteGitFile(filePath));
+                            }
                         }
                         case FAIL -> throw new KestraRuntimeException(
                             "Sync failed: FILE missing in Kestra but present in Git: " + rel
