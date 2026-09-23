@@ -274,6 +274,58 @@ class TenantSyncTest {
     }
 
     @Test
+    void mixedDirections_queueBothPushAndPullApplyActions_whenNotDryRun(@TempDir Path tempDir) throws Exception {
+        var task = TenantSync.builder().build();
+        var runContext = runContextFactory.of(
+            Map.of(
+                "flow", Map.of(
+                    "tenantId", TENANT_ID,
+                    "namespace", NAMESPACE,
+                    "id", "tenant-sync-mixed-apply-test"
+                )
+            )
+        );
+
+        var flowYaml = """
+            id: pushed-flow
+            namespace: my.namespace
+
+            tasks:
+              - id: log
+                type: io.kestra.plugin.core.log.Log
+                message: hello
+            """;
+        var kestraFlows = List.of(FlowWithSource.of(YamlParser.parse(flowYaml, io.kestra.core.models.flows.Flow.class), flowYaml));
+
+        var diffs = new ArrayList<AbstractGitTask.DiffLine>();
+        var apply = new ArrayList<Runnable>();
+
+        // Same mixed run as above, but dryRun=false: the run must schedule real work on BOTH sides.
+        // flows: Kestra is the source of truth -> the Kestra-only flow is queued to be written to Git.
+        planFlowsMethod().invoke(
+            task, null, runContext, tempDir.resolve("flows"),
+            Map.of(), kestraFlows, NAMESPACE,
+            SourceOfTruth.KESTRA, TenantSync.WhenMissingInSource.KEEP, TenantSync.OnInvalidSyntax.FAIL,
+            List.of(), false, diffs, apply
+        );
+
+        // namespace files: Git is the source of truth -> the Git-only file is queued to be put into Kestra.
+        planNamespaceFilesMethod().invoke(
+            task, runContext, null, tempDir.resolve("files"),
+            Map.of("pulled.txt", "from-git".getBytes(StandardCharsets.UTF_8)), Map.of(), NAMESPACE,
+            SourceOfTruth.GIT, TenantSync.WhenMissingInSource.KEEP,
+            List.of(), false, diffs, apply
+        );
+
+        // Each direction contributes one executable action; the lambdas stay unexecuted (run() drains them),
+        // so no Git remote or Kestra client is needed to prove a mixed run schedules both a push and a pull.
+        assertEquals(2, apply.size(), "a mixed run must queue one push action and one pull action");
+        assertEquals(2, diffs.size());
+        assertTrue(diffs.stream().anyMatch(d -> d.getKind() == AbstractGitTask.Kind.FLOW && d.getAction() == AbstractGitTask.Action.ADDED));
+        assertTrue(diffs.stream().anyMatch(d -> d.getKind() == AbstractGitTask.Kind.FILE && d.getAction() == AbstractGitTask.Action.ADDED));
+    }
+
+    @Test
     void protectedNamespace_skipsGitSideFileDelete_evenWithDelete(@TempDir Path tempDir) throws Exception {
         var task = TenantSync.builder().build();
         var runContext = runContextFactory.of(

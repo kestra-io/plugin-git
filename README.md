@@ -52,6 +52,23 @@
 
 Dashboard tasks (`SyncDashboards`, `PushDashboards`) moved to the Git EE plugin in Kestra 2.0.0, because dashboards are an Enterprise Edition feature. `TenantSync` no longer syncs the `_global/dashboards` directory on OSS.
 
+## Source of truth overrides
+
+`TenantSync` and `NamespaceSync` set their sync direction with `sourceOfTruth` (`KESTRA` pushes Kestra state to Git, `GIT` applies Git state into Kestra). `sourceOfTruthOverrides` lets you set the direction **per resource kind**, so one run can push one kind to Git while pulling the other kind from Git in the same execution. It currently exposes `flows` and `namespaceFiles`; any field left unset falls back to `sourceOfTruth`.
+
+```yaml
+- id: sync
+  type: io.kestra.plugin.git.TenantSync
+  sourceOfTruth: KESTRA          # flows: Kestra -> Git
+  sourceOfTruthOverrides:
+    namespaceFiles: GIT          # namespace files: Git -> Kestra
+  whenMissingInSource: KEEP
+  branch: main
+  url: https://github.com/my-org/my-repo
+```
+
+`whenMissingInSource` stays a single global setting, but its effect flips per kind with the resolved source. With `sourceOfTruth: KESTRA`, `sourceOfTruthOverrides.namespaceFiles: GIT`, and `whenMissingInSource: DELETE`, a Namespace File present in Kestra but absent from Git is deleted **from Kestra** (Git is the source for files), while a flow present in Git but absent from Kestra is deleted **from Git** (Kestra is the source for flows). `protectedNamespaces` still guards every deletion regardless of direction.
+
 ## Documentation
 * Full documentation can be found under [kestra.io/docs](https://kestra.io/docs)
 * Documentation for developing a plugin is included in the [Plugin Developer Guide](https://kestra.io/docs/plugin-developer-guide/).
