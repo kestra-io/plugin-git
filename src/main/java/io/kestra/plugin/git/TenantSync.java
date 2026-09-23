@@ -32,6 +32,8 @@ import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.YamlParser;
 import io.kestra.plugin.git.shared.AbstractKestraTask;
+import io.kestra.plugin.git.shared.SourceOfTruth;
+import io.kestra.plugin.git.shared.SourceOfTruthOverrides;
 import io.kestra.plugin.git.shared.services.GitService;
 import io.kestra.sdk.KestraClient;
 import io.kestra.sdk.api.FilesApi;
@@ -53,7 +55,7 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
 @NoArgsConstructor
 @Schema(
     title = "Sync an entire tenant with Git",
-    description = "Synchronizes all namespaces, flows, and Namespace Files for one tenant. Direction is set by `sourceOfTruth`; deletions follow `whenMissingInSource` with `protectedNamespaces` safeguards. Supports dry-run diff output and optional subdirectory via `gitDirectory`."
+    description = "Synchronizes all namespaces, flows, and Namespace Files for one tenant. Direction is set by `sourceOfTruth`, and can be overridden independently for flows and Namespace Files via `sourceOfTruthOverrides`; deletions follow `whenMissingInSource` with `protectedNamespaces` safeguards. Supports dry-run diff output and optional subdirectory via `gitDirectory`."
 )
 @Plugin(
     priority = Plugin.Priority.SECONDARY,
@@ -102,15 +104,33 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
                       username: "{{ secret('KESTRA_USERNAME') }}"
                       password: "{{ secret('KESTRA_PASSWORD') }}"
                 """
+        ),
+        @Example(
+            title = "Push flows from Kestra to Git while pulling Namespace Files from Git into Kestra, in the same run",
+            full = true,
+            code = """
+                id: tenant_sync_mixed
+                namespace: company.ops
+                tasks:
+                  - id: sync
+                    type: io.kestra.plugin.git.TenantSync
+                    sourceOfTruth: KESTRA
+                    sourceOfTruthOverrides:
+                      namespaceFiles: GIT
+                    whenMissingInSource: KEEP
+                    url: https://github.com/fdelbrayelle/plugin-git-qa
+                    username: fdelbrayelle
+                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                    branch: main
+                    kestraUrl: "http://localhost:8080"
+                    auth:
+                      username: "{{ secret('KESTRA_USERNAME') }}"
+                      password: "{{ secret('KESTRA_PASSWORD') }}"
+                """
         )
     }
 )
 public class TenantSync extends AbstractKestraTask implements RunnableTask<TenantSync.Output> {
-
-    public enum SourceOfTruth {
-        GIT,
-        KESTRA
-    }
 
     public enum WhenMissingInSource {
         DELETE,
@@ -155,6 +175,13 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
     @Builder.Default
     @PluginProperty(group = "source")
     private Property<SourceOfTruth> sourceOfTruth = Property.ofValue(SourceOfTruth.KESTRA);
+
+    @Schema(
+        title = "Per-resource source of truth overrides",
+        description = "Overrides `sourceOfTruth` independently for flows and Namespace Files, letting a single run push one kind to Git while pulling the other kind from Git in the same execution. Unset fields fall back to `sourceOfTruth`. `whenMissingInSource` stays a single global setting, but its effect flips per kind with the resolved source: for example, with `sourceOfTruth: KESTRA`, `sourceOfTruthOverrides.namespaceFiles: GIT`, and `whenMissingInSource: DELETE`, a Namespace File present in Kestra but absent from Git is deleted from Kestra, since Git is the source for files."
+    )
+    @PluginProperty(group = "source")
+    private SourceOfTruthOverrides sourceOfTruthOverrides;
 
     @Schema(
         title = "Handling when missing in source",
@@ -230,6 +257,16 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         String rGitDirectory = runContext.render(this.gitDirectory).as(String.class).orElse(null);
         SourceOfTruth rSourceOfTruth = runContext.render(this.sourceOfTruth).as(SourceOfTruth.class)
             .orElse(SourceOfTruth.KESTRA);
+        var resolvedSource = SourceOfTruthOverrides.resolveAll(
+            runContext,
+            this.sourceOfTruthOverrides == null ? null : this.sourceOfTruthOverrides.getFlows(),
+            this.sourceOfTruthOverrides == null ? null : this.sourceOfTruthOverrides.getNamespaceFiles(),
+            rSourceOfTruth
+        );
+        var flowsSource = resolvedSource.flows();
+        var filesSource = resolvedSource.namespaceFiles();
+        var anyGit = resolvedSource.anyGit();
+        var mixed = resolvedSource.mixed();
         WhenMissingInSource rWhenMissingInSource = runContext.render(this.whenMissingInSource)
             .as(WhenMissingInSource.class).orElse(WhenMissingInSource.DELETE);
         boolean rDryRun = runContext.render(this.dryRun).as(Boolean.class).orElse(false);
@@ -261,17 +298,16 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
         Set<String> namespaces = new LinkedHashSet<>(kestraNamespaces);
 
-        if (rSourceOfTruth == SourceOfTruth.GIT) {
+        if (anyGit) {
             namespaces.addAll(discoverGitNamespaces(baseDir));
         }
 
         for (String namespace : namespaces) {
             runContext.logger().info("Processing namespace {}", namespace);
-            if (rSourceOfTruth == SourceOfTruth.GIT && !rDryRun && !kestraNamespaces.contains(namespace)) {
+            if (anyGit && !rDryRun && !kestraNamespaces.contains(namespace)) {
                 Path namespaceRoot = baseDir.resolve(namespace);
-                boolean gitHasContent = java.nio.file.Files.isDirectory(namespaceRoot.resolve(FLOWS_DIR)) || java.nio.file.Files.isDirectory(namespaceRoot.resolve(FILES_DIR));
 
-                if (gitHasContent) {
+                if (gitHasContent(namespaceRoot, flowsSource, filesSource)) {
                     try {
                         kestraClient.namespaces().createNamespace(tenantId, new Namespace().id(namespace));
                         kestraNamespaces.add(namespace);
@@ -285,7 +321,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
             planNamespace(
                 runContext, kestraClient, baseDir, namespace,
-                rSourceOfTruth, rWhenMissingInSource,
+                flowsSource, filesSource, rWhenMissingInSource,
                 rOnInvalidSyntax, rProtectedNamespaces,
                 rDryRun, diffs, apply,
                 kestraFlows, kestraFiles
@@ -306,7 +342,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             AddCommand update = git.add();
             update.setUpdate(true).addFilepattern(addPattern).call();
 
-            if (rSourceOfTruth == SourceOfTruth.GIT) {
+            if (mixed || flowsSource == SourceOfTruth.GIT) {
                 diffFile = DiffLine.writeIonFile(runContext, diffs);
             } else {
                 diffFile = createIonDiff(runContext, git);
@@ -364,7 +400,8 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         KestraClient kestraClient,
         Path baseDir,
         String namespace,
-        SourceOfTruth rSourceOfTruth,
+        SourceOfTruth flowsSource,
+        SourceOfTruth filesSource,
         WhenMissingInSource rWhenMissingInSource,
         OnInvalidSyntax rOnInvalidSyntax,
         List<String> rProtectedNamespaces,
@@ -382,12 +419,12 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         var gitFiles = readGitFiles(filesDir);
 
         planFlows(
-            kestraClient, runContext, flowsDir, gitFlows, kestraFlows, namespace, rSourceOfTruth,
+            kestraClient, runContext, flowsDir, gitFlows, kestraFlows, namespace, flowsSource,
             rWhenMissingInSource, rOnInvalidSyntax, rProtectedNamespaces, rDryRun, diffs, apply
         );
 
         planNamespaceFiles(
-            runContext, kestraClient, filesDir, gitFiles, kestraFiles, namespace, rSourceOfTruth,
+            runContext, kestraClient, filesDir, gitFiles, kestraFiles, namespace, filesSource,
             rWhenMissingInSource, rProtectedNamespaces, rDryRun, diffs, apply
         );
     }
@@ -442,7 +479,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         Map<String, String> gitFlows,
         List<FlowWithSource> kestraFlows,
         String namespace,
-        SourceOfTruth rSourceOfTruth,
+        SourceOfTruth flowsSource,
         WhenMissingInSource rWhenMissingInSource,
         OnInvalidSyntax rOnInvalidSyntax,
         List<String> rProtectedNamespaces,
@@ -464,7 +501,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             // Case 1: Flow exists only in Git
             String tenantId = runContext.flowInfo().tenantId();
             if (gitYaml != null && kestraYaml == null) {
-                if (rSourceOfTruth == SourceOfTruth.GIT) {
+                if (flowsSource == SourceOfTruth.GIT) {
                     diffs.add(DiffLine.added(flowPath.toString(), flowId, Kind.FLOW));
                     if (!rDryRun) {
                         apply.add(() ->
@@ -506,7 +543,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
 
                 // Case 2: Flow exists only in Kestra
             } else if (gitYaml == null && kestraYaml != null) {
-                if (rSourceOfTruth == SourceOfTruth.KESTRA) {
+                if (flowsSource == SourceOfTruth.KESTRA) {
                     diffs.add(DiffLine.added(flowPath.toString(), flowId, Kind.FLOW));
                     if (!rDryRun)
                         apply.add(() -> writeGitFile(flowPath, kestraYaml));
@@ -545,7 +582,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                     continue;
                 }
 
-                if (rSourceOfTruth == SourceOfTruth.GIT) {
+                if (flowsSource == SourceOfTruth.GIT) {
                     diffs.add(DiffLine.updatedKestra(flowPath.toString(), flowId, Kind.FLOW));
                     if (!rDryRun) {
                         apply.add(() ->
@@ -583,7 +620,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
         Map<String, byte[]> gitFiles,
         Map<String, byte[]> kestraFiles,
         String namespace,
-        SourceOfTruth rSourceOfTruth,
+        SourceOfTruth filesSource,
         WhenMissingInSource rWhenMissingInSource,
         List<String> rProtectedNamespaces,
         boolean rDryRun,
@@ -599,7 +636,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             boolean inKestra = kestraFiles.containsKey(rel);
 
             if (inGit && !inKestra) {
-                if (rSourceOfTruth == SourceOfTruth.GIT) {
+                if (filesSource == SourceOfTruth.GIT) {
                     diffs.add(DiffLine.added(filePath.toString(), rel, Kind.FILE));
                     if (!rDryRun)
                         apply.add(() -> putNamespaceFile(kestraClient, runContext, rel, gitFiles.get(rel), namespace));
@@ -607,9 +644,13 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                     switch (rWhenMissingInSource) {
                         case KEEP -> diffs.add(DiffLine.unchanged(filePath.toString(), rel, Kind.FILE));
                         case DELETE -> {
-                            diffs.add(DiffLine.deletedGit(filePath.toString(), rel, Kind.FILE));
-                            if (!rDryRun)
-                                apply.add(() -> deleteGitFile(filePath));
+                            if (isProtected(namespace, rProtectedNamespaces)) {
+                                runContext.logger().warn("Protected namespace, skipping delete in Git for FILE {}", rel);
+                            } else {
+                                diffs.add(DiffLine.deletedGit(filePath.toString(), rel, Kind.FILE));
+                                if (!rDryRun)
+                                    apply.add(() -> deleteGitFile(filePath));
+                            }
                         }
                         case FAIL -> throw new KestraRuntimeException(
                             "Sync failed: FILE missing in Kestra but present in Git: " + rel
@@ -620,7 +661,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
             }
 
             if (!inGit && inKestra) {
-                if (rSourceOfTruth == SourceOfTruth.KESTRA) {
+                if (filesSource == SourceOfTruth.KESTRA) {
                     diffs.add(DiffLine.added(filePath.toString(), rel, Kind.FILE));
                     if (!rDryRun)
                         apply.add(() -> writeGitBinaryFile(filePath, kestraFiles.get(rel)));
@@ -649,7 +690,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                 byte[] kestraFile = kestraFiles.get(rel);
                 if (Arrays.equals(gitFile, kestraFile)) {
                     diffs.add(DiffLine.unchanged(filePath.toString(), rel, Kind.FILE));
-                } else if (rSourceOfTruth == SourceOfTruth.GIT) {
+                } else if (filesSource == SourceOfTruth.GIT) {
                     diffs.add(DiffLine.updatedKestra(filePath.toString(), rel, Kind.FILE));
                     if (!rDryRun)
                         apply.add(() -> putNamespaceFile(kestraClient, runContext, rel, gitFile, namespace));

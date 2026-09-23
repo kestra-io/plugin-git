@@ -41,6 +41,8 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.YamlParser;
 import io.kestra.core.storages.NamespaceFile;
 import io.kestra.plugin.git.shared.AbstractCloningTask;
+import io.kestra.plugin.git.shared.SourceOfTruth;
+import io.kestra.plugin.git.shared.SourceOfTruthOverrides;
 import io.kestra.plugin.git.shared.services.GitService;
 import io.kestra.sdk.internal.ApiException;
 import io.kestra.sdk.model.QueryFilter;
@@ -64,7 +66,7 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
 @NoArgsConstructor
 @Schema(
     title = "Sync a namespace with Git",
-    description = "Syncs flows and Namespace Files for a namespace (optionally including child namespaces via `includeChildNamespaces`) between Git and Kestra. Direction is controlled by `sourceOfTruth`; deletions follow `whenMissingInSource` and respect `protectedNamespaces`. Supports dry-run diff output and optional subdirectory via `gitDirectory`. The flow containing this task does not need to live in the same namespace as the one being synced. Flows saved as drafts are not synced to Git."
+    description = "Syncs flows and Namespace Files for a namespace (optionally including child namespaces via `includeChildNamespaces`) between Git and Kestra. Direction is controlled by `sourceOfTruth`, and can be overridden independently for flows and Namespace Files via `sourceOfTruthOverrides`; deletions follow `whenMissingInSource` and respect `protectedNamespaces`. Supports dry-run diff output and optional subdirectory via `gitDirectory`. The flow containing this task does not need to live in the same namespace as the one being synced. Flows saved as drafts are not synced to Git."
 )
 @Plugin(
     priority = Plugin.Priority.SECONDARY,
@@ -112,15 +114,30 @@ import static org.eclipse.jgit.transport.RemoteRefUpdate.Status.*;
                     onInvalidSyntax: WARN
                     # dryRun omitted
                 """
+        ),
+        @Example(
+            title = "Push flows from Kestra to Git while pulling Namespace Files from Git into Kestra, in the same run",
+            full = true,
+            code = """
+                id: namespace_sync_mixed
+                namespace: company.ops
+                tasks:
+                  - id: sync
+                    type: io.kestra.plugin.git.NamespaceSync
+                    namespace: company.ops
+                    sourceOfTruth: KESTRA
+                    sourceOfTruthOverrides:
+                      namespaceFiles: GIT
+                    whenMissingInSource: KEEP
+                    url: https://github.com/fdelbrayelle/plugin-git-qa
+                    username: fdelbrayelle
+                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+                    branch: main
+                """
         )
     }
 )
 public class NamespaceSync extends AbstractCloningTask implements RunnableTask<NamespaceSync.Output> {
-
-    public enum SourceOfTruth {
-        GIT,
-        KESTRA
-    }
 
     public enum WhenMissingInSource {
         DELETE,
@@ -181,6 +198,13 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     @Builder.Default
     @PluginProperty(group = "source")
     private Property<SourceOfTruth> sourceOfTruth = Property.ofValue(SourceOfTruth.KESTRA);
+
+    @Schema(
+        title = "Per-resource source of truth overrides",
+        description = "Overrides `sourceOfTruth` independently for flows and Namespace Files, letting a single run push one kind to Git while pulling the other kind from Git in the same execution. Unset fields fall back to `sourceOfTruth`. `whenMissingInSource` stays a single global setting, but its effect flips per kind with the resolved source: for example, with `sourceOfTruth: KESTRA`, `sourceOfTruthOverrides.namespaceFiles: GIT`, and `whenMissingInSource: DELETE`, a Namespace File present in Kestra but absent from Git is deleted from Kestra, since Git is the source for files."
+    )
+    @PluginProperty(group = "source")
+    private SourceOfTruthOverrides sourceOfTruthOverrides;
 
     @Schema(
         title = "Handling when missing in source",
@@ -266,6 +290,17 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
         var rGitDirectory = runContext.render(this.gitDirectory).as(String.class).orElse(null);
         var rSourceOfTruth = runContext.render(this.sourceOfTruth).as(SourceOfTruth.class).orElse(SourceOfTruth.KESTRA);
+        var resolvedSource = SourceOfTruthOverrides.resolveAll(
+            runContext,
+            this.sourceOfTruthOverrides == null ? null : this.sourceOfTruthOverrides.getFlows(),
+            this.sourceOfTruthOverrides == null ? null : this.sourceOfTruthOverrides.getNamespaceFiles(),
+            rSourceOfTruth
+        );
+        var flowsSource = resolvedSource.flows();
+        var filesSource = resolvedSource.namespaceFiles();
+        var anyGit = resolvedSource.anyGit();
+        var anyKestra = resolvedSource.anyKestra();
+        var mixed = resolvedSource.mixed();
         var rWhenMissingInSource = runContext.render(this.whenMissingInSource).as(WhenMissingInSource.class).orElse(WhenMissingInSource.DELETE);
         var rDryRun = runContext.render(this.dryRun).as(Boolean.class).orElse(false);
         var rOnInvalidSyntax = runContext.render(this.onInvalidSyntax).as(OnInvalidSyntax.class).orElse(OnInvalidSyntax.FAIL);
@@ -285,8 +320,8 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         syncNamespaces.add(rNamespace);
         if (rIncludeChildNamespaces) {
             syncNamespaces.addAll(descendantNamespaces(runContext, tenantId, rNamespace));
-            if (rSourceOfTruth == SourceOfTruth.GIT) {
-                for (String gitNamespace : gitDescendantNamespaces(baseDir, rNamespace)) {
+            if (anyGit) {
+                for (String gitNamespace : gitDescendantNamespaces(baseDir, rNamespace, flowsSource, filesSource)) {
                     if (syncNamespaces.contains(gitNamespace)) {
                         continue;
                     }
@@ -305,7 +340,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
         GitTree gitFlows = filterTreeByNamespace(gitFlowsAll, syncNamespaces);
 
-        if (rSourceOfTruth == SourceOfTruth.KESTRA) {
+        if (anyKestra) {
             ensureNamespaceFolders(baseDir, rNamespace);
         }
 
@@ -314,11 +349,11 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         List<DiffLine> diffs = new ArrayList<>();
         List<Runnable> apply = new ArrayList<>();
 
-        planFlows(runContext, baseDir, gitFlows, kestraState, rSourceOfTruth, rWhenMissingInSource, rOnInvalidSyntax, rProtectedNamespaces, rDryRun, diffs, apply);
+        planFlows(runContext, baseDir, gitFlows, kestraState, flowsSource, rWhenMissingInSource, rOnInvalidSyntax, rProtectedNamespaces, rDryRun, diffs, apply);
         for (String fileNamespace : syncNamespaces) {
             Map<String, byte[]> gitFiles = readGitNamespaceFiles(baseDir, fileNamespace);
             Map<String, byte[]> namespaceFiles = listNamespaceFiles(runContext, fileNamespace);
-            planNamespaceFiles(runContext, baseDir, fileNamespace, gitFiles, namespaceFiles, rSourceOfTruth, rWhenMissingInSource, rProtectedNamespaces, rDryRun, diffs, apply);
+            planNamespaceFiles(runContext, baseDir, fileNamespace, gitFiles, namespaceFiles, filesSource, rWhenMissingInSource, rProtectedNamespaces, rDryRun, diffs, apply);
         }
 
         if (!rDryRun) {
@@ -337,7 +372,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
         if (!rDryRun) {
             try {
-                if (rSourceOfTruth == SourceOfTruth.GIT) {
+                if (mixed || flowsSource == SourceOfTruth.GIT) {
                     diffFile = DiffLine.writeIonFile(runContext, diffs);
                 } else {
                     diffFile = createIonDiff(runContext, git);
@@ -380,7 +415,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     }
 
     private void planFlows(RunContext rc, Path baseDir, GitTree gitTree, KestraState kes,
-        SourceOfTruth rSource, WhenMissingInSource rMissing, OnInvalidSyntax rInvalid,
+        SourceOfTruth flowsSource, WhenMissingInSource rMissing, OnInvalidSyntax rInvalid,
         List<String> protectedNamespace, boolean rDryRun,
         List<DiffLine> diff, List<Runnable> apply) {
         Map<String, GitNode> gitByKey = gitTree.nodes;
@@ -395,7 +430,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
             String fileRel = nodeToYamlPath(FLOWS_DIR, gitNode, key);
 
             if (gitNode != null && kestraFlowWithSource == null) {
-                if (rSource == SourceOfTruth.GIT) {
+                if (flowsSource == SourceOfTruth.GIT) {
                     diff.add(DiffLine.added(fileRel, key, Kind.FLOW));
                     if (!rDryRun)
                         apply.add(() ->
@@ -431,7 +466,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                     }
                 }
             } else if (gitNode == null && kestraFlowWithSource != null) {
-                if (rSource == SourceOfTruth.KESTRA) {
+                if (flowsSource == SourceOfTruth.KESTRA) {
                     String rel = fileRelFromKey(FLOWS_DIR, key);
                     diff.add(DiffLine.added(rel, key, Kind.FLOW));
                     if (!rDryRun)
@@ -471,7 +506,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                     diff.add(DiffLine.unchanged(fileRel, key, Kind.FLOW));
                     continue;
                 }
-                if (rSource == SourceOfTruth.GIT) {
+                if (flowsSource == SourceOfTruth.GIT) {
                     diff.add(DiffLine.updatedKestra(fileRel, key, Kind.FLOW));
                     if (!rDryRun)
                         apply.add(() ->
@@ -499,7 +534,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
     }
 
     private void planNamespaceFiles(RunContext rc, Path baseDir, String namespace, Map<String, byte[]> gitFiles,
-        Map<String, byte[]> kestraFiles, SourceOfTruth rSource, WhenMissingInSource rMissing,
+        Map<String, byte[]> kestraFiles, SourceOfTruth filesSource, WhenMissingInSource rMissing,
         List<String> protectedNamespace, boolean rDryRun, List<DiffLine> diff, List<Runnable> apply) {
 
         Set<String> paths = union(gitFiles.keySet(), kestraFiles.keySet());
@@ -509,7 +544,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
             String fileRel = namespace + "/" + FILES_DIR + "/" + rel;
 
             if (inGit && !inKestra) {
-                if (rSource == SourceOfTruth.GIT) {
+                if (filesSource == SourceOfTruth.GIT) {
                     diff.add(DiffLine.added(fileRel, namespace + ":" + rel, Kind.FILE));
                     if (!rDryRun)
                         apply.add(() ->
@@ -537,7 +572,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
             }
 
             if (!inGit && inKestra) {
-                if (rSource == SourceOfTruth.KESTRA) {
+                if (filesSource == SourceOfTruth.KESTRA) {
                     diff.add(DiffLine.added(fileRel, namespace + ":" + rel, Kind.FILE));
                     if (!rDryRun)
                         apply.add(() -> writeGitBinaryFile(baseDir, fileRel, kestraFiles.get(rel)));
@@ -565,7 +600,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                 byte[] kestraFile = kestraFiles.get(rel);
                 if (Arrays.equals(gitFile, kestraFile)) {
                     diff.add(DiffLine.unchanged(fileRel, namespace + ":" + rel, Kind.FILE));
-                } else if (rSource == SourceOfTruth.GIT) {
+                } else if (filesSource == SourceOfTruth.GIT) {
                     diff.add(DiffLine.updatedKestra(fileRel, namespace + ":" + rel, Kind.FILE));
                     if (!rDryRun)
                         apply.add(() -> putNamespaceFile(rc, namespace, rel, gitFile));
@@ -760,19 +795,10 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
 
     private void deleteNamespaceFile(RunContext runContext, String namespace, String file) {
         try {
-            var namespaceStore = runContext.storage().namespace(namespace);
-            Path storagePath = NamespaceFile.of(namespace, Path.of(file)).storagePath();
-
-            try {
-                namespaceStore.delete(storagePath);
-            } catch (IOException e1) {
-                try {
-                    namespaceStore.delete(Path.of("files").resolve(file));
-                } catch (IOException e2) {
-                    e2.addSuppressed(e1);
-                    throw e2;
-                }
-            }
+            // Namespace#delete expects the same namespace-relative path shape as Namespace#putFile (see
+            // Namespace#delete(NamespaceFile) delegating to delete(Path.of(file.path()))) — not the fully
+            // Kestra-URI-prefixed NamespaceFile#storagePath(), which silently no-ops (no matching relative file).
+            runContext.storage().namespace(namespace).delete(Path.of(file));
         } catch (IOException e) {
             throw new KestraRuntimeException(e);
         }
@@ -789,13 +815,18 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
         return out;
     }
 
-    private Set<String> gitDescendantNamespaces(Path baseDir, String rootNamespace) throws IOException {
+    /**
+     * Discovers direct child directories of {@code baseDir} that are Git-only descendants of {@code rootNamespace},
+     * narrowed per kind via {@link #gitHasContent} so a child holding only a {@code flows/} directory isn't
+     * auto-created when flows stay Kestra-sourced (and symmetrically for a Namespace-Files-only child).
+     */
+    private Set<String> gitDescendantNamespaces(Path baseDir, String rootNamespace, SourceOfTruth flowsSource, SourceOfTruth filesSource) throws IOException {
         Set<String> out = new HashSet<>();
         if (baseDir == null || !Files.exists(baseDir))
             return out;
         try (Stream<Path> paths = Files.list(baseDir)) {
             paths.filter(Files::isDirectory)
-                .filter(p -> Files.isDirectory(p.resolve(FLOWS_DIR)) || Files.isDirectory(p.resolve(FILES_DIR)))
+                .filter(p -> gitHasContent(p, flowsSource, filesSource))
                 .map(p -> p.getFileName().toString())
                 .filter(name -> isDescendant(rootNamespace, name))
                 .forEach(out::add);
