@@ -44,7 +44,7 @@ public class SyncFlowTest extends AbstractGitTest {
      * shared {@link MockKestraApiServer} harness so the whole task path is exercised, not a hand-rolled server.
      */
     @ParameterizedTest
-    @ValueSource(ints = {401, 403, 500})
+    @ValueSource(ints = { 401, 403, 500 })
     void dryRun_flowLookupFailsWithNon404Status_shouldThrowInsteadOfFabricatingRevision(int status) throws Exception {
         try (MockKestraApiServer server = MockKestraApiServer.start(flowRepository)) {
             server.forceGetFlowStatus(TARGET_NAMESPACE, "first-flow", status);

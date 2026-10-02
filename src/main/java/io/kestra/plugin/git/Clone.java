@@ -1,6 +1,29 @@
 package io.kestra.plugin.git;
 
-import java.nio.file.Path;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
+
+import org.eclipse.jgit.api.FetchCommand;
+import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.ResetCommand.ResetType;
+import org.eclipse.jgit.lib.StoredConfig;
+import org.eclipse.jgit.transport.RefSpec;
+import org.eclipse.jgit.transport.TagOpt;
+import org.slf4j.Logger;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
@@ -23,7 +46,7 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @Schema(
     title = "Clone a Git repository",
-    description = "Clones a repository over HTTP(S) or SSH, optionally checking out a branch, tag, or commit. Defaults to a shallow clone (depth 1) unless a tag or commit is requested; set `cloneSubmodules` to fetch submodules."
+    description = "Clones a repository over HTTP(S) or SSH, optionally checking out a branch, tag, or commit. Defaults to a shallow clone (depth 1) unless a tag or commit is requested; set `cloneSubmodules` to fetch submodules. Supports repository caching to avoid full re-clones across executions."
 )
 @Plugin(
     examples = {
@@ -42,6 +65,22 @@ import lombok.experimental.SuperBuilder;
                         type: io.kestra.plugin.git.Clone
                         url: https://github.com/kestra-io/blueprints
                         branch: main
+                """
+        ),
+        @Example(
+            title = "Clone a repository with caching enabled to avoid full re-clones across executions.",
+            full = true,
+            code = """
+                id: git_clone_cached
+                namespace: company.team
+
+                tasks:
+                  - id: clone
+                    type: io.kestra.plugin.git.Clone
+                    url: https://github.com/kestra-io/blueprints
+                    branch: main
+                    cache: true
+                    cacheTtl: PT24H
                 """
         ),
         @Example(
@@ -175,6 +214,21 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     @PluginProperty(group = "advanced")
     private Property<Boolean> noTags = Property.ofValue(false);
 
+    @Schema(
+        title = "Enable repository caching",
+        description = "When true, caches the cloned repository in Kestra internal storage and restores it on subsequent runs, fetching only new commits instead of performing a full clone."
+    )
+    @Builder.Default
+    @PluginProperty(group = "advanced")
+    private Property<Boolean> cache = Property.ofValue(false);
+
+    @Schema(
+        title = "Cache TTL (Time To Live)",
+        description = "After this duration, the cache will be invalidated. Defaults to no expiration."
+    )
+    @PluginProperty(group = "advanced")
+    private Property<Duration> cacheTtl;
+
     @Override
     public Clone.Output run(RunContext runContext) throws Exception {
 
@@ -193,23 +247,251 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         configureEnvironmentWithSsl(runContext);
 
         var rDepth = (this.commit == null && this.tag == null) ? runContext.render(this.depth).as(Integer.class).orElse(1) : null;
+        var rCache = this.cache != null && runContext.render(this.cache).as(Boolean.class).orElse(false);
+        var rCacheTtl = this.cacheTtl != null ? runContext.render(this.cacheTtl).as(Duration.class).orElse(null) : null;
 
-        // CloneService.clone() already logs the start and any transport failure, so both editions share a single log line.
-        var result = CloneService.clone(
-            runContext, this, CloneService.CloneRequest.builder()
-                .url(url)
-                .path(path)
-                .branch(cloneOptions.branch())
-                .depth(rDepth)
-                .commit(this.commit != null ? runContext.render(this.commit).as(String.class).orElseThrow() : null)
-                .tag(this.tag != null ? runContext.render(this.tag).as(String.class).orElseThrow() : null)
-                .cloneAllBranches(cloneOptions.cloneAllBranches())
-                .noTags(cloneOptions.noTags())
-                .cloneSubmodules(this.cloneSubmodules)
-                .build()
-        );
+        String cacheKey = "git-cache";
+        String objectId = computeCacheObjectId(url, cloneOptions.branch());
 
-        return Output.builder().directory(result.directory()).build();
+        if (rCache && !isGitRepository(path)) {
+            try {
+                var maybeCacheFile = runContext.storage().getCacheFile(cacheKey, objectId, rCacheTtl);
+                if (maybeCacheFile.isPresent()) {
+                    runContext.logger().info("Found cached repository for '{}', restoring cache...", url);
+                    Files.createDirectories(path);
+                    try (InputStream is = maybeCacheFile.get()) {
+                        extractZipArchive(is, path);
+                    }
+                }
+            } catch (Exception e) {
+                runContext.logger().warn("Failed to restore repository cache for '{}', proceeding with normal clone", url, e);
+            }
+        }
+
+        String resultDirectory;
+        if (isGitRepository(path)) {
+            resultDirectory = updateRepository(runContext, path, url, cloneOptions, rDepth);
+        } else {
+            // CloneService.clone() already logs the start and any transport failure, so both editions share a single log line.
+            var result = CloneService.clone(
+                runContext, this, CloneService.CloneRequest.builder()
+                    .url(url)
+                    .path(path)
+                    .branch(cloneOptions.branch())
+                    .depth(rDepth)
+                    .commit(this.commit != null ? runContext.render(this.commit).as(String.class).orElseThrow() : null)
+                    .tag(this.tag != null ? runContext.render(this.tag).as(String.class).orElseThrow() : null)
+                    .cloneAllBranches(cloneOptions.cloneAllBranches())
+                    .noTags(cloneOptions.noTags())
+                    .cloneSubmodules(this.cloneSubmodules)
+                    .build()
+            );
+            resultDirectory = result.directory();
+        }
+
+        if (rCache) {
+            try {
+                Path tempZip = runContext.workingDir().createTempFile(".zip");
+                createZipArchive(path, tempZip);
+                runContext.storage().putCacheFile(tempZip.toFile(), cacheKey, objectId);
+                runContext.logger().info("Updated repository cache for '{}'", url);
+            } catch (Exception e) {
+                runContext.logger().warn("Failed to update repository cache for '{}'", url, e);
+            }
+        }
+
+        return Output.builder().directory(resultDirectory).build();
+    }
+
+    private String updateRepository(
+        RunContext runContext,
+        Path path,
+        String url,
+        CloneOptions cloneOptions,
+        Integer depth) throws Exception {
+        Logger logger = runContext.logger();
+        logger.info("Existing Git repository found at '{}', fetching latest changes from '{}'", path, url);
+
+        boolean hasCommit = this.commit != null;
+        boolean hasTag = this.tag != null;
+
+        try (Git git = Git.open(path.toFile())) {
+            StoredConfig config = git.getRepository().getConfig();
+            String existingUrl = config.getString("remote", "origin", "url");
+            if (existingUrl == null || !existingUrl.equals(url)) {
+                config.setString("remote", "origin", "url", url);
+                config.save();
+            }
+
+            applyGitConfig(git.getRepository(), runContext);
+
+            List<RefSpec> refSpecs = new ArrayList<>();
+            if (!cloneOptions.cloneAllBranches() && cloneOptions.branch() != null) {
+                String branchName = shortBranchName(cloneOptions.branch());
+                refSpecs.add(new RefSpec("+refs/heads/" + branchName + ":refs/remotes/origin/" + branchName));
+            } else {
+                refSpecs.add(new RefSpec("+refs/heads/*:refs/remotes/origin/*"));
+            }
+
+            if (!cloneOptions.noTags()) {
+                refSpecs.add(new RefSpec("+refs/tags/*:refs/tags/*"));
+            }
+
+            FetchCommand fetchCommand = git.fetch()
+                .setRemote("origin")
+                .setRefSpecs(refSpecs);
+
+            if (cloneOptions.noTags()) {
+                fetchCommand.setTagOpt(TagOpt.NO_TAGS);
+            }
+
+            if (!hasCommit && !hasTag && depth != null) {
+                fetchCommand.setDepth(depth);
+            }
+
+            authentified(fetchCommand, runContext).call();
+
+            if (hasCommit) {
+                String sha = runContext.render(this.commit).as(String.class).orElseThrow();
+                CloneService.checkoutCommit(git, sha, logger, cloneOptions.noTags());
+            } else if (hasTag) {
+                String tagName = runContext.render(this.tag).as(String.class).orElseThrow();
+                CloneService.checkoutTag(git, tagName, logger, cloneOptions.noTags());
+            } else {
+                var targetBranch = cloneOptions.branch();
+                if (targetBranch == null) {
+                    var headRef = git.getRepository().exactRef("refs/remotes/origin/HEAD");
+                    if (headRef != null && headRef.getTarget() != null) {
+                        targetBranch = headRef.getTarget().getName().replace("refs/remotes/origin/", "");
+                    }
+                }
+
+                if (targetBranch == null) {
+                    if (git.getRepository().exactRef("refs/remotes/origin/main") != null) {
+                        targetBranch = "main";
+                    } else if (git.getRepository().exactRef("refs/remotes/origin/master") != null) {
+                        targetBranch = "master";
+                    } else {
+                        throw new IllegalStateException(
+                            "Cannot determine the default branch. Please specify the 'branch' property explicitly."
+                        );
+                    }
+                }
+
+                String cleanBranch = shortBranchName(targetBranch);
+                String remoteBranch = "origin/" + cleanBranch;
+                boolean localBranchExists = git.getRepository().exactRef("refs/heads/" + cleanBranch) != null;
+
+                if (!localBranchExists) {
+                    git.checkout()
+                        .setName(cleanBranch)
+                        .setCreateBranch(true)
+                        .setStartPoint(remoteBranch)
+                        .call();
+                } else {
+                    git.checkout()
+                        .setName(cleanBranch)
+                        .call();
+
+                    git.reset()
+                        .setMode(ResetType.HARD)
+                        .setRef(remoteBranch)
+                        .call();
+                }
+
+                logger.info("Checked out and updated branch {} from {}", cleanBranch, remoteBranch);
+            }
+
+            if (this.cloneSubmodules != null && runContext.render(this.cloneSubmodules).as(Boolean.class).orElse(false)) {
+                git.submoduleInit().call();
+                authentified(git.submoduleUpdate(), runContext).call();
+            }
+
+            return git.getRepository().getDirectory().getParent();
+        }
+    }
+
+    private static boolean isGitRepository(Path path) {
+        if (!Files.exists(path)) {
+            return false;
+        }
+        File gitDir = path.resolve(".git").toFile();
+        return gitDir.exists() && (gitDir.isDirectory() || gitDir.isFile());
+    }
+
+    private static String shortBranchName(String branch) {
+        if (branch == null) {
+            return null;
+        }
+        return branch.startsWith("refs/heads/") ? branch.substring("refs/heads/".length()) : branch;
+    }
+
+    private static String computeCacheObjectId(String url, String branch) {
+        String key = url + (branch != null && !branch.isBlank() ? ":" + shortBranchName(branch) : "");
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(key.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) {
+                    hexString.append('0');
+                }
+                hexString.append(hex);
+            }
+            return hexString.toString();
+        } catch (NoSuchAlgorithmException e) {
+            return Integer.toHexString(key.hashCode());
+        }
+    }
+
+    private static void createZipArchive(Path sourceDir, Path zipFile) throws IOException {
+        try (ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(zipFile)))) {
+            Files.walkFileTree(sourceDir, new SimpleFileVisitor<>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                    if (!sourceDir.equals(dir)) {
+                        String entryName = sourceDir.relativize(dir).toString().replace('\\', '/') + "/";
+                        zos.putNextEntry(new ZipEntry(entryName));
+                        zos.closeEntry();
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                    if (file.equals(zipFile)) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                    String entryName = sourceDir.relativize(file).toString().replace('\\', '/');
+                    ZipEntry entry = new ZipEntry(entryName);
+                    entry.setTime(attrs.lastModifiedTime().toMillis());
+                    zos.putNextEntry(entry);
+                    Files.copy(file, zos);
+                    zos.closeEntry();
+                    return FileVisitResult.CONTINUE;
+                }
+            });
+        }
+    }
+
+    private static void extractZipArchive(InputStream is, Path targetDir) throws IOException {
+        try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(is))) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                Path targetPath = targetDir.resolve(entry.getName()).normalize();
+                if (!targetPath.startsWith(targetDir)) {
+                    throw new IOException("Zip entry escapes target directory: " + entry.getName());
+                }
+                if (entry.isDirectory()) {
+                    Files.createDirectories(targetPath);
+                } else {
+                    Files.createDirectories(targetPath.getParent());
+                    Files.copy(zis, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                }
+                zis.closeEntry();
+            }
+        }
     }
 
     private CloneOptions resolveCloneOptions(RunContext runContext) throws Exception {
