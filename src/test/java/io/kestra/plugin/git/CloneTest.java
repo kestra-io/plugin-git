@@ -526,4 +526,86 @@ class CloneTest extends AbstractGitTest {
         assertThat(ex.getMessage(), containsString("`tag` cannot be used with `noTags: true`"));
     }
 
+    @Test
+    void cloneExistingRepositoryIncrementalUpdate() throws Exception {
+        Path remote = Files.createTempDirectory("git-remote-incremental-");
+        Path file1 = remote.resolve("file1.txt");
+        Path file2 = remote.resolve("file2.txt");
+
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(file1, "first\n");
+            git.add().addFilepattern("file1.txt").call();
+            git.commit().setMessage("first").setSign(false).call();
+        }
+
+        RunContext runContext = runContextFactory.of();
+
+        Clone task = Clone.builder()
+            .url(Property.ofValue(remote.toUri().toString()))
+            .build();
+
+        Clone.Output out1 = task.run(runContext);
+        Path repoPath = Path.of(out1.getDirectory());
+        assertThat(Files.exists(repoPath.resolve("file1.txt")), is(true));
+        assertThat(Files.readString(repoPath.resolve("file1.txt")).trim(), is("first"));
+        assertThat(Files.exists(repoPath.resolve("file2.txt")), is(false));
+
+        // Add a second commit to the remote repository
+        try (Git git = Git.open(remote.toFile())) {
+            Files.writeString(file2, "second\n");
+            git.add().addFilepattern("file2.txt").call();
+            git.commit().setMessage("second").setSign(false).call();
+        }
+
+        // Run clone again on the exact same directory (which already contains a git repo)
+        Clone.Output out2 = task.run(runContext);
+        assertThat(out2.getDirectory(), is(out1.getDirectory()));
+        assertThat(Files.exists(repoPath.resolve("file1.txt")), is(true));
+        assertThat(Files.exists(repoPath.resolve("file2.txt")), is(true));
+        assertThat(Files.readString(repoPath.resolve("file2.txt")).trim(), is("second"));
+    }
+
+    @Test
+    void cloneWithCacheProperty() throws Exception {
+        Path remote = Files.createTempDirectory("git-remote-cache-");
+        Path file1 = remote.resolve("file1.txt");
+        Path file2 = remote.resolve("file2.txt");
+
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(file1, "first\n");
+            git.add().addFilepattern("file1.txt").call();
+            git.commit().setMessage("first").setSign(false).call();
+        }
+
+        // RunContext 1 with cache enabled
+        RunContext runContext1 = runContextFactory.of();
+        Clone task1 = Clone.builder()
+            .url(Property.ofValue(remote.toUri().toString()))
+            .cache(Property.ofValue(true))
+            .build();
+
+        Clone.Output out1 = task1.run(runContext1);
+        Path repoPath1 = Path.of(out1.getDirectory());
+        assertThat(Files.exists(repoPath1.resolve("file1.txt")), is(true));
+
+        // Add second commit to remote
+        try (Git git = Git.open(remote.toFile())) {
+            Files.writeString(file2, "second\n");
+            git.add().addFilepattern("file2.txt").call();
+            git.commit().setMessage("second").setSign(false).call();
+        }
+
+        // RunContext 2 (fresh directory) with cache enabled
+        RunContext runContext2 = runContextFactory.of();
+        Clone task2 = Clone.builder()
+            .url(Property.ofValue(remote.toUri().toString()))
+            .cache(Property.ofValue(true))
+            .build();
+
+        Clone.Output out2 = task2.run(runContext2);
+        Path repoPath2 = Path.of(out2.getDirectory());
+        assertThat(Files.exists(repoPath2.resolve("file1.txt")), is(true));
+        assertThat(Files.exists(repoPath2.resolve("file2.txt")), is(true));
+        assertThat(Files.readString(repoPath2.resolve("file2.txt")).trim(), is("second"));
+    }
 }
