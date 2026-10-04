@@ -13,13 +13,16 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
+import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.FetchCommand;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ResetCommand.ResetType;
+import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.StoredConfig;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.TagOpt;
@@ -252,21 +255,32 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
         String cacheKey = "git-cache";
         String objectId = computeCacheObjectId(url, cloneOptions.branch());
+        Path gitDir = path.resolve(".git");
+        boolean cacheRestored = false;
 
         if (rCache && !isGitRepository(path)) {
             try {
                 var maybeCacheFile = runContext.storage().getCacheFile(cacheKey, objectId, rCacheTtl);
                 if (maybeCacheFile.isPresent()) {
                     runContext.logger().info("Found cached repository for '{}', restoring cache...", url);
-                    Files.createDirectories(path);
+                    Files.createDirectories(gitDir);
                     try (InputStream is = maybeCacheFile.get()) {
-                        extractZipArchive(is, path);
+                        extractZipArchive(is, gitDir);
                     }
+                    cacheRestored = isGitRepository(path);
                 }
             } catch (Exception e) {
                 runContext.logger().warn("Failed to restore repository cache for '{}', proceeding with normal clone", url, e);
+                try {
+                    if (Files.exists(gitDir)) {
+                        FileUtils.deleteDirectory(gitDir.toFile());
+                    }
+                } catch (Exception ignored) {
+                }
             }
         }
+
+        ObjectId headBefore = resolveHead(path);
 
         String resultDirectory;
         if (isGitRepository(path)) {
@@ -289,14 +303,21 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
             resultDirectory = result.directory();
         }
 
+        ObjectId headAfter = resolveHead(path);
+
         if (rCache) {
-            try {
-                Path tempZip = runContext.workingDir().createTempFile(".zip");
-                createZipArchive(path, tempZip);
-                runContext.storage().putCacheFile(tempZip.toFile(), cacheKey, objectId);
-                runContext.logger().info("Updated repository cache for '{}'", url);
-            } catch (Exception e) {
-                runContext.logger().warn("Failed to update repository cache for '{}'", url, e);
+            boolean shouldUpdateCache = !cacheRestored || headBefore == null || !Objects.equals(headBefore, headAfter);
+            if (shouldUpdateCache && Files.exists(gitDir)) {
+                try {
+                    Path tempZip = runContext.workingDir().createTempFile(".zip");
+                    createZipArchive(gitDir, tempZip);
+                    runContext.storage().putCacheFile(tempZip.toFile(), cacheKey, objectId);
+                    runContext.logger().info("Updated repository cache for '{}'", url);
+                } catch (Exception e) {
+                    runContext.logger().warn("Failed to update repository cache for '{}'", url, e);
+                }
+            } else if (cacheRestored) {
+                runContext.logger().info("Repository cache is already up-to-date for '{}', skipping cache upload", url);
             }
         }
 
@@ -354,9 +375,11 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
             if (hasCommit) {
                 String sha = runContext.render(this.commit).as(String.class).orElseThrow();
                 CloneService.checkoutCommit(git, sha, logger, cloneOptions.noTags());
+                git.reset().setMode(ResetType.HARD).call();
             } else if (hasTag) {
                 String tagName = runContext.render(this.tag).as(String.class).orElseThrow();
                 CloneService.checkoutTag(git, tagName, logger, cloneOptions.noTags());
+                git.reset().setMode(ResetType.HARD).call();
             } else {
                 var targetBranch = cloneOptions.branch();
                 if (targetBranch == null) {
@@ -387,6 +410,11 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                         .setName(cleanBranch)
                         .setCreateBranch(true)
                         .setStartPoint(remoteBranch)
+                        .call();
+
+                    git.reset()
+                        .setMode(ResetType.HARD)
+                        .setRef(remoteBranch)
                         .call();
                 } else {
                     git.checkout()
@@ -419,6 +447,17 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         return gitDir.exists() && (gitDir.isDirectory() || gitDir.isFile());
     }
 
+    private static ObjectId resolveHead(Path path) {
+        if (!isGitRepository(path)) {
+            return null;
+        }
+        try (Git git = Git.open(path.toFile())) {
+            return git.getRepository().resolve("HEAD");
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     private static String shortBranchName(String branch) {
         if (branch == null) {
             return null;
@@ -426,7 +465,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         return branch.startsWith("refs/heads/") ? branch.substring("refs/heads/".length()) : branch;
     }
 
-    private static String computeCacheObjectId(String url, String branch) {
+    static String computeCacheObjectId(String url, String branch) {
         String key = url + (branch != null && !branch.isBlank() ? ":" + shortBranchName(branch) : "");
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -445,13 +484,16 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         }
     }
 
-    private static void createZipArchive(Path sourceDir, Path zipFile) throws IOException {
+    private static void createZipArchive(Path gitDir, Path zipFile) throws IOException {
         try (ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(zipFile)))) {
-            Files.walkFileTree(sourceDir, new SimpleFileVisitor<>() {
+            Files.walkFileTree(gitDir, new SimpleFileVisitor<>() {
                 @Override
                 public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-                    if (!sourceDir.equals(dir)) {
-                        String entryName = sourceDir.relativize(dir).toString().replace('\\', '/') + "/";
+                    if (attrs.isSymbolicLink()) {
+                        return FileVisitResult.SKIP_SUBTREE;
+                    }
+                    if (!gitDir.equals(dir)) {
+                        String entryName = gitDir.relativize(dir).toString().replace('\\', '/') + "/";
                         zos.putNextEntry(new ZipEntry(entryName));
                         zos.closeEntry();
                     }
@@ -460,10 +502,10 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
                 @Override
                 public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                    if (file.equals(zipFile)) {
+                    if (attrs.isSymbolicLink() || file.equals(zipFile)) {
                         return FileVisitResult.CONTINUE;
                     }
-                    String entryName = sourceDir.relativize(file).toString().replace('\\', '/');
+                    String entryName = gitDir.relativize(file).toString().replace('\\', '/');
                     ZipEntry entry = new ZipEntry(entryName);
                     entry.setTime(attrs.lastModifiedTime().toMillis());
                     zos.putNextEntry(entry);
