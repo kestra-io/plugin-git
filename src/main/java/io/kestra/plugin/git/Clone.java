@@ -23,6 +23,7 @@ import org.eclipse.jgit.api.FetchCommand;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ResetCommand.ResetType;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.lib.StoredConfig;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.TagOpt;
@@ -219,7 +220,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
     @Schema(
         title = "Enable repository caching",
-        description = "When true, caches the cloned repository in Kestra internal storage and restores it on subsequent runs, fetching only new commits instead of performing a full clone."
+        description = "When true, caches the .git directory in Kestra internal storage and restores it on subsequent runs, fetching only new commits instead of performing a full clone. Note that only metadata and objects inside .git are cached; working tree files outside .git are not persisted in the cache."
     )
     @Builder.Default
     @PluginProperty(group = "advanced")
@@ -264,17 +265,29 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                 if (maybeCacheFile.isPresent()) {
                     runContext.logger().info("Found cached repository for '{}', restoring cache...", url);
                     Files.createDirectories(gitDir);
+                    int count;
                     try (InputStream is = maybeCacheFile.get()) {
-                        extractZipArchive(is, gitDir);
+                        count = extractZipArchive(is, gitDir);
                     }
-                    cacheRestored = isGitRepository(path);
+                    if (count == 0) {
+                        throw new IOException("Cache archive contained no entries or is invalid");
+                    }
+                    if (!isValidGitRepository(path)) {
+                        throw new IOException("Restored repository is invalid or corrupt");
+                    }
+                    cacheRestored = true;
                 }
             } catch (Exception e) {
                 runContext.logger().warn("Failed to restore repository cache for '{}', proceeding with normal clone", url, e);
+                cacheRestored = false;
                 try {
                     if (Files.exists(gitDir)) {
                         FileUtils.deleteDirectory(gitDir.toFile());
                     }
+                } catch (Exception ignored) {
+                }
+                try {
+                    runContext.storage().deleteCacheFile(cacheKey, objectId);
                 } catch (Exception ignored) {
                 }
             }
@@ -284,7 +297,40 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
         String resultDirectory;
         if (isGitRepository(path)) {
-            resultDirectory = updateRepository(runContext, path, url, cloneOptions, rDepth);
+            try {
+                resultDirectory = updateRepository(runContext, path, url, cloneOptions, rDepth);
+            } catch (Exception e) {
+                if (cacheRestored) {
+                    runContext.logger().warn("Failed to update cached repository for '{}', falling back to normal clone", url, e);
+                    try {
+                        if (Files.exists(gitDir)) {
+                            FileUtils.deleteDirectory(gitDir.toFile());
+                        }
+                    } catch (Exception ignored) {
+                    }
+                    try {
+                        runContext.storage().deleteCacheFile(cacheKey, objectId);
+                    } catch (Exception ignored) {
+                    }
+                    cacheRestored = false;
+                    var result = CloneService.clone(
+                        runContext, this, CloneService.CloneRequest.builder()
+                            .url(url)
+                            .path(path)
+                            .branch(cloneOptions.branch())
+                            .depth(rDepth)
+                            .commit(this.commit != null ? runContext.render(this.commit).as(String.class).orElseThrow() : null)
+                            .tag(this.tag != null ? runContext.render(this.tag).as(String.class).orElseThrow() : null)
+                            .cloneAllBranches(cloneOptions.cloneAllBranches())
+                            .noTags(cloneOptions.noTags())
+                            .cloneSubmodules(this.cloneSubmodules)
+                            .build()
+                    );
+                    resultDirectory = result.directory();
+                } else {
+                    throw e;
+                }
+            }
         } else {
             // CloneService.clone() already logs the start and any transport failure, so both editions share a single log line.
             var result = CloneService.clone(
@@ -374,10 +420,32 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
             if (hasCommit) {
                 String sha = runContext.render(this.commit).as(String.class).orElseThrow();
+                if (isShallowRepository(git.getRepository()) && git.getRepository().resolve(sha) == null) {
+                    logger.info("Commit '{}' not found in shallow repository, unshallowing repository...", sha);
+                    FetchCommand unshallow = git.fetch()
+                        .setRemote("origin")
+                        .setRefSpecs(refSpecs)
+                        .setUnshallow(true);
+                    if (cloneOptions.noTags()) {
+                        unshallow.setTagOpt(TagOpt.NO_TAGS);
+                    }
+                    authentified(unshallow, runContext).call();
+                }
                 CloneService.checkoutCommit(git, sha, logger, cloneOptions.noTags());
                 git.reset().setMode(ResetType.HARD).call();
             } else if (hasTag) {
                 String tagName = runContext.render(this.tag).as(String.class).orElseThrow();
+                if (isShallowRepository(git.getRepository()) && git.getRepository().resolve("refs/tags/" + tagName) == null && git.getRepository().resolve(tagName) == null) {
+                    logger.info("Tag '{}' not found in shallow repository, unshallowing repository...", tagName);
+                    FetchCommand unshallow = git.fetch()
+                        .setRemote("origin")
+                        .setRefSpecs(refSpecs)
+                        .setUnshallow(true);
+                    if (cloneOptions.noTags()) {
+                        unshallow.setTagOpt(TagOpt.NO_TAGS);
+                    }
+                    authentified(unshallow, runContext).call();
+                }
                 CloneService.checkoutTag(git, tagName, logger, cloneOptions.noTags());
                 git.reset().setMode(ResetType.HARD).call();
             } else {
@@ -445,6 +513,26 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         }
         File gitDir = path.resolve(".git").toFile();
         return gitDir.exists() && (gitDir.isDirectory() || gitDir.isFile());
+    }
+
+    private static boolean isValidGitRepository(Path path) {
+        if (!isGitRepository(path)) {
+            return false;
+        }
+        try (Git git = Git.open(path.toFile())) {
+            return git.getRepository().resolve("HEAD") != null;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static boolean isShallowRepository(Repository repo) {
+        try {
+            return Files.exists(repo.getDirectory().toPath().resolve("shallow"))
+                || !repo.getObjectDatabase().getShallowCommits().isEmpty();
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static ObjectId resolveHead(Path path) {
@@ -517,7 +605,8 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         }
     }
 
-    private static void extractZipArchive(InputStream is, Path targetDir) throws IOException {
+    private static int extractZipArchive(InputStream is, Path targetDir) throws IOException {
+        int count = 0;
         try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(is))) {
             ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
@@ -532,8 +621,10 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                     Files.copy(zis, targetPath, StandardCopyOption.REPLACE_EXISTING);
                 }
                 zis.closeEntry();
+                count++;
             }
         }
+        return count;
     }
 
     private CloneOptions resolveCloneOptions(RunContext runContext) throws Exception {

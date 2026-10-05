@@ -633,4 +633,90 @@ class CloneTest extends AbstractGitTest {
         assertThat(Files.exists(repoPath3.resolve("file2.txt")), is(true));
         assertThat(Files.readString(repoPath3.resolve("file2.txt")).trim(), is("second"));
     }
+
+    @Test
+    void cloneWithCorruptedCache_shouldRecoverGracefully() throws Exception {
+        Path remote = Files.createTempDirectory("git-remote-corrupt-");
+        Path file1 = remote.resolve("file1.txt");
+
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(file1, "first\n");
+            git.add().addFilepattern("file1.txt").call();
+            git.commit().setMessage("first").setSign(false).call();
+        }
+
+        Clone task = Clone.builder()
+            .id("clone-corrupted-cache")
+            .type(Clone.class.getName())
+            .url(Property.ofValue(remote.toUri().toString()))
+            .cache(Property.ofValue(true))
+            .build();
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+
+        // Seed storage with a corrupt non-zip file
+        String objectId = Clone.computeCacheObjectId(remote.toUri().toString(), null);
+        Path garbage = runContext.workingDir().createTempFile(".bin");
+        Files.writeString(garbage, "NOT_A_VALID_ZIP_ARCHIVE_DATA_GARBAGE");
+        runContext.storage().putCacheFile(garbage.toFile(), "git-cache", objectId);
+
+        // Run clone: should detect corrupt cache, clean up, and successfully clone
+        Clone.Output out = task.run(runContext);
+        Path repoPath = Path.of(out.getDirectory());
+        assertThat(Files.exists(repoPath.resolve("file1.txt")), is(true));
+        assertThat(Files.readString(repoPath.resolve("file1.txt")).trim(), is("first"));
+
+        // Verify corrupted cache was replaced by a valid cache
+        var newCache = runContext.storage().getCacheFile("git-cache", objectId, null);
+        assertThat(newCache.isPresent(), is(true));
+    }
+
+    @Test
+    void cloneShallowCachedThenPinOlderCommit_shouldUnshallowAndSucceed() throws Exception {
+        Path remote = Files.createTempDirectory("git-remote-shallow-");
+        Path file1 = remote.resolve("file1.txt");
+        Path file2 = remote.resolve("file2.txt");
+        Path file3 = remote.resolve("file3.txt");
+
+        String commit1Sha;
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(file1, "commit 1\n");
+            git.add().addFilepattern("file1.txt").call();
+            commit1Sha = git.commit().setMessage("commit 1").setSign(false).call().name();
+
+            Files.writeString(file2, "commit 2\n");
+            git.add().addFilepattern("file2.txt").call();
+            git.commit().setMessage("commit 2").setSign(false).call();
+
+            Files.writeString(file3, "commit 3\n");
+            git.add().addFilepattern("file3.txt").call();
+            git.commit().setMessage("commit 3").setSign(false).call();
+        }
+
+        // Run 1: seed cache with default depth: 1 (shallow)
+        Clone task1 = Clone.builder()
+            .id("clone-shallow-seed")
+            .type(Clone.class.getName())
+            .url(Property.ofValue(remote.toUri().toString()))
+            .cache(Property.ofValue(true))
+            .build();
+        RunContext runContext1 = TestsUtils.mockRunContext(runContextFactory, task1, Map.of());
+        Clone.Output out1 = task1.run(runContext1);
+        assertThat(Files.exists(Path.of(out1.getDirectory()).resolve("file3.txt")), is(true));
+
+        // Run 2: fresh directory with cache enabled, pinning older commit 1
+        Clone task2 = Clone.builder()
+            .id("clone-pin-older")
+            .type(Clone.class.getName())
+            .url(Property.ofValue(remote.toUri().toString()))
+            .cache(Property.ofValue(true))
+            .commit(Property.ofValue(commit1Sha))
+            .build();
+        RunContext runContext2 = TestsUtils.mockRunContext(runContextFactory, task2, Map.of());
+        Clone.Output out2 = task2.run(runContext2);
+        Path repoPath2 = Path.of(out2.getDirectory());
+        assertThat(Files.exists(repoPath2.resolve("file1.txt")), is(true));
+        assertThat(Files.exists(repoPath2.resolve("file2.txt")), is(false));
+        assertThat(Files.exists(repoPath2.resolve("file3.txt")), is(false));
+        assertThat(Files.readString(repoPath2.resolve("file1.txt")).trim(), is("commit 1"));
+    }
 }
