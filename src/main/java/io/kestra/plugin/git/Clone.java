@@ -25,6 +25,7 @@ import org.eclipse.jgit.api.ResetCommand.ResetType;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.lib.StoredConfig;
+import org.eclipse.jgit.transport.FetchResult;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.TagOpt;
 import org.slf4j.Logger;
@@ -294,11 +295,16 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         }
 
         ObjectId headBefore = resolveHead(path);
+        Path packDir = gitDir.resolve("objects").resolve("pack");
+        long packFilesBefore = countPackFiles(packDir);
 
         String resultDirectory;
+        boolean repositoryUpdated = false;
         if (isGitRepository(path)) {
             try {
-                resultDirectory = updateRepository(runContext, path, url, cloneOptions, rDepth);
+                UpdateResult updateResult = updateRepository(runContext, path, url, cloneOptions, rDepth);
+                resultDirectory = updateResult.directory();
+                repositoryUpdated = updateResult.updated();
             } catch (Exception e) {
                 if (cacheRestored) {
                     runContext.logger().warn("Failed to update cached repository for '{}', falling back to normal clone", url, e);
@@ -350,9 +356,15 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         }
 
         ObjectId headAfter = resolveHead(path);
+        long packFilesAfter = countPackFiles(packDir);
+        boolean packFilesAdded = packFilesAfter > packFilesBefore;
 
         if (rCache) {
-            boolean shouldUpdateCache = !cacheRestored || headBefore == null || !Objects.equals(headBefore, headAfter);
+            boolean shouldUpdateCache = !cacheRestored
+                || headBefore == null
+                || !Objects.equals(headBefore, headAfter)
+                || repositoryUpdated
+                || packFilesAdded;
             if (shouldUpdateCache && Files.exists(gitDir)) {
                 try {
                     Path tempZip = runContext.workingDir().createTempFile(".zip");
@@ -370,7 +382,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         return Output.builder().directory(resultDirectory).build();
     }
 
-    private String updateRepository(
+    private UpdateResult updateRepository(
         RunContext runContext,
         Path path,
         String url,
@@ -381,6 +393,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
         boolean hasCommit = this.commit != null;
         boolean hasTag = this.tag != null;
+        boolean updated = false;
 
         try (Git git = Git.open(path.toFile())) {
             StoredConfig config = git.getRepository().getConfig();
@@ -416,7 +429,10 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                 fetchCommand.setDepth(depth);
             }
 
-            authentified(fetchCommand, runContext).call();
+            FetchResult fetchResult = authentified(fetchCommand, runContext).call();
+            if (fetchResult != null && !fetchResult.getTrackingRefUpdates().isEmpty()) {
+                updated = true;
+            }
 
             if (hasCommit) {
                 String sha = runContext.render(this.commit).as(String.class).orElseThrow();
@@ -431,6 +447,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                         unshallow.setTagOpt(TagOpt.NO_TAGS);
                     }
                     authentified(unshallow, runContext).call();
+                    updated = true;
                 }
                 CloneService.checkoutCommit(git, sha, logger, cloneOptions.noTags());
                 git.reset().setMode(ResetType.HARD).call();
@@ -450,6 +467,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                         unshallow.setTagOpt(TagOpt.NO_TAGS);
                     }
                     authentified(unshallow, runContext).call();
+                    updated = true;
                 }
                 CloneService.checkoutTag(git, tagName, logger, cloneOptions.noTags());
                 git.reset().setMode(ResetType.HARD).call();
@@ -508,7 +526,21 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                 authentified(git.submoduleUpdate(), runContext).call();
             }
 
-            return git.getRepository().getDirectory().getParent();
+            return new UpdateResult(git.getRepository().getDirectory().getParent(), updated);
+        }
+    }
+
+    private record UpdateResult(String directory, boolean updated) {
+    }
+
+    private static long countPackFiles(Path packDir) {
+        if (!Files.isDirectory(packDir)) {
+            return 0;
+        }
+        try (var stream = Files.list(packDir)) {
+            return stream.filter(p -> p.getFileName().toString().endsWith(".pack")).count();
+        } catch (IOException e) {
+            return 0;
         }
     }
 
@@ -577,7 +609,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         }
     }
 
-    private static void createZipArchive(Path gitDir, Path zipFile) throws IOException {
+    static void createZipArchive(Path gitDir, Path zipFile) throws IOException {
         try (ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(zipFile)))) {
             Files.walkFileTree(gitDir, new SimpleFileVisitor<>() {
                 @Override
@@ -610,7 +642,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         }
     }
 
-    private static int extractZipArchive(InputStream is, Path targetDir) throws IOException {
+    static int extractZipArchive(InputStream is, Path targetDir) throws IOException {
         int count = 0;
         try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(is))) {
             ZipEntry entry;

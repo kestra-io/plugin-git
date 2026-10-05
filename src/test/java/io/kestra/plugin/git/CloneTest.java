@@ -737,4 +737,86 @@ class CloneTest extends AbstractGitTest {
             .anyMatch(l -> l.getMessage() != null && l.getMessage().contains("unshallowing repository"));
         assertThat("Expected unshallowing log to confirm unshallow fetch was executed", unshallowLog, is(true));
     }
+
+    @Test
+    void cloneWithDegradedPackFiles_shouldHealAndReUploadCache() throws Exception {
+        Path remote = Files.createTempDirectory("git-remote-pack-heal-");
+        Path file1 = remote.resolve("file1.txt");
+
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(file1, "pack healing\n");
+            git.add().addFilepattern("file1.txt").call();
+            git.commit().setMessage("initial commit").setSign(false).call();
+        }
+
+        Clone task1 = Clone.builder()
+            .id("clone-pack-seed")
+            .type(Clone.class.getName())
+            .url(Property.ofValue(remote.toUri().toString()))
+            .cache(Property.ofValue(true))
+            .build();
+        RunContext runContext1 = TestsUtils.mockRunContext(runContextFactory, task1, Map.of());
+        task1.run(runContext1);
+
+        String objectId = Clone.computeCacheObjectId(remote.toUri().toString(), null);
+        var initialCache = runContext1.storage().getCacheFile("git-cache", objectId, null);
+        assertThat("Initial cache should exist", initialCache.isPresent(), is(true));
+
+        // Unpack initial cache, strip .pack and .idx files, and re-zip as degraded cache
+        Path unpackDir = Files.createTempDirectory("git-unpack-degraded-");
+        try (var is = initialCache.get()) {
+            Clone.extractZipArchive(is, unpackDir);
+        }
+
+        Path packDir = unpackDir.resolve("objects").resolve("pack");
+        if (Files.isDirectory(packDir)) {
+            try (var stream = Files.list(packDir)) {
+                stream.filter(p -> p.getFileName().toString().endsWith(".pack") || p.getFileName().toString().endsWith(".idx"))
+                    .forEach(p ->
+                    {
+                        try {
+                            Files.delete(p);
+                        } catch (Exception ignored) {
+                        }
+                    });
+            }
+        }
+
+        Path degradedZip = Files.createTempFile("git-degraded-", ".zip");
+        Clone.createZipArchive(unpackDir, degradedZip);
+
+        // Put degraded cache into storage
+        runContext1.storage().putCacheFile(degradedZip.toFile(), "git-cache", objectId);
+
+        // Run 2: restore degraded cache, fetch missing objects, heal and re-upload
+        Clone task2 = Clone.builder()
+            .id("clone-pack-heal")
+            .type(Clone.class.getName())
+            .url(Property.ofValue(remote.toUri().toString()))
+            .cache(Property.ofValue(true))
+            .build();
+        RunContext runContext2 = TestsUtils.mockRunContext(runContextFactory, task2, Map.of());
+        Clone.Output out2 = task2.run(runContext2);
+
+        Path repoPath2 = Path.of(out2.getDirectory());
+        assertThat(Files.exists(repoPath2.resolve("file1.txt")), is(true));
+        assertThat(Files.readString(repoPath2.resolve("file1.txt")).trim(), is("pack healing"));
+
+        // Verify that the restored cache in storage now contains pack files
+        var healedCache = runContext2.storage().getCacheFile("git-cache", objectId, null);
+        assertThat(healedCache.isPresent(), is(true));
+
+        Path verifyDir = Files.createTempDirectory("git-verify-healed-");
+        try (var is = healedCache.get()) {
+            Clone.extractZipArchive(is, verifyDir);
+        }
+        Path healedPackDir = verifyDir.resolve("objects").resolve("pack");
+        long packCount = 0;
+        if (Files.isDirectory(healedPackDir)) {
+            try (var stream = Files.list(healedPackDir)) {
+                packCount = stream.filter(p -> p.getFileName().toString().endsWith(".pack")).count();
+            }
+        }
+        assertThat("Cache archive should be healed with newly downloaded pack files", packCount, greaterThan(0L));
+    }
 }
