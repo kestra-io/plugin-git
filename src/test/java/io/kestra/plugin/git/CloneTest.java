@@ -5,7 +5,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.Git;
@@ -14,7 +16,9 @@ import org.eclipse.jgit.lib.PersonIdent;
 import org.junit.jupiter.api.Test;
 
 import io.kestra.core.junit.annotations.KestraTest;
+import io.kestra.core.models.executions.LogEntry;
 import io.kestra.core.models.property.Property;
+import io.kestra.core.queues.DispatchQueueInterface;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.utils.TestsUtils;
@@ -32,6 +36,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class CloneTest extends AbstractGitTest {
     @Inject
     private RunContextFactory runContextFactory;
+
+    @Inject
+    private DispatchQueueInterface<LogEntry> logQueue;
 
     @Test
     void publicRepository() throws Exception {
@@ -703,6 +710,9 @@ class CloneTest extends AbstractGitTest {
         Clone.Output out1 = task1.run(runContext1);
         assertThat(Files.exists(Path.of(out1.getDirectory()).resolve("file3.txt")), is(true));
 
+        List<LogEntry> logs = new CopyOnWriteArrayList<>();
+        logQueue.addListener(logs::add);
+
         // Run 2: fresh directory with cache enabled, pinning older commit 1
         Clone task2 = Clone.builder()
             .id("clone-pin-older")
@@ -718,5 +728,13 @@ class CloneTest extends AbstractGitTest {
         assertThat(Files.exists(repoPath2.resolve("file2.txt")), is(false));
         assertThat(Files.exists(repoPath2.resolve("file3.txt")), is(false));
         assertThat(Files.readString(repoPath2.resolve("file1.txt")).trim(), is("commit 1"));
+
+        boolean fallbackWarning = logs.stream()
+            .anyMatch(l -> l.getMessage() != null && l.getMessage().contains("falling back to normal clone"));
+        assertThat("Expected cached update with unshallow instead of fallback to normal clone", fallbackWarning, is(false));
+
+        boolean unshallowLog = logs.stream()
+            .anyMatch(l -> l.getMessage() != null && l.getMessage().contains("unshallowing repository"));
+        assertThat("Expected unshallowing log to confirm unshallow fetch was executed", unshallowLog, is(true));
     }
 }

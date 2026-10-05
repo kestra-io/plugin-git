@@ -420,7 +420,8 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
             if (hasCommit) {
                 String sha = runContext.render(this.commit).as(String.class).orElseThrow();
-                if (isShallowRepository(git.getRepository()) && git.getRepository().resolve(sha) == null) {
+                ObjectId target = git.getRepository().resolve(sha);
+                if (isShallowRepository(git.getRepository()) && (target == null || !git.getRepository().getObjectDatabase().has(target))) {
                     logger.info("Commit '{}' not found in shallow repository, unshallowing repository...", sha);
                     FetchCommand unshallow = git.fetch()
                         .setRemote("origin")
@@ -435,7 +436,11 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                 git.reset().setMode(ResetType.HARD).call();
             } else if (hasTag) {
                 String tagName = runContext.render(this.tag).as(String.class).orElseThrow();
-                if (isShallowRepository(git.getRepository()) && git.getRepository().resolve("refs/tags/" + tagName) == null && git.getRepository().resolve(tagName) == null) {
+                ObjectId tagTarget = git.getRepository().resolve("refs/tags/" + tagName);
+                if (tagTarget == null) {
+                    tagTarget = git.getRepository().resolve(tagName);
+                }
+                if (isShallowRepository(git.getRepository()) && (tagTarget == null || !git.getRepository().getObjectDatabase().has(tagTarget))) {
                     logger.info("Tag '{}' not found in shallow repository, unshallowing repository...", tagName);
                     FetchCommand unshallow = git.fetch()
                         .setRemote("origin")
