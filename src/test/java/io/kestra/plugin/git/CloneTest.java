@@ -819,4 +819,38 @@ class CloneTest extends AbstractGitTest {
         }
         assertThat("Cache archive should be healed with newly downloaded pack files", packCount, greaterThan(0L));
     }
+
+    @Test
+    void cacheKey_shouldStripUserInfo() {
+        String urlWithCreds = "https://user:secret-token@github.com/kestra-io/plugin-git.git";
+        String cleanUrl = "https://github.com/kestra-io/plugin-git.git";
+
+        assertThat(Clone.stripUserInfo(urlWithCreds), is(cleanUrl));
+        assertThat(Clone.stripUserInfo(cleanUrl), is(cleanUrl));
+        assertThat(
+            Clone.computeCacheObjectId(urlWithCreds, "main"),
+            is(Clone.computeCacheObjectId(cleanUrl, "main"))
+        );
+    }
+
+    @Test
+    void sanitizeGitConfigBeforeArchiving_shouldStripCredentials() throws Exception {
+        Path repoDir = Files.createTempDirectory("git-sanitize-test-");
+        try (Git git = Git.init().setDirectory(repoDir.toFile()).call()) {
+            var config = git.getRepository().getConfig();
+            config.setString("remote", "origin", "url", "https://oauth2:secret@github.com/org/repo.git");
+            config.save();
+        }
+
+        RunContext runContext = runContextFactory.of();
+        Clone.sanitizeGitConfigBeforeArchiving(repoDir, runContext);
+
+        try (Git git = Git.open(repoDir.toFile())) {
+            var config = git.getRepository().getConfig();
+            assertThat(
+                config.getString("remote", "origin", "url"),
+                is("https://github.com/org/repo.git")
+            );
+        }
+    }
 }

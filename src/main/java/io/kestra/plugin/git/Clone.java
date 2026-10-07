@@ -2,33 +2,35 @@ package io.kestra.plugin.git;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.List;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
 
 import org.apache.commons.io.FileUtils;
-import org.eclipse.jgit.api.FetchCommand;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ResetCommand.ResetType;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.lib.StoredConfig;
-import org.eclipse.jgit.transport.FetchResult;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.TagOpt;
-import org.slf4j.Logger;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
@@ -221,7 +223,12 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
     @Schema(
         title = "Enable repository caching",
-        description = "When true, caches the .git directory in Kestra internal storage and restores it on subsequent runs, fetching only new commits instead of performing a full clone. Note that only metadata and objects inside .git are cached; working tree files outside .git are not persisted in the cache."
+        description = """
+            When true, caches the .git directory in Kestra internal storage and restores it on subsequent runs, \
+            fetching only new commits instead of performing a full clone. Note that only metadata and objects inside \
+            .git are cached; working tree files outside .git are not persisted in the cache. Healing corrupted or \
+            degraded object caches during incremental fetches is best-effort. Defaults to false.\
+            """
     )
     @Builder.Default
     @PluginProperty(group = "advanced")
@@ -229,20 +236,21 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
     @Schema(
         title = "Cache TTL (Time To Live)",
-        description = "After this duration, the cache will be invalidated. Defaults to no expiration."
+        description = """
+            After this duration, the repository cache will be invalidated. Defaults to no expiration.\
+            """
     )
     @PluginProperty(group = "advanced")
     private Property<Duration> cacheTtl;
 
     @Override
     public Clone.Output run(RunContext runContext) throws Exception {
-
-        String url = runContext.render(this.url).as(String.class).orElse(null);
+        var rUrl = runContext.render(this.url).as(String.class).orElse(null);
         var cloneOptions = resolveCloneOptions(runContext);
 
-        Path path = runContext.workingDir().path();
+        var path = runContext.workingDir().path();
         if (this.directory != null) {
-            String directory = runContext.render(this.directory).as(String.class).orElseThrow();
+            var directory = runContext.render(this.directory).as(String.class).orElseThrow();
             path = runContext.workingDir().resolve(Path.of(directory));
         }
 
@@ -255,159 +263,245 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         var rCache = this.cache != null && runContext.render(this.cache).as(Boolean.class).orElse(false);
         var rCacheTtl = this.cacheTtl != null ? runContext.render(this.cacheTtl).as(Duration.class).orElse(null) : null;
 
-        String cacheKey = "git-cache";
-        String objectId = computeCacheObjectId(url, cloneOptions.branch());
-        Path gitDir = path.resolve(".git");
-        boolean cacheRestored = false;
-
-        if (rCache && !isGitRepository(path)) {
-            try {
-                var maybeCacheFile = runContext.storage().getCacheFile(cacheKey, objectId, rCacheTtl);
-                if (maybeCacheFile.isPresent()) {
-                    runContext.logger().info("Found cached repository for '{}', restoring cache...", url);
-                    Files.createDirectories(gitDir);
-                    int count;
-                    try (InputStream is = maybeCacheFile.get()) {
-                        count = extractZipArchive(is, gitDir);
-                    }
-                    if (count == 0) {
-                        throw new IOException("Cache archive contained no entries or is invalid");
-                    }
-                    if (!isValidGitRepository(path)) {
-                        throw new IOException("Restored repository is invalid or corrupt");
-                    }
-                    cacheRestored = true;
-                }
-            } catch (Exception e) {
-                runContext.logger().warn("Failed to restore repository cache for '{}', proceeding with normal clone", url, e);
-                cacheRestored = false;
-                try {
-                    if (Files.exists(gitDir)) {
-                        FileUtils.deleteDirectory(gitDir.toFile());
-                    }
-                } catch (Exception ignored) {
-                }
-                try {
-                    runContext.storage().deleteCacheFile(cacheKey, objectId);
-                } catch (Exception ignored) {
-                }
-            }
+        if (rCache && rUrl != null && !stripUserInfo(rUrl).equals(rUrl)) {
+            runContext.logger().warn(
+                "Caching is enabled for repository URL containing embedded credentials; sensitive user info will be stripped from Git configuration before caching."
+            );
         }
 
-        ObjectId headBefore = resolveHead(path);
-        Path packDir = gitDir.resolve("objects").resolve("pack");
-        long packFilesBefore = countPackFiles(packDir);
+        var cacheKey = "git-cache";
+        var objectId = computeCacheObjectId(rUrl, cloneOptions.branch());
+        var gitDir = path.resolve(".git");
+        var cacheRestored = false;
+
+        if (rCache && !isGitRepository(path)) {
+            cacheRestored = restoreCache(runContext, rUrl, path, gitDir, cacheKey, objectId, rCacheTtl);
+        }
+
+        var headBefore = resolveHead(path);
+        var objectsBefore = ObjectsFingerprint.of(gitDir);
 
         String resultDirectory;
-        boolean repositoryUpdated = false;
+        var repositoryUpdated = false;
+
         if (isGitRepository(path)) {
             try {
-                UpdateResult updateResult = updateRepository(runContext, path, url, cloneOptions, rDepth);
+                var updateResult = updateRepository(runContext, path, rUrl, cloneOptions, rDepth);
                 resultDirectory = updateResult.directory();
                 repositoryUpdated = updateResult.updated();
             } catch (Exception e) {
                 if (cacheRestored) {
-                    runContext.logger().warn("Failed to update cached repository for '{}', falling back to normal clone", url, e);
-                    try {
-                        if (Files.exists(gitDir)) {
-                            FileUtils.deleteDirectory(gitDir.toFile());
-                        }
-                    } catch (Exception ignored) {
-                    }
-                    try {
-                        runContext.storage().deleteCacheFile(cacheKey, objectId);
-                    } catch (Exception ignored) {
-                    }
+                    runContext.logger().warn("Failed to update cached repository for '{}', falling back to normal clone", rUrl, e);
+                    discardCache(runContext, gitDir, cacheKey, objectId);
                     cacheRestored = false;
-                    var result = CloneService.clone(
-                        runContext, this, CloneService.CloneRequest.builder()
-                            .url(url)
-                            .path(path)
-                            .branch(cloneOptions.branch())
-                            .depth(rDepth)
-                            .commit(this.commit != null ? runContext.render(this.commit).as(String.class).orElseThrow() : null)
-                            .tag(this.tag != null ? runContext.render(this.tag).as(String.class).orElseThrow() : null)
-                            .cloneAllBranches(cloneOptions.cloneAllBranches())
-                            .noTags(cloneOptions.noTags())
-                            .cloneSubmodules(this.cloneSubmodules)
-                            .build()
-                    );
+                    var result = cloneFresh(runContext, rUrl, path, cloneOptions, rDepth);
                     resultDirectory = result.directory();
                 } else {
                     throw e;
                 }
             }
         } else {
-            // CloneService.clone() already logs the start and any transport failure, so both editions share a single log line.
-            var result = CloneService.clone(
-                runContext, this, CloneService.CloneRequest.builder()
-                    .url(url)
-                    .path(path)
-                    .branch(cloneOptions.branch())
-                    .depth(rDepth)
-                    .commit(this.commit != null ? runContext.render(this.commit).as(String.class).orElseThrow() : null)
-                    .tag(this.tag != null ? runContext.render(this.tag).as(String.class).orElseThrow() : null)
-                    .cloneAllBranches(cloneOptions.cloneAllBranches())
-                    .noTags(cloneOptions.noTags())
-                    .cloneSubmodules(this.cloneSubmodules)
-                    .build()
-            );
+            var result = cloneFresh(runContext, rUrl, path, cloneOptions, rDepth);
             resultDirectory = result.directory();
         }
 
-        ObjectId headAfter = resolveHead(path);
-        long packFilesAfter = countPackFiles(packDir);
-        boolean packFilesAdded = packFilesAfter > packFilesBefore;
+        var headAfter = resolveHead(path);
+        var objectsAfter = ObjectsFingerprint.of(gitDir);
+        var objectsUpdated = objectsBefore.hasChanged(objectsAfter);
 
         if (rCache) {
-            boolean shouldUpdateCache = !cacheRestored
-                || headBefore == null
-                || !Objects.equals(headBefore, headAfter)
-                || repositoryUpdated
-                || packFilesAdded;
-            if (shouldUpdateCache && Files.exists(gitDir)) {
-                try {
-                    Path tempZip = runContext.workingDir().createTempFile(".zip");
-                    createZipArchive(gitDir, tempZip);
-                    runContext.storage().putCacheFile(tempZip.toFile(), cacheKey, objectId);
-                    runContext.logger().info("Updated repository cache for '{}'", url);
-                } catch (Exception e) {
-                    runContext.logger().warn("Failed to update repository cache for '{}'", url, e);
-                }
-            } else if (cacheRestored) {
-                runContext.logger().info("Repository cache is already up-to-date for '{}', skipping cache upload", url);
-            }
+            updateCache(
+                runContext,
+                path,
+                gitDir,
+                rUrl,
+                cacheKey,
+                objectId,
+                cacheRestored,
+                headBefore,
+                headAfter,
+                repositoryUpdated,
+                objectsUpdated
+            );
         }
 
         return Output.builder().directory(resultDirectory).build();
     }
 
+    private CloneService.CloneResult cloneFresh(
+        RunContext runContext,
+        String rUrl,
+        Path path,
+        CloneOptions cloneOptions,
+        Integer rDepth) throws Exception {
+        var rCommit = this.commit != null
+            ? runContext.render(this.commit).as(String.class).orElseThrow(() -> new IllegalArgumentException("commit rendered to an empty value - set a SHA or remove the property"))
+            : null;
+        var rTag = this.tag != null
+            ? runContext.render(this.tag).as(String.class).orElseThrow(() -> new IllegalArgumentException("tag rendered to an empty value - set a tag name or remove the property"))
+            : null;
+
+        return CloneService.clone(
+            runContext, this, CloneService.CloneRequest.builder()
+                .url(rUrl)
+                .path(path)
+                .branch(cloneOptions.branch())
+                .depth(rDepth)
+                .commit(rCommit)
+                .tag(rTag)
+                .cloneAllBranches(cloneOptions.cloneAllBranches())
+                .noTags(cloneOptions.noTags())
+                .cloneSubmodules(this.cloneSubmodules)
+                .build()
+        );
+    }
+
+    private boolean restoreCache(
+        RunContext runContext,
+        String rUrl,
+        Path path,
+        Path gitDir,
+        String cacheKey,
+        String objectId,
+        Duration rCacheTtl) {
+        try {
+            var maybeCacheFile = runContext.storage().getCacheFile(cacheKey, objectId, rCacheTtl);
+            if (maybeCacheFile.isPresent()) {
+                runContext.logger().info("Found cached repository for '{}', restoring cache...", rUrl);
+                Files.createDirectories(gitDir);
+                var count = 0;
+                try (var is = maybeCacheFile.get()) {
+                    count = extractZipArchive(is, gitDir);
+                }
+                if (count == 0) {
+                    throw new IOException("Cache archive contained no entries or is invalid");
+                }
+                if (!isValidGitRepository(path)) {
+                    throw new IOException("Restored repository is invalid or corrupt");
+                }
+                return true;
+            }
+        } catch (Exception e) {
+            runContext.logger().warn("Failed to restore repository cache for '{}', proceeding with normal clone", rUrl, e);
+            discardCache(runContext, gitDir, cacheKey, objectId);
+        }
+        return false;
+    }
+
+    private void updateCache(
+        RunContext runContext,
+        Path path,
+        Path gitDir,
+        String rUrl,
+        String cacheKey,
+        String objectId,
+        boolean cacheRestored,
+        ObjectId headBefore,
+        ObjectId headAfter,
+        boolean repositoryUpdated,
+        boolean objectsUpdated) {
+        var shouldUpdateCache = !cacheRestored
+            || headBefore == null
+            || !Objects.equals(headBefore, headAfter)
+            || repositoryUpdated
+            || objectsUpdated;
+
+        if (shouldUpdateCache && Files.exists(gitDir)) {
+            try {
+                sanitizeGitConfigBeforeArchiving(path, runContext);
+                var tempZip = runContext.workingDir().createTempFile(".zip");
+                createZipArchive(gitDir, tempZip);
+                runContext.storage().putCacheFile(tempZip.toFile(), cacheKey, objectId);
+                runContext.logger().info("Updated repository cache for '{}'", rUrl);
+            } catch (Exception e) {
+                runContext.logger().warn("Failed to update repository cache for '{}'", rUrl, e);
+            }
+        } else if (cacheRestored) {
+            runContext.logger().info("Repository cache is already up-to-date for '{}', skipping cache upload", rUrl);
+        }
+    }
+
+    private void discardCache(RunContext runContext, Path gitDir, String cacheKey, String objectId) {
+        var logger = runContext.logger();
+        try {
+            if (Files.exists(gitDir)) {
+                FileUtils.deleteDirectory(gitDir.toFile());
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to delete local .git directory at '{}'", gitDir, e);
+        }
+        try {
+            runContext.storage().deleteCacheFile(cacheKey, objectId);
+        } catch (Exception e) {
+            logger.warn("Failed to delete cache file '{}' for object '{}' in storage", cacheKey, objectId, e);
+        }
+    }
+
+    static void sanitizeGitConfigBeforeArchiving(Path path, RunContext runContext) {
+        try (var git = Git.open(path.toFile())) {
+            var config = git.getRepository().getConfig();
+            var originUrl = config.getString("remote", "origin", "url");
+            if (originUrl != null) {
+                var sanitized = stripUserInfo(originUrl);
+                if (!sanitized.equals(originUrl)) {
+                    runContext.logger().warn("Sanitizing repository configuration before caching: credentials in remote origin URL stripped");
+                    config.setString("remote", "origin", "url", sanitized);
+                    config.save();
+                }
+            }
+        } catch (Exception e) {
+            runContext.logger().debug("Could not sanitize git config before archiving", e);
+        }
+    }
+
+    static String stripUserInfo(String url) {
+        if (url == null) {
+            return null;
+        }
+        try {
+            var uri = URI.create(url);
+            if (uri.getUserInfo() != null) {
+                return new URI(
+                    uri.getScheme(),
+                    null,
+                    uri.getHost(),
+                    uri.getPort(),
+                    uri.getPath(),
+                    uri.getQuery(),
+                    uri.getFragment()
+                ).toString();
+            }
+        } catch (Exception ignored) {
+        }
+        return url;
+    }
+
     private UpdateResult updateRepository(
         RunContext runContext,
         Path path,
-        String url,
+        String rUrl,
         CloneOptions cloneOptions,
-        Integer depth) throws Exception {
-        Logger logger = runContext.logger();
-        logger.info("Existing Git repository found at '{}', fetching latest changes from '{}'", path, url);
+        Integer rDepth) throws Exception {
+        var logger = runContext.logger();
+        logger.info("Existing Git repository found at '{}', fetching latest changes from '{}'", path, rUrl);
 
-        boolean hasCommit = this.commit != null;
-        boolean hasTag = this.tag != null;
-        boolean updated = false;
+        var hasCommit = this.commit != null;
+        var hasTag = this.tag != null;
+        var updated = false;
 
-        try (Git git = Git.open(path.toFile())) {
-            StoredConfig config = git.getRepository().getConfig();
-            String existingUrl = config.getString("remote", "origin", "url");
-            if (existingUrl == null || !existingUrl.equals(url)) {
-                config.setString("remote", "origin", "url", url);
+        try (var git = Git.open(path.toFile())) {
+            var config = git.getRepository().getConfig();
+            var existingUrl = config.getString("remote", "origin", "url");
+            if (existingUrl == null || !existingUrl.equals(rUrl)) {
+                config.setString("remote", "origin", "url", rUrl);
                 config.save();
             }
 
             applyGitConfig(git.getRepository(), runContext);
 
-            List<RefSpec> refSpecs = new ArrayList<>();
+            var refSpecs = new ArrayList<RefSpec>();
             if (!cloneOptions.cloneAllBranches() && cloneOptions.branch() != null) {
-                String branchName = shortBranchName(cloneOptions.branch());
+                var branchName = shortBranchName(cloneOptions.branch());
                 refSpecs.add(new RefSpec("+refs/heads/" + branchName + ":refs/remotes/origin/" + branchName));
             } else {
                 refSpecs.add(new RefSpec("+refs/heads/*:refs/remotes/origin/*"));
@@ -417,7 +511,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                 refSpecs.add(new RefSpec("+refs/tags/*:refs/tags/*"));
             }
 
-            FetchCommand fetchCommand = git.fetch()
+            var fetchCommand = git.fetch()
                 .setRemote("origin")
                 .setRefSpecs(refSpecs);
 
@@ -425,21 +519,22 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                 fetchCommand.setTagOpt(TagOpt.NO_TAGS);
             }
 
-            if (!hasCommit && !hasTag && depth != null) {
-                fetchCommand.setDepth(depth);
+            if (!hasCommit && !hasTag && rDepth != null) {
+                fetchCommand.setDepth(rDepth);
             }
 
-            FetchResult fetchResult = authentified(fetchCommand, runContext).call();
+            var fetchResult = authentified(fetchCommand, runContext).call();
             if (fetchResult != null && !fetchResult.getTrackingRefUpdates().isEmpty()) {
                 updated = true;
             }
 
             if (hasCommit) {
-                String sha = runContext.render(this.commit).as(String.class).orElseThrow();
-                ObjectId target = git.getRepository().resolve(sha);
+                var rSha = runContext.render(this.commit).as(String.class)
+                    .orElseThrow(() -> new IllegalArgumentException("commit rendered to an empty value - set a SHA or remove the property"));
+                var target = git.getRepository().resolve(rSha);
                 if (isShallowRepository(git.getRepository()) && (target == null || !git.getRepository().getObjectDatabase().has(target))) {
-                    logger.info("Commit '{}' not found in shallow repository, unshallowing repository...", sha);
-                    FetchCommand unshallow = git.fetch()
+                    logger.info("Commit '{}' not found in shallow repository, unshallowing repository...", rSha);
+                    var unshallow = git.fetch()
                         .setRemote("origin")
                         .setRefSpecs(refSpecs)
                         .setUnshallow(true);
@@ -449,17 +544,18 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                     authentified(unshallow, runContext).call();
                     updated = true;
                 }
-                CloneService.checkoutCommit(git, sha, logger, cloneOptions.noTags());
+                CloneService.checkoutCommit(git, rSha, logger, cloneOptions.noTags());
                 git.reset().setMode(ResetType.HARD).call();
             } else if (hasTag) {
-                String tagName = runContext.render(this.tag).as(String.class).orElseThrow();
-                ObjectId tagTarget = git.getRepository().resolve("refs/tags/" + tagName);
+                var rTagName = runContext.render(this.tag).as(String.class)
+                    .orElseThrow(() -> new IllegalArgumentException("tag rendered to an empty value - set a tag name or remove the property"));
+                var tagTarget = git.getRepository().resolve("refs/tags/" + rTagName);
                 if (tagTarget == null) {
-                    tagTarget = git.getRepository().resolve(tagName);
+                    tagTarget = git.getRepository().resolve(rTagName);
                 }
                 if (isShallowRepository(git.getRepository()) && (tagTarget == null || !git.getRepository().getObjectDatabase().has(tagTarget))) {
-                    logger.info("Tag '{}' not found in shallow repository, unshallowing repository...", tagName);
-                    FetchCommand unshallow = git.fetch()
+                    logger.info("Tag '{}' not found in shallow repository, unshallowing repository...", rTagName);
+                    var unshallow = git.fetch()
                         .setRemote("origin")
                         .setRefSpecs(refSpecs)
                         .setUnshallow(true);
@@ -469,7 +565,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                     authentified(unshallow, runContext).call();
                     updated = true;
                 }
-                CloneService.checkoutTag(git, tagName, logger, cloneOptions.noTags());
+                CloneService.checkoutTag(git, rTagName, logger, cloneOptions.noTags());
                 git.reset().setMode(ResetType.HARD).call();
             } else {
                 var targetBranch = cloneOptions.branch();
@@ -492,9 +588,9 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                     }
                 }
 
-                String cleanBranch = shortBranchName(targetBranch);
-                String remoteBranch = "origin/" + cleanBranch;
-                boolean localBranchExists = git.getRepository().exactRef("refs/heads/" + cleanBranch) != null;
+                var cleanBranch = shortBranchName(targetBranch);
+                var remoteBranch = "origin/" + cleanBranch;
+                var localBranchExists = git.getRepository().exactRef("refs/heads/" + cleanBranch) != null;
 
                 if (!localBranchExists) {
                     git.checkout()
@@ -533,14 +629,48 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     private record UpdateResult(String directory, boolean updated) {
     }
 
-    private static long countPackFiles(Path packDir) {
-        if (!Files.isDirectory(packDir)) {
-            return 0;
+    private record ObjectsFingerprint(Set<String> packFiles, long looseObjectsCount) {
+        static ObjectsFingerprint of(Path gitDir) {
+            if (!Files.isDirectory(gitDir)) {
+                return new ObjectsFingerprint(Collections.emptySet(), 0);
+            }
+            var objectsDir = gitDir.resolve("objects");
+            if (!Files.isDirectory(objectsDir)) {
+                return new ObjectsFingerprint(Collections.emptySet(), 0);
+            }
+            var packDir = objectsDir.resolve("pack");
+            var packFiles = new HashSet<String>();
+            if (Files.isDirectory(packDir)) {
+                try (var stream = Files.list(packDir)) {
+                    stream.filter(p -> p.getFileName().toString().endsWith(".pack"))
+                        .map(p -> p.getFileName().toString())
+                        .forEach(packFiles::add);
+                } catch (IOException ignored) {
+                }
+            }
+            long looseCount = 0;
+            try (var stream = Files.list(objectsDir)) {
+                looseCount = stream
+                    .filter(p -> Files.isDirectory(p) && !p.getFileName().toString().equals("pack") && !p.getFileName().toString().equals("info"))
+                    .mapToLong(p ->
+                    {
+                        try (var sub = Files.list(p)) {
+                            return sub.count();
+                        } catch (IOException e) {
+                            return 0L;
+                        }
+                    })
+                    .sum();
+            } catch (IOException ignored) {
+            }
+            return new ObjectsFingerprint(packFiles, looseCount);
         }
-        try (var stream = Files.list(packDir)) {
-            return stream.filter(p -> p.getFileName().toString().endsWith(".pack")).count();
-        } catch (IOException e) {
-            return 0;
+
+        boolean hasChanged(ObjectsFingerprint after) {
+            if (after == null) {
+                return false;
+            }
+            return !this.packFiles.equals(after.packFiles) || this.looseObjectsCount != after.looseObjectsCount;
         }
     }
 
@@ -548,7 +678,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         if (!Files.exists(path)) {
             return false;
         }
-        File gitDir = path.resolve(".git").toFile();
+        var gitDir = path.resolve(".git").toFile();
         return gitDir.exists() && (gitDir.isDirectory() || gitDir.isFile());
     }
 
@@ -556,7 +686,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         if (!isGitRepository(path)) {
             return false;
         }
-        try (Git git = Git.open(path.toFile())) {
+        try (var git = Git.open(path.toFile())) {
             return git.getRepository().resolve("HEAD") != null;
         } catch (Exception e) {
             return false;
@@ -576,7 +706,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         if (!isGitRepository(path)) {
             return null;
         }
-        try (Git git = Git.open(path.toFile())) {
+        try (var git = Git.open(path.toFile())) {
             return git.getRepository().resolve("HEAD");
         } catch (Exception e) {
             return null;
@@ -591,13 +721,14 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     }
 
     static String computeCacheObjectId(String url, String branch) {
-        String key = url + (branch != null && !branch.isBlank() ? ":" + shortBranchName(branch) : "");
+        var sanitizedUrl = stripUserInfo(url);
+        var key = sanitizedUrl + (branch != null && !branch.isBlank() ? ":" + shortBranchName(branch) : "");
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(key.getBytes(StandardCharsets.UTF_8));
-            StringBuilder hexString = new StringBuilder();
+            var digest = MessageDigest.getInstance("SHA-256");
+            var hash = digest.digest(key.getBytes(StandardCharsets.UTF_8));
+            var hexString = new StringBuilder();
             for (byte b : hash) {
-                String hex = Integer.toHexString(0xff & b);
+                var hex = Integer.toHexString(0xff & b);
                 if (hex.length() == 1) {
                     hexString.append('0');
                 }
@@ -610,7 +741,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     }
 
     static void createZipArchive(Path gitDir, Path zipFile) throws IOException {
-        try (ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(zipFile)))) {
+        try (var zos = new ZipOutputStream(new BufferedOutputStream(Files.newOutputStream(zipFile)))) {
             Files.walkFileTree(gitDir, new SimpleFileVisitor<>() {
                 @Override
                 public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
@@ -618,7 +749,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                         return FileVisitResult.SKIP_SUBTREE;
                     }
                     if (!gitDir.equals(dir)) {
-                        String entryName = gitDir.relativize(dir).toString().replace('\\', '/') + "/";
+                        var entryName = gitDir.relativize(dir).toString().replace('\\', '/') + "/";
                         zos.putNextEntry(new ZipEntry(entryName));
                         zos.closeEntry();
                     }
@@ -630,8 +761,8 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                     if (attrs.isSymbolicLink() || file.equals(zipFile)) {
                         return FileVisitResult.CONTINUE;
                     }
-                    String entryName = gitDir.relativize(file).toString().replace('\\', '/');
-                    ZipEntry entry = new ZipEntry(entryName);
+                    var entryName = gitDir.relativize(file).toString().replace('\\', '/');
+                    var entry = new ZipEntry(entryName);
                     entry.setTime(attrs.lastModifiedTime().toMillis());
                     zos.putNextEntry(entry);
                     Files.copy(file, zos);
@@ -643,11 +774,11 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     }
 
     static int extractZipArchive(InputStream is, Path targetDir) throws IOException {
-        int count = 0;
-        try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(is))) {
+        var count = 0;
+        try (var zis = new ZipInputStream(new BufferedInputStream(is))) {
             ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
-                Path targetPath = targetDir.resolve(entry.getName()).normalize();
+                var targetPath = targetDir.resolve(entry.getName()).normalize();
                 if (!targetPath.startsWith(targetDir)) {
                     throw new IOException("Zip entry escapes target directory: " + entry.getName());
                 }
