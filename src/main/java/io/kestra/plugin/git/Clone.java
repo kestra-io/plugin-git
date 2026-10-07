@@ -250,8 +250,9 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
         var path = runContext.workingDir().path();
         if (this.directory != null) {
-            var directory = runContext.render(this.directory).as(String.class).orElseThrow();
-            path = runContext.workingDir().resolve(Path.of(directory));
+            var rDirectory = runContext.render(this.directory).as(String.class)
+                .orElseThrow(() -> new IllegalArgumentException("directory rendered to an empty value - set a path or remove the property"));
+            path = runContext.workingDir().resolve(Path.of(rDirectory));
         }
 
         configureHttpTransport(runContext);
@@ -281,7 +282,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         var headBefore = resolveHead(path);
         var objectsBefore = ObjectsFingerprint.of(gitDir);
 
-        String resultDirectory;
+        var resultDirectory = "";
         var repositoryUpdated = false;
 
         if (isGitRepository(path)) {
@@ -648,7 +649,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                 } catch (IOException ignored) {
                 }
             }
-            long looseCount = 0;
+            var looseCount = 0L;
             try (var stream = Files.list(objectsDir)) {
                 looseCount = stream
                     .filter(p -> Files.isDirectory(p) && !p.getFileName().toString().equals("pack") && !p.getFileName().toString().equals("info"))

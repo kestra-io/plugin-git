@@ -789,6 +789,9 @@ class CloneTest extends AbstractGitTest {
         runContext1.storage().putCacheFile(degradedZip.toFile(), "git-cache", objectId);
 
         // Run 2: restore degraded cache, fetch missing objects, heal and re-upload
+        List<LogEntry> logs = new CopyOnWriteArrayList<>();
+        logQueue.addListener(logs::add);
+
         Clone task2 = Clone.builder()
             .id("clone-pack-heal")
             .type(Clone.class.getName())
@@ -802,6 +805,14 @@ class CloneTest extends AbstractGitTest {
         assertThat(Files.exists(repoPath2.resolve("file1.txt")), is(true));
         assertThat(Files.readString(repoPath2.resolve("file1.txt")).trim(), is("pack healing"));
 
+        boolean fallbackWarning = logs.stream()
+            .anyMatch(l -> l.getMessage() != null && (l.getMessage().contains("falling back to normal clone") || l.getMessage().contains("proceeding with normal clone")));
+        assertThat("Expected cached update and heal instead of fallback to normal clone", fallbackWarning, is(false));
+
+        boolean updatedLog = logs.stream()
+            .anyMatch(l -> l.getMessage() != null && l.getMessage().contains("Updated repository cache"));
+        assertThat("Expected cache to be updated after healing missing objects", updatedLog, is(true));
+
         // Verify that the restored cache in storage now contains pack files
         var healedCache = runContext2.storage().getCacheFile("git-cache", objectId, null);
         assertThat(healedCache.isPresent(), is(true));
@@ -811,7 +822,7 @@ class CloneTest extends AbstractGitTest {
             Clone.extractZipArchive(is, verifyDir);
         }
         Path healedPackDir = verifyDir.resolve("objects").resolve("pack");
-        long packCount = 0;
+        var packCount = 0L;
         if (Files.isDirectory(healedPackDir)) {
             try (var stream = Files.list(healedPackDir)) {
                 packCount = stream.filter(p -> p.getFileName().toString().endsWith(".pack")).count();
@@ -822,8 +833,8 @@ class CloneTest extends AbstractGitTest {
 
     @Test
     void cacheKey_shouldStripUserInfo() {
-        String urlWithCreds = "https://user:secret-token@github.com/kestra-io/plugin-git.git";
-        String cleanUrl = "https://github.com/kestra-io/plugin-git.git";
+        var urlWithCreds = "https://user:secret-token@github.com/kestra-io/plugin-git.git";
+        var cleanUrl = "https://github.com/kestra-io/plugin-git.git";
 
         assertThat(Clone.stripUserInfo(urlWithCreds), is(cleanUrl));
         assertThat(Clone.stripUserInfo(cleanUrl), is(cleanUrl));
@@ -835,14 +846,14 @@ class CloneTest extends AbstractGitTest {
 
     @Test
     void sanitizeGitConfigBeforeArchiving_shouldStripCredentials() throws Exception {
-        Path repoDir = Files.createTempDirectory("git-sanitize-test-");
+        var repoDir = Files.createTempDirectory("git-sanitize-test-");
         try (Git git = Git.init().setDirectory(repoDir.toFile()).call()) {
             var config = git.getRepository().getConfig();
             config.setString("remote", "origin", "url", "https://oauth2:secret@github.com/org/repo.git");
             config.save();
         }
 
-        RunContext runContext = runContextFactory.of();
+        var runContext = runContextFactory.of();
         Clone.sanitizeGitConfigBeforeArchiving(repoDir, runContext);
 
         try (Git git = Git.open(repoDir.toFile())) {
