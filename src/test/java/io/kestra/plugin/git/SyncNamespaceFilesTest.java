@@ -550,6 +550,70 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
         assertThat(runContext().storage().namespace(NAMESPACE).exists(Path.of("foo.py")), is(false));
     }
 
+    /**
+     * Git file names containing a space (illegal in a raw URI) must sync with their exact name
+     * and be reported unencoded in the diff.
+     */
+    @Test
+    void fileNameWithSpace_ShouldSyncUnchangedOnRerunAndBeDeletedWhenRemovedFromGit() throws Exception {
+        String fileName = "tasks/merge_one copy.yml";
+        String gitPath = "content/" + fileName;
+        Path repoDir = createLocalRepo(Map.of(gitPath, "id: merge_one", "content/keep.txt", "keep"));
+
+        SyncNamespaceFiles task = SyncNamespaceFiles.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .gitDirectory(Property.ofValue("content"))
+            .delete(Property.ofValue(true))
+            .build();
+
+        RunContext firstRunContext = localRunContext(repoDir);
+        SyncNamespaceFiles.Output firstOutput = task.run(firstRunContext);
+
+        assertNamespaceFileContent(firstRunContext, fileName, "id: merge_one");
+        assertThat(syncStateOf(firstRunContext, firstOutput, gitPath), is("ADDED"));
+
+        RunContext secondRunContext = localRunContext(repoDir);
+        SyncNamespaceFiles.Output secondOutput = task.run(secondRunContext);
+        assertThat(syncStateOf(secondRunContext, secondOutput, gitPath), is("UNCHANGED"));
+
+        try (Git git = Git.open(repoDir.toFile())) {
+            Files.delete(repoDir.resolve(gitPath));
+            git.rm().addFilepattern(gitPath).call();
+            git.commit().setMessage("remove file").setAuthor("test", "test@test.com").call();
+        }
+        RunContext thirdRunContext = localRunContext(repoDir);
+        task.run(thirdRunContext);
+        assertThat(thirdRunContext.storage().namespace(NAMESPACE).exists(Path.of(fileName)), is(false));
+        assertThat(thirdRunContext.storage().namespace(NAMESPACE).exists(Path.of("keep.txt")), is(true));
+    }
+
+    @Test
+    void fileNameWithSpace_WithNamespaceDirectory_ShouldLandUnderPrefix() throws Exception {
+        Path repoDir = createLocalRepo(Map.of("content/tasks/merge_one copy.yml", "id: merge_one"));
+
+        SyncNamespaceFiles task = SyncNamespaceFiles.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .namespace(Property.ofExpression("{{namespace}}"))
+            .gitDirectory(Property.ofValue("content"))
+            .namespaceDirectory(Property.ofValue("/shared-scripts"))
+            .build();
+        RunContext runContext = localRunContext(repoDir);
+        task.run(runContext);
+
+        assertNamespaceFileContent(runContext, "shared-scripts/tasks/merge_one copy.yml", "id: merge_one");
+    }
+
+    private String syncStateOf(RunContext runContext, SyncNamespaceFiles.Output output, String gitPath) throws IOException {
+        return readDiffs(runContext, output.diffFileUri()).stream()
+            .filter(diff -> gitPath.equals(diff.get("gitPath")))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("Unencoded gitPath '" + gitPath + "' not found in diffs"))
+            .get("syncState");
+    }
+
     @Test
     void namespaceDirectory_DryRun_ReportsPrefixedKestraPath() throws Exception {
         Path repoDir = createLocalRepo(Map.of("content/foo.py", "print(1)"));

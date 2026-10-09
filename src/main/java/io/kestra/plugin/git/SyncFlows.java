@@ -385,7 +385,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             .revision(infoHolder.getRevision());
 
         if (syncState != SyncState.DELETED) {
-            builder.gitPath(renderedGitDirectory + resourceUri);
+            builder.gitPath(gitPath(renderedGitDirectory, resourceUri));
         }
 
         return builder.build();
