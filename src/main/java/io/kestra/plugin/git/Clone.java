@@ -292,7 +292,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                 repositoryUpdated = updateResult.updated();
             } catch (Exception e) {
                 if (cacheRestored) {
-                    runContext.logger().warn("Failed to update cached repository for '{}', falling back to normal clone", rUrl, e);
+                    runContext.logger().warn("Failed to update cached repository for '{}', falling back to normal clone", stripUserInfo(rUrl), e);
                     discardCache(runContext, gitDir, cacheKey, objectId);
                     cacheRestored = false;
                     var result = cloneFresh(runContext, rUrl, path, cloneOptions, rDepth);
@@ -368,7 +368,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         try {
             var maybeCacheFile = runContext.storage().getCacheFile(cacheKey, objectId, rCacheTtl);
             if (maybeCacheFile.isPresent()) {
-                runContext.logger().info("Found cached repository for '{}', restoring cache...", rUrl);
+                runContext.logger().info("Found cached repository for '{}', restoring cache...", stripUserInfo(rUrl));
                 Files.createDirectories(gitDir);
                 var count = 0;
                 try (var is = maybeCacheFile.get()) {
@@ -383,7 +383,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                 return true;
             }
         } catch (Exception e) {
-            runContext.logger().warn("Failed to restore repository cache for '{}', proceeding with normal clone", rUrl, e);
+            runContext.logger().warn("Failed to restore repository cache for '{}', proceeding with normal clone", stripUserInfo(rUrl), e);
             discardCache(runContext, gitDir, cacheKey, objectId);
         }
         return false;
@@ -409,16 +409,22 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
 
         if (shouldUpdateCache && Files.exists(gitDir)) {
             try {
-                sanitizeGitConfigBeforeArchiving(path, runContext);
-                var tempZip = runContext.workingDir().createTempFile(".zip");
-                createZipArchive(gitDir, tempZip);
-                runContext.storage().putCacheFile(tempZip.toFile(), cacheKey, objectId);
-                runContext.logger().info("Updated repository cache for '{}'", rUrl);
+                var originalUrl = sanitizeGitConfigBeforeArchiving(path, runContext);
+                try {
+                    var tempZip = runContext.workingDir().createTempFile(".zip");
+                    createZipArchive(gitDir, tempZip);
+                    runContext.storage().putCacheFile(tempZip.toFile(), cacheKey, objectId);
+                    runContext.logger().info("Updated repository cache for '{}'", stripUserInfo(rUrl));
+                } finally {
+                    if (originalUrl != null) {
+                        restoreGitConfigOriginUrl(path, originalUrl, runContext);
+                    }
+                }
             } catch (Exception e) {
-                runContext.logger().warn("Failed to update repository cache for '{}'", rUrl, e);
+                runContext.logger().warn("Failed to update repository cache for '{}'", stripUserInfo(rUrl), e);
             }
         } else if (cacheRestored) {
-            runContext.logger().info("Repository cache is already up-to-date for '{}', skipping cache upload", rUrl);
+            runContext.logger().info("Repository cache is already up-to-date for '{}', skipping cache upload", stripUserInfo(rUrl));
         }
     }
 
@@ -438,7 +444,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         }
     }
 
-    static void sanitizeGitConfigBeforeArchiving(Path path, RunContext runContext) {
+    static String sanitizeGitConfigBeforeArchiving(Path path, RunContext runContext) {
         try (var git = Git.open(path.toFile())) {
             var config = git.getRepository().getConfig();
             var originUrl = config.getString("remote", "origin", "url");
@@ -448,10 +454,22 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                     runContext.logger().warn("Sanitizing repository configuration before caching: credentials in remote origin URL stripped");
                     config.setString("remote", "origin", "url", sanitized);
                     config.save();
+                    return originUrl;
                 }
             }
         } catch (Exception e) {
             runContext.logger().debug("Could not sanitize git config before archiving", e);
+        }
+        return null;
+    }
+
+    static void restoreGitConfigOriginUrl(Path path, String originalUrl, RunContext runContext) {
+        try (var git = Git.open(path.toFile())) {
+            var config = git.getRepository().getConfig();
+            config.setString("remote", "origin", "url", originalUrl);
+            config.save();
+        } catch (Exception e) {
+            runContext.logger().debug("Could not restore git config origin URL after archiving", e);
         }
     }
 
@@ -461,7 +479,8 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         }
         try {
             var uri = URI.create(url);
-            if (uri.getUserInfo() != null) {
+            var scheme = uri.getScheme();
+            if (scheme != null && (scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https")) && uri.getUserInfo() != null) {
                 return new URI(
                     uri.getScheme(),
                     null,
@@ -484,7 +503,7 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         CloneOptions cloneOptions,
         Integer rDepth) throws Exception {
         var logger = runContext.logger();
-        logger.info("Existing Git repository found at '{}', fetching latest changes from '{}'", path, rUrl);
+        logger.info("Existing Git repository found at '{}', fetching latest changes from '{}'", path, stripUserInfo(rUrl));
 
         var hasCommit = this.commit != null;
         var hasTag = this.tag != null;

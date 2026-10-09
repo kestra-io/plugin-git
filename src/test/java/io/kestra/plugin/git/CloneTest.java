@@ -733,9 +733,12 @@ class CloneTest extends AbstractGitTest {
             .anyMatch(l -> l.getMessage() != null && l.getMessage().contains("falling back to normal clone"));
         assertThat("Expected cached update with unshallow instead of fallback to normal clone", fallbackWarning, is(false));
 
-        boolean unshallowLog = logs.stream()
-            .anyMatch(l -> l.getMessage() != null && l.getMessage().contains("unshallowing repository"));
-        assertThat("Expected unshallowing log to confirm unshallow fetch was executed", unshallowLog, is(true));
+        List<LogEntry> unshallow = TestsUtils.awaitLogs(
+            logs,
+            l -> l.getMessage() != null && l.getMessage().contains("unshallowing repository"),
+            1
+        );
+        assertThat("Expected unshallowing log to confirm unshallow fetch was executed", unshallow.isEmpty(), is(false));
     }
 
     @Test
@@ -809,9 +812,12 @@ class CloneTest extends AbstractGitTest {
             .anyMatch(l -> l.getMessage() != null && (l.getMessage().contains("falling back to normal clone") || l.getMessage().contains("proceeding with normal clone")));
         assertThat("Expected cached update and heal instead of fallback to normal clone", fallbackWarning, is(false));
 
-        boolean updatedLog = logs.stream()
-            .anyMatch(l -> l.getMessage() != null && l.getMessage().contains("Updated repository cache"));
-        assertThat("Expected cache to be updated after healing missing objects", updatedLog, is(true));
+        List<LogEntry> updated = TestsUtils.awaitLogs(
+            logs,
+            l -> l.getMessage() != null && l.getMessage().contains("Updated repository cache"),
+            1
+        );
+        assertThat("Expected cache to be updated after healing missing objects", updated.isEmpty(), is(false));
 
         // Verify that the restored cache in storage now contains pack files
         var healedCache = runContext2.storage().getCacheFile("git-cache", objectId, null);
@@ -835,9 +841,11 @@ class CloneTest extends AbstractGitTest {
     void cacheKey_shouldStripUserInfo() {
         var urlWithCreds = "https://user:secret-token@github.com/kestra-io/plugin-git.git";
         var cleanUrl = "https://github.com/kestra-io/plugin-git.git";
+        var sshUrl = "ssh://git@github.com/kestra-io/plugin-git.git";
 
         assertThat(Clone.stripUserInfo(urlWithCreds), is(cleanUrl));
         assertThat(Clone.stripUserInfo(cleanUrl), is(cleanUrl));
+        assertThat(Clone.stripUserInfo(sshUrl), is(sshUrl));
         assertThat(
             Clone.computeCacheObjectId(urlWithCreds, "main"),
             is(Clone.computeCacheObjectId(cleanUrl, "main"))
@@ -847,20 +855,54 @@ class CloneTest extends AbstractGitTest {
     @Test
     void sanitizeGitConfigBeforeArchiving_shouldStripCredentials() throws Exception {
         var repoDir = Files.createTempDirectory("git-sanitize-test-");
+        var originalUrl = "https://oauth2:secret@github.com/org/repo.git";
         try (Git git = Git.init().setDirectory(repoDir.toFile()).call()) {
             var config = git.getRepository().getConfig();
-            config.setString("remote", "origin", "url", "https://oauth2:secret@github.com/org/repo.git");
+            config.setString("remote", "origin", "url", originalUrl);
             config.save();
         }
 
         var runContext = runContextFactory.of();
-        Clone.sanitizeGitConfigBeforeArchiving(repoDir, runContext);
+        var strippedOriginal = Clone.sanitizeGitConfigBeforeArchiving(repoDir, runContext);
+        assertThat(strippedOriginal, is(originalUrl));
 
         try (Git git = Git.open(repoDir.toFile())) {
             var config = git.getRepository().getConfig();
             assertThat(
                 config.getString("remote", "origin", "url"),
                 is("https://github.com/org/repo.git")
+            );
+        }
+
+        Clone.restoreGitConfigOriginUrl(repoDir, strippedOriginal, runContext);
+        try (Git git = Git.open(repoDir.toFile())) {
+            var config = git.getRepository().getConfig();
+            assertThat(
+                config.getString("remote", "origin", "url"),
+                is(originalUrl)
+            );
+        }
+    }
+
+    @Test
+    void sanitizeGitConfigBeforeArchiving_shouldNotStripSshUser() throws Exception {
+        var repoDir = Files.createTempDirectory("git-sanitize-ssh-test-");
+        var sshUrl = "ssh://git@github.com/org/repo.git";
+        try (Git git = Git.init().setDirectory(repoDir.toFile()).call()) {
+            var config = git.getRepository().getConfig();
+            config.setString("remote", "origin", "url", sshUrl);
+            config.save();
+        }
+
+        var runContext = runContextFactory.of();
+        var stripped = Clone.sanitizeGitConfigBeforeArchiving(repoDir, runContext);
+        assertThat(stripped, is(nullValue()));
+
+        try (Git git = Git.open(repoDir.toFile())) {
+            var config = git.getRepository().getConfig();
+            assertThat(
+                config.getString("remote", "origin", "url"),
+                is(sshUrl)
             );
         }
     }
