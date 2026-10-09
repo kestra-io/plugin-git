@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import org.apache.commons.lang3.StringUtils;
 import org.eclipse.jgit.api.AddCommand;
 import org.eclipse.jgit.api.CommitCommand;
 import org.eclipse.jgit.api.errors.EmptyCommitException;
@@ -509,7 +510,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                             try {
                                 var flowValidated = kestraClient.flows().validateFlows(runContext.flowInfo().tenantId(), gitYaml).getFirst();
 
-                                if (flowValidated.getConstraints() != null) {
+                                if (StringUtils.isNotBlank(flowValidated.getConstraints())) {
                                     throw new FlowProcessingException(flowValidated.getConstraints());
                                 }
 
@@ -590,7 +591,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                             try {
                                 var flowValidated = kestraClient.flows().validateFlows(runContext.flowInfo().tenantId(), gitYaml).getFirst();
 
-                                if (flowValidated.getConstraints() != null) {
+                                if (StringUtils.isNotBlank(flowValidated.getConstraints())) {
                                     throw new FlowProcessingException(flowValidated.getConstraints());
                                 }
 
@@ -735,7 +736,7 @@ public class TenantSync extends AbstractKestraTask implements RunnableTask<Tenan
                         }
 
                         var flowValidated = kestraClient.flows().validateFlows(runContext.flowInfo().tenantId(), yaml).getFirst();
-                        if (flowValidated.getConstraints() != null) {
+                        if (StringUtils.isNotBlank(flowValidated.getConstraints())) {
                             throw new FlowProcessingException(flowValidated.getConstraints());
                         }
                     } catch (Exception e) {

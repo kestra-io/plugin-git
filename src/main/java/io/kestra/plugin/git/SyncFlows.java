@@ -248,7 +248,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
         var flowValidated = kestraClient(runContext).flows().validateFlows(runContext.flowInfo().tenantId(), flowSource).getFirst();
 
-        if (flowValidated.getConstraints() != null) {
+        if (StringUtils.isNotBlank(flowValidated.getConstraints())) {
             var ref = uri.getPath();
             if (ref.startsWith("/")) {
                 ref = ref.substring(1);
@@ -326,7 +326,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
         var flowValidated = kestraClient.flows().validateFlows(tenantId, flowSource).getFirst();
 
-        if (flowValidated.getConstraints() != null) {
+        if (StringUtils.isNotBlank(flowValidated.getConstraints())) {
             var ref = uri.getPath();
             if (ref.startsWith("/")) {
                 ref = ref.substring(1);
