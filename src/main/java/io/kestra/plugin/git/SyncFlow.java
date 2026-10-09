@@ -9,6 +9,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.eclipse.jgit.api.Git;
 
 import io.kestra.core.exceptions.KestraRuntimeException;
@@ -170,7 +171,7 @@ public class SyncFlow extends AbstractKestraTask implements RunnableTask<SyncFlo
             if (rDryRun) {
                 // Validate without importing; compute projected revision
                 var violations = kestraClient.flows().validateFlows(tenantId, flowSource);
-                if (!violations.isEmpty() && violations.getFirst().getConstraints() != null) {
+                if (!violations.isEmpty() && StringUtils.isNotBlank(violations.getFirst().getConstraints())) {
                     throw new IllegalStateException("Flow validation failed: " + violations.getFirst().getConstraints());
                 }
 
