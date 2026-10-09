@@ -553,6 +553,51 @@ public class SyncFlowsTest extends AbstractGitTest {
     }
 
     @Test
+    void shouldSyncFlowFileWithSpaceInName() throws Exception {
+        Path repoDir = Files.createTempDirectory("git-test");
+        try (Git git = Git.init().setDirectory(repoDir.toFile()).call()) {
+            Path flowsDir = repoDir.resolve("_flows");
+            Files.createDirectories(flowsDir);
+            Files.writeString(
+                flowsDir.resolve("my flow.yml"),
+                """
+                    id: flow-with-space-in-file-name
+                    namespace: my.namespace
+
+                    tasks:
+                      - id: hello
+                        type: io.kestra.plugin.core.log.Log
+                        message: Hello
+                    """
+            );
+            git.add().addFilepattern(".").call();
+            git.commit().setMessage("Add flow with space in file name").call();
+        }
+
+        RunContext runContext = runContextFactory.of(
+            Map.of(
+                "flow", Map.of("tenantId", TENANT_ID, "namespace", NAMESPACE, "id", FLOW_ID),
+                "url", repoDir.toUri().toString(),
+                "branch", "master",
+                "gitDirectory", "_flows",
+                "namespace", NAMESPACE
+            )
+        );
+
+        SyncFlows task = SyncFlows.builder()
+            .url(Property.ofExpression("{{url}}"))
+            .branch(Property.ofExpression("{{branch}}"))
+            .gitDirectory(Property.ofExpression("{{gitDirectory}}"))
+            .targetNamespace(Property.ofExpression("{{namespace}}"))
+            .build();
+
+        task.run(runContext);
+
+        List<Flow> flows = flowRepositoryInterface.findByNamespace(TENANT_ID, NAMESPACE);
+        assertThat(flows.stream().map(Flow::getId).toList(), hasItem("flow-with-space-in-file-name"));
+    }
+
+    @Test
     void shouldThrowOnInvalidFlowFromGit() throws Exception {
         Path repoDir = Files.createTempDirectory("git-test");
         Git git = Git.init().setDirectory(repoDir.toFile()).call();
