@@ -28,6 +28,7 @@ import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ResetCommand.ResetType;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.TagOpt;
@@ -544,7 +545,8 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
             }
 
             var fetchResult = authentified(fetchCommand, runContext).call();
-            if (fetchResult != null && !fetchResult.getTrackingRefUpdates().isEmpty()) {
+            if (fetchResult != null && fetchResult.getTrackingRefUpdates().stream()
+                .anyMatch(u -> u.getResult() != RefUpdate.Result.NO_CHANGE)) {
                 updated = true;
             }
 

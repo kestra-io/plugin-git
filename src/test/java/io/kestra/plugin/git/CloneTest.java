@@ -626,6 +626,12 @@ class CloneTest extends AbstractGitTest {
         assertThat(Files.readString(repoPath2.resolve("file2.txt")).trim(), is("second"));
 
         // RunContext 3: without new commits on remote, cache is restored and kept up-to-date
+        // Regression guard: ensure the cache is NOT re-uploaded when HEAD did not change.
+        // JGit 7.8.0 emits NO_CHANGE TrackingRefUpdates on every shallow fetch; previously this
+        // caused the cache to be re-uploaded on every run even when nothing had changed.
+        List<LogEntry> logs3 = new CopyOnWriteArrayList<>();
+        logQueue.addListener(logs3::add);
+
         Clone task3 = Clone.builder()
             .id("clone-cache-3")
             .type(Clone.class.getName())
@@ -639,6 +645,13 @@ class CloneTest extends AbstractGitTest {
         assertThat(Files.exists(repoPath3.resolve("file1.txt")), is(true));
         assertThat(Files.exists(repoPath3.resolve("file2.txt")), is(true));
         assertThat(Files.readString(repoPath3.resolve("file2.txt")).trim(), is("second"));
+
+        List<LogEntry> skipLogs = TestsUtils.awaitLogs(
+            logs3,
+            e -> e.getMessage() != null && e.getMessage().contains("skipping cache upload"),
+            1
+        );
+        assertThat("Cache must not be re-uploaded when nothing changed on remote", skipLogs, hasSize(1));
     }
 
     @Test
