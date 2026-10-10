@@ -436,7 +436,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
             .kestraPath(kestraPath);
 
         if (syncState != SyncState.DELETED) {
-            builder.gitPath(renderedGitDirectory + resourceUri);
+            builder.gitPath(gitPath(renderedGitDirectory, resourceUri));
         }
 
         return builder.build();

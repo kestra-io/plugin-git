@@ -126,6 +126,66 @@ class TenantSyncTest {
         }
     }
 
+    @Test
+    void shouldTreatBlankValidationConstraintsAsValid() throws Exception {
+        // Kestra develop returns "" (not null) as constraints for a valid flow
+        var yaml = """
+            id: exported-flow
+            namespace: my.namespace
+
+            tasks:
+              - id: log
+                type: io.kestra.plugin.core.log.Log
+                message: hello
+            """;
+        var exportedZip = zippedYaml("my.namespace/exported-flow.yaml", yaml);
+        var validateCalls = new AtomicInteger();
+
+        var server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/api/v1/" + TENANT_ID + "/flows/export/by-query", exchange ->
+        {
+            exchange.getRequestBody().readAllBytes();
+            exchange.getResponseHeaders().add("Content-Type", "application/octet-stream");
+            exchange.sendResponseHeaders(200, exportedZip.length);
+            exchange.getResponseBody().write(exportedZip);
+            exchange.close();
+        });
+        server.createContext("/api/v1/" + TENANT_ID + "/flows/validate", exchange ->
+        {
+            validateCalls.incrementAndGet();
+            exchange.getRequestBody().readAllBytes();
+
+            var payload = "[{\"index\": 0, \"constraints\": \"\"}]".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, payload.length);
+            exchange.getResponseBody().write(payload);
+            exchange.close();
+        });
+        server.start();
+
+        try {
+            var task = TenantSync.builder().build();
+            var runContext = runContextFactory.of(
+                Map.of(
+                    "flow", Map.of(
+                        "tenantId", TENANT_ID,
+                        "namespace", NAMESPACE,
+                        "id", "tenant-sync-test"
+                    )
+                )
+            );
+            var kestraClient = KestraClient.builder()
+                .url("http://localhost:" + server.getAddress().getPort())
+                .basicAuth("user", "pass")
+                .build();
+
+            fetchFlowsMethod().invoke(task, kestraClient, runContext, NAMESPACE, TenantSync.OnInvalidSyntax.FAIL);
+            assertEquals(1, validateCalls.get());
+        } finally {
+            server.stop(0);
+        }
+    }
+
     private static byte[] zippedYaml(String entryName, String yaml) throws Exception {
         var output = new ByteArrayOutputStream();
         try (var zip = new ZipOutputStream(output)) {

@@ -19,6 +19,7 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
+import org.apache.commons.lang3.StringUtils;
 import org.eclipse.jgit.api.AddCommand;
 import org.eclipse.jgit.api.CommitCommand;
 import org.eclipse.jgit.api.errors.EmptyCommitException;
@@ -439,7 +440,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                                 var kestraClient = kestraClient(rc);
                                 var flowValidated = kestraClient.flows().validateFlows(tenant, gitNode.rawYaml).getFirst();
 
-                                if (flowValidated.getConstraints() != null) {
+                                if (StringUtils.isNotBlank(flowValidated.getConstraints())) {
                                     throw new FlowProcessingException(flowValidated.getConstraints());
                                 }
                                 var flowId = YamlParser.parse(gitNode.rawYaml, io.kestra.core.models.flows.Flow.class).getId();
@@ -515,7 +516,7 @@ public class NamespaceSync extends AbstractCloningTask implements RunnableTask<N
                                 var kestraClient = kestraClient(rc);
                                 var flowValidated = kestraClient.flows().validateFlows(tenant, gitNode.rawYaml).getFirst();
 
-                                if (flowValidated.getConstraints() != null) {
+                                if (StringUtils.isNotBlank(flowValidated.getConstraints())) {
                                     throw new FlowProcessingException(flowValidated.getConstraints());
                                 }
                                 var flowId = YamlParser.parse(gitNode.rawYaml, io.kestra.core.models.flows.Flow.class).getId();

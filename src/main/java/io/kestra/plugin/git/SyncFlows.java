@@ -248,7 +248,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
         var flowValidated = kestraClient(runContext).flows().validateFlows(runContext.flowInfo().tenantId(), flowSource).getFirst();
 
-        if (flowValidated.getConstraints() != null) {
+        if (StringUtils.isNotBlank(flowValidated.getConstraints())) {
             var ref = uri.getPath();
             if (ref.startsWith("/")) {
                 ref = ref.substring(1);
@@ -326,7 +326,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
 
         var flowValidated = kestraClient.flows().validateFlows(tenantId, flowSource).getFirst();
 
-        if (flowValidated.getConstraints() != null) {
+        if (StringUtils.isNotBlank(flowValidated.getConstraints())) {
             var ref = uri.getPath();
             if (ref.startsWith("/")) {
                 ref = ref.substring(1);
@@ -385,7 +385,7 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
             .revision(infoHolder.getRevision());
 
         if (syncState != SyncState.DELETED) {
-            builder.gitPath(renderedGitDirectory + resourceUri);
+            builder.gitPath(gitPath(renderedGitDirectory, resourceUri));
         }
 
         return builder.build();
