@@ -28,6 +28,7 @@ import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ResetCommand.ResetType;
 import org.eclipse.jgit.api.errors.RefNotFoundException;
+import org.eclipse.jgit.api.errors.TransportException;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
@@ -293,8 +294,9 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
                 resultDirectory = updateResult.directory();
                 repositoryUpdated = updateResult.updated();
             } catch (Exception e) {
-                // a missing branch, tag or commit is a user error: keep the valid cache entry and surface it
-                if (isValidGitRepository(path) && isMissingRef(e)) {
+                // a missing ref or a transport failure does not mean the repository is corrupt:
+                // keep the valid cache entry and surface the error instead of re-cloning
+                if (isValidGitRepository(path) && isNotRepositoryCorruption(e)) {
                     throw e;
                 }
                 runContext.logger().warn("Failed to update existing repository for '{}', falling back to normal clone", stripUserInfo(rUrl), e);
@@ -720,9 +722,14 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         }
     }
 
-    private static boolean isMissingRef(Throwable e) {
+    private static boolean isNotRepositoryCorruption(Throwable e) {
         for (var cause = e; cause != null; cause = cause.getCause()) {
-            if (cause instanceof RefNotFoundException || cause instanceof IllegalArgumentException) {
+            if (
+                cause instanceof RefNotFoundException
+                    || cause instanceof IllegalArgumentException
+                    || cause instanceof TransportException
+                    || cause instanceof org.eclipse.jgit.errors.TransportException
+            ) {
                 return true;
             }
         }

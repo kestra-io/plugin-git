@@ -642,6 +642,47 @@ class CloneTest extends AbstractGitTest {
     }
 
     @Test
+    void cloneCachedWithUnreachableRemote_shouldKeepCacheEntry() throws Exception {
+        Path remote = Files.createTempDirectory("git-remote-unreachable-");
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(remote.resolve("file1.txt"), "first\n");
+            git.add().addFilepattern("file1.txt").call();
+            git.commit().setMessage("first").setSign(false).call();
+        }
+        String url = remote.toUri().toString();
+
+        Clone seed = Clone.builder()
+            .id("clone-unreachable-seed")
+            .type(Clone.class.getName())
+            .url(Property.ofValue(url))
+            .cache(Property.ofValue(true))
+            .build();
+        RunContext seedContext = TestsUtils.mockRunContext(runContextFactory, seed, Map.of());
+        seed.run(seedContext);
+
+        String objectId = Clone.computeCacheObjectId(url, null);
+        assertThat(seedContext.storage().getCacheFile("git-cache", objectId, null).isPresent(), is(true));
+
+        // the remote disappears, so the fetch on the restored cache fails with a transport error
+        FileUtils.deleteDirectory(remote.toFile());
+
+        Clone task = Clone.builder()
+            .id("clone-unreachable")
+            .type(Clone.class.getName())
+            .url(Property.ofValue(url))
+            .cache(Property.ofValue(true))
+            .build();
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+
+        assertThrows(Exception.class, () -> task.run(runContext));
+        assertThat(
+            "A transport failure must not discard a valid cache entry",
+            runContext.storage().getCacheFile("git-cache", objectId, null).isPresent(),
+            is(true)
+        );
+    }
+
+    @Test
     void cloneWithCacheProperty() throws Exception {
         Path remote = Files.createTempDirectory("git-remote-cache-");
         Path file1 = remote.resolve("file1.txt");
