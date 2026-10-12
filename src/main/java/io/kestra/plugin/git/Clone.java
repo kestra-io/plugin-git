@@ -545,8 +545,10 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
             }
 
             var fetchResult = authentified(fetchCommand, runContext).call();
-            if (fetchResult != null && fetchResult.getTrackingRefUpdates().stream()
-                .anyMatch(u -> u.getResult() != RefUpdate.Result.NO_CHANGE)) {
+            if (
+                fetchResult != null && fetchResult.getTrackingRefUpdates().stream()
+                    .anyMatch(u -> u.getResult() != RefUpdate.Result.NO_CHANGE)
+            ) {
                 updated = true;
             }
 
