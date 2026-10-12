@@ -27,6 +27,7 @@ import java.util.zip.ZipOutputStream;
 import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ResetCommand.ResetType;
+import org.eclipse.jgit.api.errors.RefNotFoundException;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
@@ -286,21 +287,23 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         var resultDirectory = "";
         var repositoryUpdated = false;
 
-        if (isGitRepository(path)) {
+        if (rCache && isGitRepository(path)) {
             try {
                 var updateResult = updateRepository(runContext, path, rUrl, cloneOptions, rDepth);
                 resultDirectory = updateResult.directory();
                 repositoryUpdated = updateResult.updated();
             } catch (Exception e) {
-                if (cacheRestored) {
-                    runContext.logger().warn("Failed to update cached repository for '{}', falling back to normal clone", stripUserInfo(rUrl), e);
-                    discardCache(runContext, gitDir, cacheKey, objectId);
-                    cacheRestored = false;
-                    var result = cloneFresh(runContext, rUrl, path, cloneOptions, rDepth);
-                    resultDirectory = result.directory();
-                } else {
+                // a missing branch, tag or commit is a user error: keep the valid cache entry and surface it
+                if (isValidGitRepository(path) && isMissingRef(e)) {
                     throw e;
                 }
+                runContext.logger().warn("Failed to update existing repository for '{}', falling back to normal clone", stripUserInfo(rUrl), e);
+                if (cacheRestored) {
+                    discardCache(runContext, gitDir, cacheKey, objectId);
+                    cacheRestored = false;
+                }
+                var result = cloneFresh(runContext, rUrl, path, cloneOptions, rDepth);
+                resultDirectory = result.directory();
             }
         } else {
             var result = cloneFresh(runContext, rUrl, path, cloneOptions, rDepth);
@@ -715,6 +718,15 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
         } catch (Exception e) {
             return false;
         }
+    }
+
+    private static boolean isMissingRef(Throwable e) {
+        for (var cause = e; cause != null; cause = cause.getCause()) {
+            if (cause instanceof RefNotFoundException || cause instanceof IllegalArgumentException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isShallowRepository(Repository repo) {

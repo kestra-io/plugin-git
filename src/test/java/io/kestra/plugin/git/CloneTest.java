@@ -546,11 +546,13 @@ class CloneTest extends AbstractGitTest {
             git.commit().setMessage("first").setSign(false).call();
         }
 
-        RunContext runContext = runContextFactory.of();
-
         Clone task = Clone.builder()
+            .id("clone-incremental")
+            .type(Clone.class.getName())
             .url(Property.ofValue(remote.toUri().toString()))
+            .cache(Property.ofValue(true))
             .build();
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
 
         Clone.Output out1 = task.run(runContext);
         Path repoPath = Path.of(out1.getDirectory());
@@ -571,6 +573,72 @@ class CloneTest extends AbstractGitTest {
         assertThat(Files.exists(repoPath.resolve("file1.txt")), is(true));
         assertThat(Files.exists(repoPath.resolve("file2.txt")), is(true));
         assertThat(Files.readString(repoPath.resolve("file2.txt")).trim(), is("second"));
+    }
+
+    @Test
+    void cloneIntoBrokenGitDirectory_shouldCloneFresh() throws Exception {
+        Path remote = Files.createTempDirectory("git-remote-broken-gitdir-");
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(remote.resolve("file1.txt"), "first\n");
+            git.add().addFilepattern("file1.txt").call();
+            git.commit().setMessage("first").setSign(false).call();
+        }
+
+        for (boolean cache : List.of(false, true)) {
+            Clone task = Clone.builder()
+                .id("clone-broken-gitdir-" + cache)
+                .type(Clone.class.getName())
+                .url(Property.ofValue(remote.toUri().toString()))
+                .cache(Property.ofValue(cache))
+                .build();
+            RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+
+            // a .git left behind by a failed earlier step that JGit cannot open
+            Path gitDir = Files.createDirectories(runContext.workingDir().path().resolve(".git"));
+            Files.writeString(gitDir.resolve("HEAD"), "garbage\n");
+
+            Clone.Output out = task.run(runContext);
+            Path repoPath = Path.of(out.getDirectory());
+            assertThat(Files.readString(repoPath.resolve("file1.txt")).trim(), is("first"));
+        }
+    }
+
+    @Test
+    void cloneCachedWithMissingTag_shouldKeepCacheEntry() throws Exception {
+        Path remote = Files.createTempDirectory("git-remote-missing-tag-");
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(remote.resolve("file1.txt"), "first\n");
+            git.add().addFilepattern("file1.txt").call();
+            git.commit().setMessage("first").setSign(false).call();
+        }
+
+        Clone seed = Clone.builder()
+            .id("clone-missing-tag-seed")
+            .type(Clone.class.getName())
+            .url(Property.ofValue(remote.toUri().toString()))
+            .cache(Property.ofValue(true))
+            .build();
+        RunContext seedContext = TestsUtils.mockRunContext(runContextFactory, seed, Map.of());
+        seed.run(seedContext);
+
+        String objectId = Clone.computeCacheObjectId(remote.toUri().toString(), null);
+        assertThat(seedContext.storage().getCacheFile("git-cache", objectId, null).isPresent(), is(true));
+
+        Clone task = Clone.builder()
+            .id("clone-missing-tag")
+            .type(Clone.class.getName())
+            .url(Property.ofValue(remote.toUri().toString()))
+            .tag(Property.ofValue("v9.9"))
+            .cache(Property.ofValue(true))
+            .build();
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+
+        assertThrows(Exception.class, () -> task.run(runContext));
+        assertThat(
+            "A missing tag must not discard a valid cache entry",
+            runContext.storage().getCacheFile("git-cache", objectId, null).isPresent(),
+            is(true)
+        );
     }
 
     @Test
