@@ -1,6 +1,9 @@
 package io.kestra.plugin.git;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -8,6 +11,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import org.apache.commons.io.FileUtils;
 import org.eclipse.jgit.api.Git;
@@ -957,6 +962,23 @@ class CloneTest extends AbstractGitTest {
             }
         }
         assertThat("Cache archive should be healed with newly downloaded pack files", packCount, greaterThan(0L));
+    }
+
+    @Test
+    void extractZipArchive_shouldHandleNonNormalizedTargetDirectory() throws Exception {
+        var zip = new ByteArrayOutputStream();
+        try (var zos = new ZipOutputStream(zip)) {
+            zos.putNextEntry(new ZipEntry("HEAD"));
+            zos.write("ref: refs/heads/main\n".getBytes(StandardCharsets.UTF_8));
+            zos.closeEntry();
+        }
+
+        // what a "directory: ./repo" property resolves to before normalization
+        Path targetDir = Files.createTempDirectory("git-unzip-").resolve("./repo");
+        int count = Clone.extractZipArchive(new ByteArrayInputStream(zip.toByteArray()), targetDir);
+
+        assertThat(count, is(1));
+        assertThat(Files.readString(targetDir.resolve("HEAD")), is("ref: refs/heads/main\n"));
     }
 
     @Test

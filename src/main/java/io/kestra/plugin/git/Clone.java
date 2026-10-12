@@ -817,12 +817,14 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     }
 
     static int extractZipArchive(InputStream is, Path targetDir) throws IOException {
+        // normalize first: a directory such as ./repo keeps its "." segment otherwise and no entry would match
+        var base = targetDir.toAbsolutePath().normalize();
         var count = 0;
         try (var zis = new ZipInputStream(new BufferedInputStream(is))) {
             ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
-                var targetPath = targetDir.resolve(entry.getName()).normalize();
-                if (!targetPath.startsWith(targetDir)) {
+                var targetPath = base.resolve(entry.getName()).normalize();
+                if (!targetPath.startsWith(base)) {
                     throw new IOException("Zip entry escapes target directory: " + entry.getName());
                 }
                 if (entry.isDirectory()) {
