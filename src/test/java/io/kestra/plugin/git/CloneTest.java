@@ -965,6 +965,71 @@ class CloneTest extends AbstractGitTest {
     }
 
     @Test
+    void cloneCachedWithMissingObjectsAndNewRemoteCommit_shouldFallBackAndHealCache() throws Exception {
+        Path remote = Files.createTempDirectory("git-remote-missing-objects-");
+        try (Git git = Git.init().setDirectory(remote.toFile()).call()) {
+            Files.writeString(remote.resolve("file1.txt"), "first\n");
+            git.add().addFilepattern("file1.txt").call();
+            git.commit().setMessage("first").setSign(false).call();
+        }
+
+        Clone seed = Clone.builder()
+            .id("clone-missing-objects-seed")
+            .type(Clone.class.getName())
+            .url(Property.ofValue(remote.toUri().toString()))
+            .cache(Property.ofValue(true))
+            .build();
+        RunContext seedContext = TestsUtils.mockRunContext(runContextFactory, seed, Map.of());
+        seed.run(seedContext);
+
+        String objectId = Clone.computeCacheObjectId(remote.toUri().toString(), null);
+        var initialCache = seedContext.storage().getCacheFile("git-cache", objectId, null);
+        assertThat(initialCache.isPresent(), is(true));
+
+        // Strip every object from the cached .git but keep the refs, so HEAD still resolves
+        Path unpackDir = Files.createTempDirectory("git-unpack-missing-objects-");
+        try (var is = initialCache.get()) {
+            Clone.extractZipArchive(is, unpackDir);
+        }
+        try (var stream = Files.walk(unpackDir.resolve("objects"))) {
+            for (var file : stream.filter(Files::isRegularFile).toList()) {
+                Files.delete(file);
+            }
+        }
+        Path degradedZip = Files.createTempFile("git-missing-objects-", ".zip");
+        Clone.createZipArchive(unpackDir, degradedZip);
+        seedContext.storage().putCacheFile(degradedZip.toFile(), "git-cache", objectId);
+
+        // A new remote commit makes the fetch walk the missing local commits:
+        // JGit then fails with a TransportException caused by a MissingObjectException
+        try (Git git = Git.open(remote.toFile())) {
+            Files.writeString(remote.resolve("file2.txt"), "second\n");
+            git.add().addFilepattern("file2.txt").call();
+            git.commit().setMessage("second").setSign(false).call();
+        }
+
+        Clone task = Clone.builder()
+            .id("clone-missing-objects")
+            .type(Clone.class.getName())
+            .url(Property.ofValue(remote.toUri().toString()))
+            .cache(Property.ofValue(true))
+            .build();
+        RunContext runContext = TestsUtils.mockRunContext(runContextFactory, task, Map.of());
+
+        Clone.Output out = task.run(runContext);
+        assertThat(Files.readString(Path.of(out.getDirectory()).resolve("file2.txt")).trim(), is("second"));
+
+        // The corrupt entry must be replaced, otherwise every later run fails the same way
+        Path verifyDir = Files.createTempDirectory("git-verify-missing-objects-");
+        try (var is = runContext.storage().getCacheFile("git-cache", objectId, null).orElseThrow()) {
+            Clone.extractZipArchive(is, verifyDir);
+        }
+        try (var stream = Files.walk(verifyDir.resolve("objects"))) {
+            assertThat("Cache should be rewritten with the objects of a fresh clone", stream.anyMatch(Files::isRegularFile), is(true));
+        }
+    }
+
+    @Test
     void extractZipArchive_shouldHandleNonNormalizedTargetDirectory() throws Exception {
         var zip = new ByteArrayOutputStream();
         try (var zos = new ZipOutputStream(zip)) {

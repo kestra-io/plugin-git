@@ -29,6 +29,8 @@ import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ResetCommand.ResetType;
 import org.eclipse.jgit.api.errors.RefNotFoundException;
 import org.eclipse.jgit.api.errors.TransportException;
+import org.eclipse.jgit.errors.CorruptObjectException;
+import org.eclipse.jgit.errors.MissingObjectException;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.lib.Repository;
@@ -723,6 +725,13 @@ public class Clone extends AbstractCloningTask implements RunnableTask<Clone.Out
     }
 
     private static boolean isNotRepositoryCorruption(Throwable e) {
+        // JGit wraps missing or corrupt local objects hit during a fetch in a TransportException:
+        // those are repository failures, so check them first
+        for (var cause = e; cause != null; cause = cause.getCause()) {
+            if (cause instanceof MissingObjectException || cause instanceof CorruptObjectException) {
+                return false;
+            }
+        }
         for (var cause = e; cause != null; cause = cause.getCause()) {
             if (
                 cause instanceof RefNotFoundException
