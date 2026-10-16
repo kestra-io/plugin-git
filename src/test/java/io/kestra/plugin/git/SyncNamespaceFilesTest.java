@@ -721,6 +721,40 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
     }
 
     @Test
+    void includeChildNamespaces_SameInstanceRerunWithAnotherNamespace_ShouldResolveItsOwnChildren() throws Exception {
+        String firstNamespace = "rerun.first";
+        String secondNamespace = "rerun.second";
+        String firstChild = firstNamespace + ".child";
+        String secondChild = secondNamespace + ".child";
+        for (String ns : List.of(firstNamespace, secondNamespace, firstChild, secondChild)) {
+            runContextFactory.of().storage().namespace(ns).delete(Path.of("/"));
+        }
+
+        Path repoDir = createLocalRepo(Map.of(
+            "content/" + firstChild + "/a.txt", "a",
+            "content/" + secondChild + "/b.txt", "b"
+        ));
+
+        try (NamespacesSearchMockServer namespaces = NamespacesSearchMockServer.start(List.of(firstChild, secondChild))) {
+            SyncNamespaceFiles task = SyncNamespaceFiles.builder()
+                .url(Property.ofExpression("{{url}}"))
+                .branch(Property.ofExpression("{{branch}}"))
+                .namespace(Property.ofExpression("{{namespace}}"))
+                .gitDirectory(Property.ofValue("content"))
+                .includeChildNamespaces(Property.ofValue(true))
+                .kestraUrl(Property.ofValue(namespaces.url()))
+                .build();
+
+            task.run(localRunContext(repoDir, firstNamespace));
+            task.run(localRunContext(repoDir, secondNamespace));
+        }
+
+        assertThat(runContext().storage().namespace(firstChild).exists(Path.of("a.txt")), is(true));
+        assertThat(runContext().storage().namespace(secondChild).exists(Path.of("b.txt")), is(true));
+        assertThat(runContext().storage().namespace(secondNamespace).exists(Path.of(secondChild + "/b.txt")), is(false));
+    }
+
+    @Test
     void namespaceDirectory_AcceptsWithAndWithoutLeadingSlash() throws Exception {
         Path repoDir = createLocalRepo(Map.of("content/foo.py", "print(1)"));
 
@@ -794,13 +828,17 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
     }
 
     private RunContext localRunContext(Path repoDir) {
+        return localRunContext(repoDir, NAMESPACE);
+    }
+
+    private RunContext localRunContext(Path repoDir, String namespace) {
         return runContextFactory.of(
             Map.of(
                 "flow", Map.of("tenantId", TENANT_ID, "namespace", "system"),
                 "url", repoDir.toUri().toString(),
                 "pat", "",
                 "branch", "master", // git init default
-                "namespace", NAMESPACE
+                "namespace", namespace
             )
         );
     }
