@@ -186,27 +186,23 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
     @PluginProperty(group = "source")
     private Property<Boolean> includeChildNamespaces = Property.ofValue(false);
 
-    @Getter(AccessLevel.NONE)
-    @ToString.Exclude
-    private transient List<String> resolvedChildNamespaces;
-
-    @Getter(AccessLevel.NONE)
-    @ToString.Exclude
-    @EqualsAndHashCode.Exclude
-    private transient boolean targetNamespaceEnsured;
-
     @Override
     public Property<String> fetchedNamespace() {
         return this.namespace;
     }
 
+    @Override
+    protected RunState newRunState() {
+        return new NamespaceFilesRunState();
+    }
+
     // Lazily invoked from the first real write of a run: skips namespace creation entirely when
     // dryRun (simulateResourceWrite never calls this) or when nothing is actually synced.
-    private void ensureTargetNamespaceExists(RunContext runContext, String renderedNamespace) {
-        if (this.targetNamespaceEnsured) {
+    private void ensureTargetNamespaceExists(RunContext runContext, String renderedNamespace, NamespaceFilesRunState runState) {
+        if (runState.targetNamespaceEnsured) {
             return;
         }
-        this.targetNamespaceEnsured = true;
+        runState.targetNamespaceEnsured = true;
 
         if (renderedNamespace == null || renderedNamespace.equals(runContext.flowInfo().namespace())) {
             return;
@@ -267,15 +263,15 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
     }
 
     // Fetched once per run and reused by fetchResources and resolveTarget
-    private List<String> childNamespaces(RunContext runContext, String renderedNamespace) throws IOException {
-        if (this.resolvedChildNamespaces == null) {
+    private List<String> childNamespaces(RunContext runContext, String renderedNamespace, NamespaceFilesRunState runState) throws IOException {
+        if (runState.childNamespaces == null) {
             try {
-                this.resolvedChildNamespaces = descendantNamespaces(runContext, runContext.flowInfo().tenantId(), renderedNamespace);
+                runState.childNamespaces = descendantNamespaces(runContext, runContext.flowInfo().tenantId(), renderedNamespace);
             } catch (ApiException | IllegalVariableEvaluationException e) {
                 throw new IOException(e);
             }
         }
-        return this.resolvedChildNamespaces;
+        return runState.childNamespaces;
     }
 
     // Rendered and normalized on every call rather than cached on the instance: a parsed Task instance can be
@@ -297,8 +293,8 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
     }
 
     @Override
-    protected NamespaceFile simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
-        var target = resolveTarget(runContext, renderedNamespace, uri);
+    protected NamespaceFile simulateResourceWrite(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream, RunState runState) throws IOException {
+        var target = resolveTarget(runContext, renderedNamespace, uri, (NamespaceFilesRunState) runState);
         var namespace = runContext.storage().namespace(target.namespace());
         var path = Path.of(target.uri().getPath());
         var existingResource = this.findExistingResource(namespace, target.namespace(), target.uri());
@@ -319,9 +315,10 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
     }
 
     @Override
-    protected NamespaceFile writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream) throws IOException {
-        ensureTargetNamespaceExists(runContext, renderedNamespace);
-        var target = resolveTarget(runContext, renderedNamespace, uri);
+    protected NamespaceFile writeResource(RunContext runContext, String renderedNamespace, URI uri, InputStream inputStream, RunState runState) throws IOException {
+        var namespaceFilesRunState = (NamespaceFilesRunState) runState;
+        ensureTargetNamespaceExists(runContext, renderedNamespace, namespaceFilesRunState);
+        var target = resolveTarget(runContext, renderedNamespace, uri, namespaceFilesRunState);
         if (inputStream == null && "/".equals(target.uri().getPath())) {
             return NamespaceFile.of(target.namespace());
         }
@@ -443,7 +440,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
     }
 
     @Override
-    protected List<NamespaceFile> fetchResources(RunContext runContext, String renderedNamespace) throws IOException, IllegalVariableEvaluationException {
+    protected List<NamespaceFile> fetchResources(RunContext runContext, String renderedNamespace, RunState runState) throws IOException, IllegalVariableEvaluationException {
         String prefix = this.namespaceDirectoryPrefix(runContext);
         List<NamespaceFile> resources = new ArrayList<>(
             runContext.storage().namespace(renderedNamespace).all().stream()
@@ -451,7 +448,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
                 .toList()
         );
         if (runContext.render(this.includeChildNamespaces).as(Boolean.class).orElse(false)) {
-            for (String child : childNamespaces(runContext, renderedNamespace)) {
+            for (String child : childNamespaces(runContext, renderedNamespace, (NamespaceFilesRunState) runState)) {
                 runContext.storage().namespace(child).all().stream()
                     .filter(resource -> NamespaceDirectories.isUnderPrefix("/" + resource.path(), prefix))
                     .forEach(resources::add);
@@ -479,9 +476,14 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
     private record Target(String namespace, URI uri) {
     }
 
+    private static final class NamespaceFilesRunState extends RunState {
+        private List<String> childNamespaces;
+        private boolean targetNamespaceEnsured;
+    }
+
     // With includeChildNamespaces, a first path segment naming an existing descendant namespace routes the file there;
     // namespaceDirectory is then applied inside whichever namespace the file was routed to.
-    private Target resolveTarget(RunContext runContext, String renderedNamespace, URI uri) throws IOException {
+    private Target resolveTarget(RunContext runContext, String renderedNamespace, URI uri, NamespaceFilesRunState runState) throws IOException {
         Target routed;
         try {
             if (!runContext.render(this.includeChildNamespaces).as(Boolean.class).orElse(false)) {
@@ -490,7 +492,7 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
                 String raw = uri.toString().replaceFirst("^/+", "");
                 int slash = raw.indexOf('/');
                 String first = slash < 0 ? null : raw.substring(0, slash);
-                if (first == null || !isDescendant(renderedNamespace, first) || !childNamespaces(runContext, renderedNamespace).contains(first)) {
+                if (first == null || !isDescendant(renderedNamespace, first) || !childNamespaces(runContext, renderedNamespace, runState).contains(first)) {
                     routed = new Target(renderedNamespace, uri);
                 } else {
                     routed = new Target(first, URI.create(raw.substring(slash)));
