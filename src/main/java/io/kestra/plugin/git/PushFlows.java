@@ -10,6 +10,8 @@ import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.util.*;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
@@ -219,14 +221,24 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         }, throwFunction(flowWithSource -> (throwSupplier(() ->
         {
             String renderedTargetNamespace = runContext.render(targetNamespace).as(String.class).orElse(renderedSourceNamespace);
-            String modifiedSource = flowWithSource.getSource()
-                .replaceAll("(?m)^revision:\\s*\\d+\\n?", "") // strip server-side revision before writing to git
-                .replaceAll(
-                    "(?m)^(\\s*namespace:\\s*)" + renderedSourceNamespace,
-                    "$1" + renderedTargetNamespace
-                );
+            String modifiedSource = rewriteNamespace(
+                flowWithSource.getSource().replaceAll("(?m)^revision:\\s*\\d+\\n?", ""), // strip server-side revision before writing to git
+                renderedSourceNamespace,
+                renderedTargetNamespace
+            );
             return new ByteArrayInputStream(modifiedSource.getBytes());
         })))));
+    }
+
+    /**
+     * Rewrites only the flow's own top-level {@code namespace:} key. The source namespace must match a whole namespace
+     * (or a parent of a child namespace), so lookalike prefixes, nested {@code namespace:} properties and text inside
+     * block scalars are left untouched.
+     */
+    static String rewriteNamespace(String source, String sourceNamespace, String targetNamespace) {
+        return Pattern.compile("^(namespace:[ \\t]*)" + Pattern.quote(sourceNamespace) + "(?=\\.|[ \\t]*$)", Pattern.MULTILINE)
+            .matcher(source)
+            .replaceFirst("$1" + Matcher.quoteReplacement(targetNamespace));
     }
 
     private List<FlowWithSource> fetchFlowsFromKestra(KestraClient kestraClient, RunContext runContext, String tenantId, String namespace, boolean includeChildren) {

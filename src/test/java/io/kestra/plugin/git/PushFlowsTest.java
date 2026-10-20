@@ -1011,7 +1011,7 @@ public class PushFlowsTest extends AbstractGitTest {
      * pass/fail spuriously if {@code sourceNamespace} ever appears outside the {@code namespace:} line.
      */
     private static String namespaceRewritten(String source, String sourceNamespace, String targetNamespace) {
-        return source.replaceAll("(?m)^(\\s*namespace:\\s*)" + sourceNamespace, "$1" + targetNamespace);
+        return PushFlows.rewriteNamespace(source, sourceNamespace, targetNamespace);
     }
 
     private static void assertDiffs(RunContext runContext, URI diffFileUri, List<Map<String, String>> expectedDiffs) throws IOException {
