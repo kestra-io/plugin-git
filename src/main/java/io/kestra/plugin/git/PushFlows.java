@@ -10,6 +10,8 @@ import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.util.*;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
@@ -218,15 +220,30 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
             return path.resolve(flowWithSource.getId() + ".yml");
         }, throwFunction(flowWithSource -> (throwSupplier(() ->
         {
-            String renderedTargetNamespace = runContext.render(targetNamespace).as(String.class).orElse(renderedSourceNamespace);
-            String modifiedSource = flowWithSource.getSource()
-                .replaceAll("(?m)^revision:\\s*\\d+\\n?", "") // strip server-side revision before writing to git
-                .replaceAll(
-                    "(?m)^(\\s*namespace:\\s*)" + renderedSourceNamespace,
-                    "$1" + renderedTargetNamespace
+            String renderedTargetNamespace = runContext.render(targetNamespace).as(String.class)
+                .filter(s -> !s.isBlank())
+                .orElse(renderedSourceNamespace);
+            String source = flowWithSource.getSource().replaceAll("(?m)^revision:\\s*\\d+\\n?", ""); // strip server-side revision before writing to git
+            String modifiedSource = rewriteNamespace(source, renderedSourceNamespace, renderedTargetNamespace);
+            if (!renderedTargetNamespace.equals(renderedSourceNamespace) && modifiedSource.equals(source)) {
+                runContext.logger().warn(
+                    "Flow '{}': no top-level 'namespace: {}' line found, so it is pushed without rewriting it to '{}'",
+                    flowWithSource.getId(), renderedSourceNamespace, renderedTargetNamespace
                 );
+            }
             return new ByteArrayInputStream(modifiedSource.getBytes());
         })))));
+    }
+
+    /**
+     * Rewrites only the flow's own top-level {@code namespace:} key. The source namespace must match a whole namespace
+     * (or a parent of a child namespace), so lookalike prefixes, nested {@code namespace:} properties and text inside
+     * block scalars are left untouched. A trailing comment after the namespace is kept.
+     */
+    static String rewriteNamespace(String source, String sourceNamespace, String targetNamespace) {
+        return Pattern.compile("^(namespace:[ \\t]*)" + Pattern.quote(sourceNamespace) + "(?![\\w-])", Pattern.MULTILINE)
+            .matcher(source)
+            .replaceFirst("$1" + Matcher.quoteReplacement(targetNamespace));
     }
 
     private List<FlowWithSource> fetchFlowsFromKestra(KestraClient kestraClient, RunContext runContext, String tenantId, String namespace, boolean includeChildren) {
