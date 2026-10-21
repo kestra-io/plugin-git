@@ -882,7 +882,19 @@ public class PushFlowsTest extends AbstractGitTest {
             // 1. Baseline SYNC push of all flows.
             syncPush.run(runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory));
 
-            String keptOriginalContent = namespaceRewritten(keptFlow.getSource(), sourceNamespace, targetNamespace);
+            // Only the top-level namespace moves to the target; the Subflow still points at the source sub-namespace.
+            String keptOriginalContent = """
+                id: kept-flow
+                namespace: %s
+                tasks:
+                  - id: my-task
+                    type: io.kestra.plugin.core.log.Log
+                    message: Hello from my-task
+                  - id: subflow
+                    type: io.kestra.plugin.core.flow.Subflow
+                    namespace: %s.sub-namespace
+                    flowId: another-flow
+                """.formatted(targetNamespace, sourceNamespace);
 
             // 2. Modify the kept flow directly in Kestra (a pending change we do NOT want to push).
             FlowWithSource keptReloaded = flowRepositoryInterface.findByNamespaceWithSource(tenantId, sourceNamespace).stream()
@@ -1004,14 +1016,6 @@ public class PushFlowsTest extends AbstractGitTest {
         assertThat(revCommit.getAuthorIdent().getName(), is(authorName));
         assertThat(revCommit.getCommitterIdent().getEmailAddress(), is(authorEmail));
         assertThat(revCommit.getCommitterIdent().getName(), is(authorName));
-    }
-
-    /**
-     * Mirrors PushFlows' anchored {@code ^(\s*namespace:\s*)<sourceNamespace>} rewrite, so the oracle can't
-     * pass/fail spuriously if {@code sourceNamespace} ever appears outside the {@code namespace:} line.
-     */
-    private static String namespaceRewritten(String source, String sourceNamespace, String targetNamespace) {
-        return PushFlows.rewriteNamespace(source, sourceNamespace, targetNamespace);
     }
 
     private static void assertDiffs(RunContext runContext, URI diffFileUri, List<Map<String, String>> expectedDiffs) throws IOException {

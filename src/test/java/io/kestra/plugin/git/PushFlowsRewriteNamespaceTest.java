@@ -41,4 +41,20 @@ class PushFlowsRewriteNamespaceTest {
             is("id: a\nnamespace: companyXteam\n")
         );
     }
+
+    @Test
+    void keepsTrailingCommentAndSkipsLookalikeNamespaces() {
+        assertThat(
+            PushFlows.rewriteNamespace("id: a\nnamespace: bankdev # x\n", "bankdev", "bankprod"),
+            is("id: a\nnamespace: bankprod # x\n")
+        );
+        assertThat(
+            PushFlows.rewriteNamespace("id: a\nnamespace: bankdev-x\n", "bankdev", "bankprod"),
+            is("id: a\nnamespace: bankdev-x\n")
+        );
+        assertThat(
+            PushFlows.rewriteNamespace("id: a\nnamespace: bankdev_x\n", "bankdev", "bankprod"),
+            is("id: a\nnamespace: bankdev_x\n")
+        );
+    }
 }
