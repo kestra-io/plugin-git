@@ -10,6 +10,9 @@ import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.util.*;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
@@ -148,7 +151,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
 
     @Schema(
         title = "Target namespace override",
-        description = "If set, rewrites the `namespace` field in exported flows to this value."
+        description = "If set, rewrites each exported flow's own top-level `namespace` to this value, keeping a child namespace suffix. Nested `namespace` properties, such as a Subflow's, are not changed. A blank value means no rewrite."
     )
     @PluginProperty(group = "source")
     private Property<String> targetNamespace;
@@ -192,10 +195,14 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     protected Map<Path, Supplier<InputStream>> instanceResourcesContentByPath(RunContext runContext, Path flowDirectory, List<String> globs) throws IllegalVariableEvaluationException {
         Map<String, String> flowProps = Optional.ofNullable((Map<String, String>) runContext.getVariables().get("flow")).orElse(Collections.emptyMap());
         String tenantId = flowProps.get("tenantId");
-        String renderedSourceNamespace = runContext.render(this.sourceNamespace).as(String.class).orElse(null);
+        var rSourceNamespace = runContext.render(this.sourceNamespace).as(String.class).orElse(null);
+        var rTargetNamespace = runContext.render(this.targetNamespace).as(String.class)
+            .filter(s -> !s.isBlank())
+            .orElse(rSourceNamespace);
+        var rewriteNamespace = namespaceRewriter(rSourceNamespace, rTargetNamespace);
         boolean includeChildren = Boolean.TRUE.equals(runContext.render(this.includeChildNamespaces).as(Boolean.class).orElseThrow());
 
-        List<FlowWithSource> flowsToPush = fetchFlowsFromKestra(kestraClient(runContext), runContext, tenantId, renderedSourceNamespace, includeChildren);
+        var flowsToPush = fetchFlowsFromKestra(kestraClient(runContext), runContext, tenantId, rSourceNamespace, includeChildren);
 
         Stream<FlowWithSource> filteredFlowsToPush = flowsToPush.stream()
             .filter(flowWithSource -> !flowWithSource.isDraft());
@@ -211,22 +218,30 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         return filteredFlowsToPush.collect(Collectors.toMap(flowWithSource ->
         {
             Path path = flowDirectory;
-            if (flowWithSource.getNamespace().length() > renderedSourceNamespace.length()) {
-                path = path.resolve(flowWithSource.getNamespace().substring(renderedSourceNamespace.length() + 1).replace(".", "/"));
+            if (flowWithSource.getNamespace().length() > rSourceNamespace.length()) {
+                path = path.resolve(flowWithSource.getNamespace().substring(rSourceNamespace.length() + 1).replace(".", "/"));
             }
 
             return path.resolve(flowWithSource.getId() + ".yml");
         }, throwFunction(flowWithSource -> (throwSupplier(() ->
         {
-            String renderedTargetNamespace = runContext.render(targetNamespace).as(String.class).orElse(renderedSourceNamespace);
-            String modifiedSource = flowWithSource.getSource()
-                .replaceAll("(?m)^revision:\\s*\\d+\\n?", "") // strip server-side revision before writing to git
-                .replaceAll(
-                    "(?m)^(\\s*namespace:\\s*)" + renderedSourceNamespace,
-                    "$1" + renderedTargetNamespace
+            var source = flowWithSource.getSource().replaceAll("(?m)^revision:\\s*\\d+\\n?", ""); // strip server-side revision before writing to git
+            var modifiedSource = rewriteNamespace.apply(source);
+            if (!rTargetNamespace.equals(rSourceNamespace) && modifiedSource.equals(source)) {
+                runContext.logger().warn(
+                    "Flow '{}': no top-level 'namespace: {}' line found, so it is pushed without rewriting it to '{}'",
+                    flowWithSource.getId(), rSourceNamespace, rTargetNamespace
                 );
+            }
             return new ByteArrayInputStream(modifiedSource.getBytes());
         })))));
+    }
+
+    // only the top-level key on a whole namespace segment, so lookalikes, nested keys and block scalar text stay untouched
+    static UnaryOperator<String> namespaceRewriter(String sourceNamespace, String targetNamespace) {
+        var pattern = Pattern.compile("^(namespace:[ \\t]*)%s(?![\\w-])".formatted(Pattern.quote(sourceNamespace)), Pattern.MULTILINE);
+        var replacement = "$1%s".formatted(Matcher.quoteReplacement(targetNamespace));
+        return source -> pattern.matcher(source).replaceFirst(replacement);
     }
 
     private List<FlowWithSource> fetchFlowsFromKestra(KestraClient kestraClient, RunContext runContext, String tenantId, String namespace, boolean includeChildren) {
