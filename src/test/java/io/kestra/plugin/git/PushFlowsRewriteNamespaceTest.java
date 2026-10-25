@@ -9,7 +9,7 @@ class PushFlowsRewriteNamespaceTest {
 
     @Test
     void onlyChangesTopLevelNamespaceKey() {
-        String source = """
+        var source = """
             id: source_flow
             namespace: bankdev
             tasks:
@@ -25,7 +25,7 @@ class PushFlowsRewriteNamespaceTest {
                   end
             """;
 
-        String expected = source.replace("namespace: bankdev\ntasks", "namespace: bankprod\ntasks");
+        var expected = source.replace("namespace: bankdev\ntasks", "namespace: bankprod\ntasks");
 
         assertThat(PushFlows.rewriteNamespace(source, "bankdev", "bankprod"), is(expected));
     }

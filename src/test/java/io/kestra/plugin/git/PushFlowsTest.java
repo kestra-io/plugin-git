@@ -125,7 +125,7 @@ public class PushFlowsTest extends AbstractGitTest {
             flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, subNamespace).toString(), createdSubNsFlow.getId() + ".yml");
             assertThat(flowFile.exists(), is(true));
             String fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
-            assertThat(fileContent, is(createdSubNsFlow.getSource().replace(sourceNamespace, targetNamespace)));
+            assertThat(fileContent, is(pushedSource(createdSubNsFlow, sourceNamespace, targetNamespace)));
 
             assertThat(pushOutput.getCommitURL(), is(repositoryUrl + "/commit/" + pushOutput.getCommitId()));
 
@@ -308,17 +308,17 @@ public class PushFlowsTest extends AbstractGitTest {
             File flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), nonMatchingRegexKeptFlow.getId() + ".yml");
             assertThat(flowFile.exists(), is(true));
             String fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
-            assertThat(fileContent, is(nonMatchingRegexKeptFlow.getSource().replace(sourceNamespace, targetNamespace)));
+            assertThat(fileContent, is(pushedSource(nonMatchingRegexKeptFlow, sourceNamespace, targetNamespace)));
 
             flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, subNamespace).toString(), matchingRegexKeptFlow.getId() + ".yml");
             assertThat(flowFile.exists(), is(true));
             fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
-            assertThat(fileContent, is(matchingRegexKeptFlow.getSource().replace(sourceNamespace, targetNamespace)));
+            assertThat(fileContent, is(pushedSource(matchingRegexKeptFlow, sourceNamespace, targetNamespace)));
 
             flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), deletedFlowOnSecondPush.getId() + ".yml");
             assertThat(flowFile.exists(), is(true));
             fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
-            assertThat(fileContent, is(deletedFlowOnSecondPush.getSource().replace(sourceNamespace, targetNamespace)));
+            assertThat(fileContent, is(pushedSource(deletedFlowOnSecondPush, sourceNamespace, targetNamespace)));
 
             assertDiffs(
                 runContext,
@@ -340,12 +340,12 @@ public class PushFlowsTest extends AbstractGitTest {
             flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), nonMatchingRegexKeptFlow.getId() + ".yml");
             assertThat(flowFile.exists(), is(true));
             fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
-            assertThat(fileContent, is(nonMatchingRegexKeptFlow.getSource().replace(sourceNamespace, targetNamespace)));
+            assertThat(fileContent, is(pushedSource(nonMatchingRegexKeptFlow, sourceNamespace, targetNamespace)));
 
             flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, subNamespace).toString(), matchingRegexKeptFlow.getId() + ".yml");
             assertThat(flowFile.exists(), is(true));
             fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
-            assertThat(fileContent, is(matchingRegexKeptFlow.getSource().replace(sourceNamespace, targetNamespace)));
+            assertThat(fileContent, is(pushedSource(matchingRegexKeptFlow, sourceNamespace, targetNamespace)));
 
             flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), deletedFlowOnSecondPush.getId() + ".yml");
             assertThat(flowFile.exists(), is(false));
@@ -414,12 +414,12 @@ public class PushFlowsTest extends AbstractGitTest {
             File flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), createdFlow.getId() + ".yml");
             assertThat(flowFile.exists(), is(true));
             String fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
-            assertThat(fileContent, is(createdFlow.getSource().replace(sourceNamespace, targetNamespace)));
+            assertThat(fileContent, is(pushedSource(createdFlow, sourceNamespace, targetNamespace)));
 
             flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, subNamespace).toString(), createdSubNsFlow.getId() + ".yml");
             assertThat(flowFile.exists(), is(true));
             fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
-            assertThat(fileContent, is(createdSubNsFlow.getSource().replace(sourceNamespace, targetNamespace)));
+            assertThat(fileContent, is(pushedSource(createdSubNsFlow, sourceNamespace, targetNamespace)));
 
             assertThat(pushOutput.getCommitURL(), is(repositoryUrl + "/commit/" + pushOutput.getCommitId()));
 
@@ -494,12 +494,12 @@ public class PushFlowsTest extends AbstractGitTest {
             File flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), createdFlow.getId() + ".yml");
             assertThat(flowFile.exists(), is(true));
             String fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
-            assertThat(fileContent, is(createdFlow.getSource().replace(sourceNamespace, targetNamespace)));
+            assertThat(fileContent, is(pushedSource(createdFlow, sourceNamespace, targetNamespace)));
 
             flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, subNamespace).toString(), createdSubNsFlow.getId() + ".yml");
             assertThat(flowFile.exists(), is(true));
             fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
-            assertThat(fileContent, is(createdSubNsFlow.getSource().replace(sourceNamespace, targetNamespace)));
+            assertThat(fileContent, is(pushedSource(createdSubNsFlow, sourceNamespace, targetNamespace)));
 
             flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, subNamespace).toString(), thirdFlow.getId() + ".yml");
             assertThat(flowFile.exists(), is(false));
@@ -570,7 +570,7 @@ public class PushFlowsTest extends AbstractGitTest {
             File flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory).toString(), createdFlow.getId() + ".yml");
             assertThat(flowFile.exists(), is(true));
             String fileContent = FileUtils.readFileToString(flowFile, "UTF-8");
-            assertThat(fileContent, is(createdFlow.getSource().replace(sourceNamespace, targetNamespace)));
+            assertThat(fileContent, is(pushedSource(createdFlow, sourceNamespace, targetNamespace)));
 
             flowFile = new File(Path.of(cloneOutput.getDirectory(), gitDirectory, subNamespace).toString(), createdSubNsFlow.getId() + ".yml");
             assertThat(flowFile.exists(), is(false));
@@ -882,19 +882,7 @@ public class PushFlowsTest extends AbstractGitTest {
             // 1. Baseline SYNC push of all flows.
             syncPush.run(runContext(tenantId, repositoryUrl, gitUserEmail, gitUserName, branch, sourceNamespace, targetNamespace, gitDirectory));
 
-            // Only the top-level namespace moves to the target; the Subflow still points at the source sub-namespace.
-            String keptOriginalContent = """
-                id: kept-flow
-                namespace: %s
-                tasks:
-                  - id: my-task
-                    type: io.kestra.plugin.core.log.Log
-                    message: Hello from my-task
-                  - id: subflow
-                    type: io.kestra.plugin.core.flow.Subflow
-                    namespace: %s.sub-namespace
-                    flowId: another-flow
-                """.formatted(targetNamespace, sourceNamespace);
+            var keptOriginalContent = pushedSource(keptFlow, sourceNamespace, targetNamespace);
 
             // 2. Modify the kept flow directly in Kestra (a pending change we do NOT want to push).
             FlowWithSource keptReloaded = flowRepositoryInterface.findByNamespaceWithSource(tenantId, sourceNamespace).stream()
@@ -1050,22 +1038,27 @@ public class PushFlowsTest extends AbstractGitTest {
     }
 
     private FlowWithSource createFlow(String tenantId, String flowId, String namespace) {
-        String flowSource = """
-            id:\s""" + flowId + """
+        return flowRepositoryInterface.create(GenericFlow.fromYaml(tenantId, flowSource(flowId, namespace, "%s.sub-namespace".formatted(namespace))));
+    }
 
-            namespace:\s""" + namespace + """
-
+    private static String flowSource(String flowId, String namespace, String subflowNamespace) {
+        return """
+            id: %s
+            namespace: %s
             tasks:
               - id: my-task
                 type: io.kestra.plugin.core.log.Log
                 message: Hello from my-task
               - id: subflow
                 type: io.kestra.plugin.core.flow.Subflow
-                namespace:\s""" + namespace + """
-            .sub-namespace
+                namespace: %s
                 flowId: another-flow
-            """;
+            """.formatted(flowId, namespace, subflowNamespace);
+    }
 
-        return flowRepositoryInterface.create(GenericFlow.fromYaml(tenantId, flowSource));
+    // PushFlows moves only the top-level namespace (keeping a child suffix), the Subflow keeps its original namespace
+    private static String pushedSource(FlowWithSource flow, String sourceNamespace, String targetNamespace) {
+        var pushedNamespace = "%s%s".formatted(targetNamespace, flow.getNamespace().substring(sourceNamespace.length()));
+        return flowSource(flow.getId(), pushedNamespace, "%s.sub-namespace".formatted(flow.getNamespace()));
     }
 }
