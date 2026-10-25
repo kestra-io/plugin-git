@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.util.*;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -198,6 +199,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         var rTargetNamespace = runContext.render(this.targetNamespace).as(String.class)
             .filter(s -> !s.isBlank())
             .orElse(rSourceNamespace);
+        var rewriteNamespace = namespaceRewriter(rSourceNamespace, rTargetNamespace);
         boolean includeChildren = Boolean.TRUE.equals(runContext.render(this.includeChildNamespaces).as(Boolean.class).orElseThrow());
 
         var flowsToPush = fetchFlowsFromKestra(kestraClient(runContext), runContext, tenantId, rSourceNamespace, includeChildren);
@@ -224,7 +226,7 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         }, throwFunction(flowWithSource -> (throwSupplier(() ->
         {
             var source = flowWithSource.getSource().replaceAll("(?m)^revision:\\s*\\d+\\n?", ""); // strip server-side revision before writing to git
-            var modifiedSource = rewriteNamespace(source, rSourceNamespace, rTargetNamespace);
+            var modifiedSource = rewriteNamespace.apply(source);
             if (!rTargetNamespace.equals(rSourceNamespace) && modifiedSource.equals(source)) {
                 runContext.logger().warn(
                     "Flow '{}': no top-level 'namespace: {}' line found, so it is pushed without rewriting it to '{}'",
@@ -236,10 +238,10 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
     }
 
     // only the top-level key on a whole namespace segment, so lookalikes, nested keys and block scalar text stay untouched
-    static String rewriteNamespace(String source, String sourceNamespace, String targetNamespace) {
-        return Pattern.compile("^(namespace:[ \\t]*)%s(?![\\w-])".formatted(Pattern.quote(sourceNamespace)), Pattern.MULTILINE)
-            .matcher(source)
-            .replaceFirst("$1%s".formatted(Matcher.quoteReplacement(targetNamespace)));
+    static UnaryOperator<String> namespaceRewriter(String sourceNamespace, String targetNamespace) {
+        var pattern = Pattern.compile("^(namespace:[ \\t]*)%s(?![\\w-])".formatted(Pattern.quote(sourceNamespace)), Pattern.MULTILINE);
+        var replacement = "$1%s".formatted(Matcher.quoteReplacement(targetNamespace));
+        return source -> pattern.matcher(source).replaceFirst(replacement);
     }
 
     private List<FlowWithSource> fetchFlowsFromKestra(KestraClient kestraClient, RunContext runContext, String tenantId, String namespace, boolean includeChildren) {

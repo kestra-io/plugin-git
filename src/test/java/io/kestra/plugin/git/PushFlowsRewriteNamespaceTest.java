@@ -27,17 +27,17 @@ class PushFlowsRewriteNamespaceTest {
 
         var expected = source.replace("namespace: bankdev\ntasks", "namespace: bankprod\ntasks");
 
-        assertThat(PushFlows.rewriteNamespace(source, "bankdev", "bankprod"), is(expected));
+        assertThat(PushFlows.namespaceRewriter("bankdev", "bankprod").apply(source), is(expected));
     }
 
     @Test
     void rewritesChildNamespaceAndTreatsNamespacesAsLiterals() {
         assertThat(
-            PushFlows.rewriteNamespace("id: a\nnamespace: company.team.child\n", "company.team", "prod.$1"),
+            PushFlows.namespaceRewriter("company.team", "prod.$1").apply("id: a\nnamespace: company.team.child\n"),
             is("id: a\nnamespace: prod.$1.child\n")
         );
         assertThat(
-            PushFlows.rewriteNamespace("id: a\nnamespace: companyXteam\n", "company.team", "prod"),
+            PushFlows.namespaceRewriter("company.team", "prod").apply("id: a\nnamespace: companyXteam\n"),
             is("id: a\nnamespace: companyXteam\n")
         );
     }
@@ -45,15 +45,15 @@ class PushFlowsRewriteNamespaceTest {
     @Test
     void keepsTrailingCommentAndSkipsLookalikeNamespaces() {
         assertThat(
-            PushFlows.rewriteNamespace("id: a\nnamespace: bankdev # x\n", "bankdev", "bankprod"),
+            PushFlows.namespaceRewriter("bankdev", "bankprod").apply("id: a\nnamespace: bankdev # x\n"),
             is("id: a\nnamespace: bankprod # x\n")
         );
         assertThat(
-            PushFlows.rewriteNamespace("id: a\nnamespace: bankdev-x\n", "bankdev", "bankprod"),
+            PushFlows.namespaceRewriter("bankdev", "bankprod").apply("id: a\nnamespace: bankdev-x\n"),
             is("id: a\nnamespace: bankdev-x\n")
         );
         assertThat(
-            PushFlows.rewriteNamespace("id: a\nnamespace: bankdev_x\n", "bankdev", "bankprod"),
+            PushFlows.namespaceRewriter("bankdev", "bankprod").apply("id: a\nnamespace: bankdev_x\n"),
             is("id: a\nnamespace: bankdev_x\n")
         );
     }
