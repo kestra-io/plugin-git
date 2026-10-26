@@ -177,7 +177,8 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
                     {
                         URI sourceFileURI = URI.create((String) e.getValue());
                         return runContext.storage().getFile(sourceFileURI);
-                    }))
+                    })),
+                    (existing, replacement) -> replacement
                 )
             );
         } else if (globs != null && !globs.isEmpty()) {
@@ -191,7 +192,8 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
                 contentByPath = localMatches.stream().collect(
                     Collectors.toMap(
                         path -> baseDirectory.resolve(path.toString()),
-                        throwFunction(path -> throwSupplier(() -> new FileInputStream(path.toFile())))
+                        throwFunction(path -> throwSupplier(() -> new FileInputStream(path.toFile()))),
+                        (existing, replacement) -> replacement
                     )
                 );
             } else {
@@ -200,7 +202,10 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
                     contentByPath = outputs.values().stream()
                         .filter(v -> v instanceof Map && ((Map<?, ?>) v).get("outputFiles") instanceof Map)
                         .flatMap(v -> ((Map<String, Object>) ((Map<?, ?>) v).get("outputFiles")).entrySet().stream())
-                        .filter(e -> globs.stream().anyMatch(g -> e.getKey().matches(g.replace("*", ".*"))))
+                        .filter(e -> {
+                            Path keyPath = Path.of(e.getKey().startsWith("/") ? e.getKey() : "/" + e.getKey());
+                            return matcher.test(keyPath) || matcher.test(Path.of(e.getKey()));
+                        })
                         .collect(
                             Collectors.toMap(
                                 e -> baseDirectory.resolve(e.getKey()),
@@ -208,7 +213,8 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
                                 {
                                     URI sourceFileURI = URI.create((String) e.getValue());
                                     return runContext.storage().getFile(sourceFileURI);
-                                }))
+                                })),
+                                (existing, replacement) -> replacement
                             )
                         );
                 } else {
@@ -230,7 +236,8 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
                             {
                                 URI sourceFileURI = URI.create((String) e.getValue());
                                 return runContext.storage().getFile(sourceFileURI);
-                            }))
+                            })),
+                            (existing, replacement) -> replacement
                         )
                     );
 
