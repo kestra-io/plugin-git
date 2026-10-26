@@ -203,27 +203,11 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
         boolean includeChildren = Boolean.TRUE.equals(runContext.render(this.includeChildNamespaces).as(Boolean.class).orElseThrow());
 
         var flowsToPush = fetchFlowsFromKestra(kestraClient(runContext), runContext, tenantId, rSourceNamespace, includeChildren);
+        var filteredFlowsToPush = filterFlowsToPush(flowsToPush, rSourceNamespace, includeChildren, globs);
 
-        Stream<FlowWithSource> filteredFlowsToPush = flowsToPush.stream()
-            .filter(flowWithSource -> !flowWithSource.isDraft());
-        if (globs != null) {
-            List<PathMatcher> matchers = globs.stream().map(glob -> FileSystems.getDefault().getPathMatcher("glob:" + glob)).toList();
-            filteredFlowsToPush = filteredFlowsToPush.filter(flowWithSource ->
-            {
-                String flowId = flowWithSource.getId();
-                return matchers.stream().anyMatch(matcher -> matcher.matches(Path.of(flowId)));
-            });
-        }
-
-        return filteredFlowsToPush.collect(Collectors.toMap(flowWithSource ->
-        {
-            Path path = flowDirectory;
-            if (flowWithSource.getNamespace().length() > rSourceNamespace.length()) {
-                path = path.resolve(flowWithSource.getNamespace().substring(rSourceNamespace.length() + 1).replace(".", "/"));
-            }
-
-            return path.resolve(flowWithSource.getId() + ".yml");
-        }, throwFunction(flowWithSource -> (throwSupplier(() ->
+        return filteredFlowsToPush.stream().collect(Collectors.toMap(
+            flowWithSource -> resolveFlowPath(flowDirectory, flowWithSource, rSourceNamespace),
+            throwFunction(flowWithSource -> (throwSupplier(() ->
         {
             var source = flowWithSource.getSource().replaceAll("(?m)^revision:\\s*\\d+\\n?", ""); // strip server-side revision before writing to git
             var modifiedSource = rewriteNamespace.apply(source);
@@ -235,6 +219,37 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
             }
             return new ByteArrayInputStream(modifiedSource.getBytes());
         })))));
+    }
+
+    static List<FlowWithSource> filterFlowsToPush(List<FlowWithSource> flowsToPush, String sourceNamespace, boolean includeChildren, List<String> globs) {
+        Stream<FlowWithSource> filtered = flowsToPush.stream()
+            .filter(flowWithSource -> !flowWithSource.isDraft())
+            .filter(flowWithSource -> {
+                String flowNamespace = flowWithSource.getNamespace();
+                if (flowNamespace == null) {
+                    return false;
+                }
+                if (flowNamespace.equals(sourceNamespace)) {
+                    return true;
+                }
+                return includeChildren && flowNamespace.startsWith(sourceNamespace + ".");
+            });
+        if (globs != null) {
+            List<PathMatcher> matchers = globs.stream().map(glob -> FileSystems.getDefault().getPathMatcher("glob:" + glob)).toList();
+            filtered = filtered.filter(flowWithSource -> {
+                String flowId = flowWithSource.getId();
+                return matchers.stream().anyMatch(matcher -> matcher.matches(Path.of(flowId)));
+            });
+        }
+        return filtered.toList();
+    }
+
+    static Path resolveFlowPath(Path flowDirectory, FlowWithSource flowWithSource, String sourceNamespace) {
+        Path path = flowDirectory;
+        if (flowWithSource.getNamespace().startsWith(sourceNamespace + ".")) {
+            path = path.resolve(flowWithSource.getNamespace().substring(sourceNamespace.length() + 1).replace(".", "/"));
+        }
+        return path.resolve(flowWithSource.getId() + ".yml");
     }
 
     // only the top-level key on a whole namespace segment, so lookalikes, nested keys and block scalar text stay untouched
