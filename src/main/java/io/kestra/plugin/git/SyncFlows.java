@@ -130,7 +130,7 @@ import lombok.experimental.SuperBuilder;
                     type: io.kestra.plugin.git.SyncFlows
                     gitDirectory: flows
                     targetNamespace: git
-                    url: https://github.com/kestra-io/flows
+                    url: https://github.com/your-org/your-flows-repo
                     branch: main
                     username: git_username
                     password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
