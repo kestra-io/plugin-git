@@ -117,6 +117,29 @@ import lombok.experimental.SuperBuilder;
                     type: io.kestra.plugin.core.trigger.Schedule
                     cron: "0 * * * *"
                 """
+        ),
+        @Example(
+            title = "Sync flows from Git and store the synced commit in the KV Store, so downstream flows can tell which Git version is deployed.",
+            full = true,
+            code = """
+                id: sync_flows_and_record_commit
+                namespace: company.ops
+
+                tasks:
+                  - id: git
+                    type: io.kestra.plugin.git.SyncFlows
+                    gitDirectory: flows
+                    targetNamespace: git
+                    url: https://github.com/kestra-io/flows
+                    branch: main
+                    username: git_username
+                    password: "{{ secret('GITHUB_ACCESS_TOKEN') }}"
+
+                  - id: last_synced_commit
+                    type: io.kestra.plugin.core.kv.Set
+                    key: last_synced_commit
+                    value: "{{ outputs.git.commitId }}"
+                """
         )
     }
 )

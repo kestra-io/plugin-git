@@ -215,11 +215,7 @@ public class SyncFlowsTest extends AbstractGitTest {
             .run(cloneRunContext);
         assertFlows(cloneRunContext.workingDir().path().resolve(Path.of(GIT_DIRECTORY)).toFile(), true, selfFlowSource);
 
-        try (Git git = Git.open(cloneRunContext.workingDir().path().toFile())) {
-            String headCommitId = git.getRepository().resolve("HEAD").getName();
-            assertThat(syncOutput.getCommitId(), is(headCommitId));
-            assertThat(syncOutput.getCommitURL(), endsWith("/commit/" + headCommitId));
-        }
+        SyncOutputAssertions.assertSyncedBranchTip(syncOutput, repositoryUrl, pat, BRANCH);
 
         assertDiffs(
             runContext, syncOutput.diffFileUri(),
