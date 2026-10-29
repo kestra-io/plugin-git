@@ -215,6 +215,8 @@ public class SyncFlowsTest extends AbstractGitTest {
             .run(cloneRunContext);
         assertFlows(cloneRunContext.workingDir().path().resolve(Path.of(GIT_DIRECTORY)).toFile(), true, selfFlowSource);
 
+        SyncOutputAssertions.assertSyncedBranchTip(syncOutput, repositoryUrl, pat, BRANCH);
+
         assertDiffs(
             runContext, syncOutput.diffFileUri(),
             defaultCaseDiffs(

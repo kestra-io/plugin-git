@@ -117,6 +117,7 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
         assertNamespaceFileContent(runContext, clonedFilePath, "{\"my-field\": \"my-value\"}");
 
         assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true));
+        SyncOutputAssertions.assertSyncedBranchTip(syncOutput, repositoryUrl, pat, BRANCH);
     }
 
     @Test
@@ -730,10 +731,12 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
             runContextFactory.of().storage().namespace(ns).delete(Path.of("/"));
         }
 
-        Path repoDir = createLocalRepo(Map.of(
-            "content/" + firstChild + "/a.txt", "a",
-            "content/" + secondChild + "/b.txt", "b"
-        ));
+        Path repoDir = createLocalRepo(
+            Map.of(
+                "content/" + firstChild + "/a.txt", "a",
+                "content/" + secondChild + "/b.txt", "b"
+            )
+        );
 
         try (NamespacesSearchMockServer namespaces = NamespacesSearchMockServer.start(List.of(firstChild, secondChild))) {
             SyncNamespaceFiles task = SyncNamespaceFiles.builder()
