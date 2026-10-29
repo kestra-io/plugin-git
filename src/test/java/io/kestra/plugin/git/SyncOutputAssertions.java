@@ -12,7 +12,6 @@ final class SyncOutputAssertions {
     private SyncOutputAssertions() {
     }
 
-    /** Asserts the sync output points at the current tip of {@code branch} on the remote. */
     static void assertSyncedBranchTip(AbstractSyncTask.Output output, String repositoryUrl, String pat, String branch) throws Exception {
         var tip = Git.lsRemoteRepository()
             .setRemote(repositoryUrl)
