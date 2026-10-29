@@ -517,9 +517,11 @@ public class SyncNamespaceFiles extends AbstractSyncTask<NamespaceFile, SyncName
     }
 
     @Override
-    protected Output output(URI diffFileStorageUri) {
+    protected Output output(URI diffFileStorageUri, String commitId, String commitURL) {
         return Output.builder()
             .files(diffFileStorageUri)
+            .commitId(commitId)
+            .commitURL(commitURL)
             .build();
     }
 

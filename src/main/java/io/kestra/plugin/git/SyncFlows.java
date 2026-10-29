@@ -487,9 +487,11 @@ public class SyncFlows extends AbstractSyncTask<Flow, SyncFlows.Output> {
     }
 
     @Override
-    protected Output output(URI diffFileStorageUri) {
+    protected Output output(URI diffFileStorageUri, String commitId, String commitURL) {
         return Output.builder()
             .flows(diffFileStorageUri)
+            .commitId(commitId)
+            .commitURL(commitURL)
             .unresolvedFlowLookups(LOOKUP_COUNTERS.get().unresolved)
             .build();
     }

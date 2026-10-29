@@ -40,6 +40,7 @@ import jakarta.inject.Inject;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.endsWith;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
@@ -117,6 +118,20 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
         assertNamespaceFileContent(runContext, clonedFilePath, "{\"my-field\": \"my-value\"}");
 
         assertDiffs(runContext, syncOutput.diffFileUri(), defaultCaseDiffs(true));
+
+        RunContext cloneRunContext = runContextFactory.of();
+        Clone.builder()
+            .url(Property.ofValue(repositoryUrl))
+            .username(Property.ofValue(pat))
+            .password(Property.ofValue(pat))
+            .branch(Property.ofValue(BRANCH))
+            .build()
+            .run(cloneRunContext);
+        try (Git git = Git.open(cloneRunContext.workingDir().path().toFile())) {
+            String headCommitId = git.getRepository().resolve("HEAD").getName();
+            assertThat(syncOutput.getCommitId(), is(headCommitId));
+            assertThat(syncOutput.getCommitURL(), endsWith("/commit/" + headCommitId));
+        }
     }
 
     @Test
@@ -730,10 +745,12 @@ public class SyncNamespaceFilesTest extends AbstractGitTest {
             runContextFactory.of().storage().namespace(ns).delete(Path.of("/"));
         }
 
-        Path repoDir = createLocalRepo(Map.of(
-            "content/" + firstChild + "/a.txt", "a",
-            "content/" + secondChild + "/b.txt", "b"
-        ));
+        Path repoDir = createLocalRepo(
+            Map.of(
+                "content/" + firstChild + "/a.txt", "a",
+                "content/" + secondChild + "/b.txt", "b"
+            )
+        );
 
         try (NamespacesSearchMockServer namespaces = NamespacesSearchMockServer.start(List.of(firstChild, secondChild))) {
             SyncNamespaceFiles task = SyncNamespaceFiles.builder()
