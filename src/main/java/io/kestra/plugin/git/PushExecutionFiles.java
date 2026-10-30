@@ -4,12 +4,14 @@ import java.io.FileInputStream;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
@@ -116,7 +118,9 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
 
     @Schema(
         title = "Glob pattern(s) for execution files",
-        description = "Matches files relative to the execution working directory."
+        description = """
+            Matches files relative to the execution working directory. When none match, the patterns are matched against the `outputFiles` of previous tasks.
+            """
     )
     @PluginProperty(group = "deprecated")
     private Object files;
@@ -177,8 +181,7 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
                     {
                         URI sourceFileURI = URI.create((String) e.getValue());
                         return runContext.storage().getFile(sourceFileURI);
-                    })),
-                    (existing, replacement) -> replacement
+                    }))
                 )
             );
         } else if (globs != null && !globs.isEmpty()) {
@@ -192,31 +195,17 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
                 contentByPath = localMatches.stream().collect(
                     Collectors.toMap(
                         path -> baseDirectory.resolve(path.toString()),
-                        throwFunction(path -> throwSupplier(() -> new FileInputStream(path.toFile()))),
-                        (existing, replacement) -> replacement
+                        throwFunction(path -> throwSupplier(() -> new FileInputStream(path.toFile())))
                     )
                 );
             } else {
                 Map<String, Object> outputs = (Map<String, Object>) runContext.getVariables().get("outputs");
                 if (outputs != null) {
-                    contentByPath = outputs.values().stream()
-                        .filter(v -> v instanceof Map && ((Map<?, ?>) v).get("outputFiles") instanceof Map)
-                        .flatMap(v -> ((Map<String, Object>) ((Map<?, ?>) v).get("outputFiles")).entrySet().stream())
-                        .filter(e -> {
-                            Path keyPath = Path.of(e.getKey().startsWith("/") ? e.getKey() : "/" + e.getKey());
-                            return matcher.test(keyPath) || matcher.test(Path.of(e.getKey()));
-                        })
-                        .collect(
-                            Collectors.toMap(
-                                e -> baseDirectory.resolve(e.getKey()),
-                                throwFunction(e -> throwSupplier(() ->
-                                {
-                                    URI sourceFileURI = URI.create((String) e.getValue());
-                                    return runContext.storage().getFile(sourceFileURI);
-                                })),
-                                (existing, replacement) -> replacement
-                            )
-                        );
+                    contentByPath = outputFilesByPath(
+                        runContext,
+                        baseDirectory,
+                        outputFiles(outputs).filter(e -> matchesOutputFileKey(matcher, e.getKey()))
+                    );
                 } else {
                     contentByPath = Map.of();
                 }
@@ -226,20 +215,7 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
             Map<String, Object> outputs = (Map<String, Object>) runContext.getVariables().get("outputs");
 
             if (outputs != null && !outputs.isEmpty()) {
-                contentByPath = outputs.values().stream()
-                    .filter(v -> v instanceof Map && ((Map<?, ?>) v).get("outputFiles") instanceof Map)
-                    .flatMap(v -> ((Map<String, Object>) ((Map<?, ?>) v).get("outputFiles")).entrySet().stream())
-                    .collect(
-                        Collectors.toMap(
-                            e -> baseDirectory.resolve(e.getKey()),
-                            throwFunction(e -> throwSupplier(() ->
-                            {
-                                URI sourceFileURI = URI.create((String) e.getValue());
-                                return runContext.storage().getFile(sourceFileURI);
-                            })),
-                            (existing, replacement) -> replacement
-                        )
-                    );
+                contentByPath = outputFilesByPath(runContext, baseDirectory, outputFiles(outputs));
 
                 runContext.logger().info("No files or filesMap provided - pushing all execution output files instead.");
             } else {
@@ -260,6 +236,30 @@ public class PushExecutionFiles extends AbstractPushTask<PushExecutionFiles.Outp
             }
         }
 
+        return contentByPath;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Stream<Map.Entry<String, Object>> outputFiles(Map<String, Object> outputs) {
+        return outputs.values().stream()
+            .filter(v -> v instanceof Map && ((Map<?, ?>) v).get("outputFiles") instanceof Map)
+            .flatMap(v -> ((Map<String, Object>) ((Map<?, ?>) v).get("outputFiles")).entrySet().stream());
+    }
+
+    // `*.csv` matches the raw key, `**/` globs the rooted one, and the file name keeps nested keys matching like before
+    private static boolean matchesOutputFileKey(Predicate<Path> matcher, String key) {
+        var path = Path.of(key);
+        return matcher.test(path) || matcher.test(Path.of("/", key)) || (path.getFileName() != null && matcher.test(path.getFileName()));
+    }
+
+    private static Map<Path, Supplier<InputStream>> outputFilesByPath(RunContext runContext, Path baseDirectory, Stream<Map.Entry<String, Object>> outputFiles) throws Exception {
+        var contentByPath = new LinkedHashMap<Path, Supplier<InputStream>>();
+        for (var e : outputFiles.toList()) {
+            var content = throwSupplier(() -> runContext.storage().getFile(URI.create((String) e.getValue())));
+            if (contentByPath.put(baseDirectory.resolve(e.getKey()), content) != null) {
+                runContext.logger().warn("Several tasks output a file named '{}', only one of them is pushed", e.getKey());
+            }
+        }
         return contentByPath;
     }
 
