@@ -175,11 +175,11 @@ public class PushFlows extends AbstractPushTask<PushFlows.Output> {
 
     @Schema(
         title = "Git commit message",
-        defaultValue = "Add flows from `sourceNamespace`"
+        defaultValue = "Add files from `sourceNamespace` namespace"
     )
     @Override
     public Property<String> getCommitMessage() {
-        return Optional.ofNullable(this.commitMessage).orElse(Property.ofValue("Add flows from " + this.sourceNamespace.toString() + " namespace"));
+        return this.commitMessage;
     }
 
     @Override
