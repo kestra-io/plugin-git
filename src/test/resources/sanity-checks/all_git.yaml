@@ -1,5 +1,5 @@
-id: git_clone
-namespace: sanitychecks
+id: all_git
+namespace: sanitychecks.plugin-git
 
 tasks:
   - id: file_system
@@ -8,7 +8,7 @@ tasks:
       - id: clone
         type: io.kestra.plugin.git.Clone
         url: https://github.com/kestra-io/plugin-git
-        branch: master
+        branch: main
 
       - id: delete_file
         type: io.kestra.plugin.scripts.shell.Commands
